@@ -418,10 +418,19 @@ static const double kReadAloudSmoothScrollFactor = 0.2;
 
 // these can be global, as the mouse wheel can't affect more than one window at once
 static int gDeltaPerLine = 0;
+static int gWheelLineMultiplier = 1;
+static int gWheelScrollLinesSetting = 0;
 // set when WM_MOUSEWHEEL has been passed on (to prevent recursion)
 static bool gWheelMsgRedirect = false;
 
 void UpdateDeltaPerLine() {
+    gWheelScrollLinesSetting = gGlobalPrefs ? gGlobalPrefs->wheelScrollLines : 0;
+    int lines = ValidWheelScrollLines(gWheelScrollLinesSetting);
+    gWheelLineMultiplier = lines > 0 ? lines : 1;
+    if (lines > 0) {
+        gDeltaPerLine = WHEEL_DELTA;
+        return;
+    }
     ULONG ulScrollLines;
     BOOL ok = SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &ulScrollLines, 0);
     if (!ok) {
@@ -4082,6 +4091,11 @@ static void WheelFlipPage(MainWindow* win, short delta) {
 }
 
 static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM lp) {
+    if (gGlobalPrefs && gWheelScrollLinesSetting != gGlobalPrefs->wheelScrollLines) {
+        UpdateDeltaPerLine();
+        win->wheelAccumDelta = 0;
+        win->wheelPixelRemainder = 0;
+    }
     // Scroll the ToC sidebar, if it's visible and the cursor is in it
     if (win->tocVisible && IsCursorOverWindow(win->tocTreeView->hwnd) && !gWheelMsgRedirect) {
         // Note: hwndTocTree's window procedure doesn't always handle
@@ -4270,8 +4284,8 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
             PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE);
             combinedDelta += GET_WHEEL_DELTA_WPARAM(queued.wParam);
         }
-        int pixels =
-            WheelScrollPixels(combinedDelta, DpiScale(win->hwndCanvas, 16), gDeltaPerLine, win->wheelPixelRemainder);
+        int pixels = WheelScrollPixels(combinedDelta * gWheelLineMultiplier, DpiScale(win->hwndCanvas, 16),
+                                       gDeltaPerLine, win->wheelPixelRemainder);
         KillTimer(win->hwndCanvas, kSmoothScrollTimerID);
         win->readAloudScrollFromCode = false;
         if (pixels != 0) {
@@ -4281,7 +4295,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         return 0;
     }
 
-    win->wheelAccumDelta += delta;
+    win->wheelAccumDelta += delta * gWheelLineMultiplier;
     int prevScrollPos = GetScrollPos(win->hwndCanvas, SB_VERT);
 
     UINT scrollMsg = hScroll ? WM_HSCROLL : WM_VSCROLL;
@@ -4330,6 +4344,11 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
 }
 
 static LRESULT CanvasOnMouseHWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM lp) {
+    if (gGlobalPrefs && gWheelScrollLinesSetting != gGlobalPrefs->wheelScrollLines) {
+        UpdateDeltaPerLine();
+        win->wheelAccumDelta = 0;
+        win->wheelPixelRemainder = 0;
+    }
     // Scroll the ToC sidebar, if it's visible and the cursor is in it
     if (win->tocVisible && IsCursorOverWindow(win->tocTreeView->hwnd) && !gWheelMsgRedirect) {
         // Note: hwndTocTree's window procedure doesn't always handle
@@ -4361,7 +4380,7 @@ static LRESULT CanvasOnMouseHWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM 
         return 0;
     }
 
-    win->wheelAccumDelta += delta;
+    win->wheelAccumDelta += delta * gWheelLineMultiplier;
 
     while (win->wheelAccumDelta >= gDeltaPerLine) {
         SendMessageW(win->hwndCanvas, WM_HSCROLL, SB_LINERIGHT, 0);

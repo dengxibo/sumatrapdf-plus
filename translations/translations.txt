@@ -43668,3 +43668,9 @@ tr:✓ Olası içindekiler sayfaları bulundu. Lütfen seçimi onaylayın.
 tw:✓ 已找到疑似目錄頁，請確認選擇。
 uk:✓ Знайдено ймовірні сторінки змісту. Підтвердьте вибір.
 vn:✓ Đã tìm thấy trang mục lục khả năng. Vui lòng xác nhận lựa chọn.
+:Wheel lines (0 = Windows):
+cn:滚轮行数 (0=系统):
+tw:滾輪行數 (0=系統):
+:Wheel scroll lines must be between 0 and 100 (0 follows Windows).
+cn:滚轮行数必须为 0–100，0 表示跟随 Windows 设置。
+tw:滾輪行數必須為 0–100，0 表示跟隨 Windows 設定。

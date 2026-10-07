@@ -405,6 +405,11 @@ static void AiTocSettingsRoundTripTest() {
 }
 
 static void WheelScrollPixelsTest() {
+    utassert(ValidWheelScrollLines(0) == 0);
+    utassert(ValidWheelScrollLines(-1) == 0);
+    utassert(ValidWheelScrollLines(101) == 0);
+    utassert(ValidWheelScrollLines(1) == 1);
+    utassert(ValidWheelScrollLines(100) == 100);
     int remainder = 0;
     int total = 0;
     for (int i = 0; i < 120; i++) {
@@ -418,6 +423,21 @@ static void WheelScrollPixelsTest() {
     utassert(WheelScrollPixels(-1, 16, 40, remainder) == 0);
     utassert(WheelScrollPixels(1, 16, 40, remainder) == 0 && remainder == 0);
     utassert(WheelScrollPixels(-120 * 4, 16, 40, remainder) == 192);
+    // Non-divisors of 120 still produce exactly the configured line count.
+    utassert(WheelScrollPixels(-120 * 7, 16, 120, remainder) == 7 * 16);
+    total = 0;
+    for (int i = 0; i < 120; i++) {
+        total += WheelScrollPixels(-7, 16, 120, remainder);
+    }
+    utassert(total == 7 * 16 && remainder == 0);
+    auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
+    utassert(prefs->wheelScrollLines == 0);
+    prefs->wheelScrollLines = 7;
+    AutoFree saved((char*)SerializeStruct(&gGlobalPrefsInfo, prefs).data());
+    auto* restored = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, saved.data);
+    utassert(restored->wheelScrollLines == 7);
+    FreeStruct(&gGlobalPrefsInfo, restored);
+    FreeStruct(&gGlobalPrefsInfo, prefs);
 }
 
 static void PrintedTocPromptTest() {

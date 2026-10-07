@@ -24,6 +24,7 @@
 #include "Commands.h"
 #include "AppTools.h"
 #include "SumatraDialogs.h"
+#include "Canvas.h"
 #include "Translations.h"
 #include "Theme.h"
 #include "AppDialogTheme.h"
@@ -906,6 +907,8 @@ static const int gSettingsReadingControls[] = {IDC_SETTINGS_PAGE_READING,
                                                IDC_DEFAULT_SHOW_TOC,
                                                IDC_GROUP_SCROLLING,
                                                IDC_SMOOTH_SCROLL,
+                                               IDC_WHEEL_SCROLL_LINES_LABEL,
+                                               IDC_WHEEL_SCROLL_LINES,
                                                IDC_SCROLLBAR_SINGLE_PAGE,
                                                IDC_FAST_SCROLL_OVER_SCROLLBAR,
                                                IDC_GROUP_DISPLAY_QUALITY,
@@ -1161,7 +1164,108 @@ static void FitSettingsAiLabels(HWND hDlg) {
     }
 }
 
+static int gSettingsContentHeight = 0;
+static int gSettingsScrollPos = 0;
+static int gSettingsWheelRemainder = 0;
+static int gSettingsMinWidth = 0;
+static bool gSettingsAutoSize = true;
+
+static void ScrollSettingsDialog(HWND hDlg, int pos) {
+    if (gSettingsContentHeight == 0) {
+        return;
+    }
+    Rect client = ClientRect(hDlg);
+    pos = limitValue(pos, 0, std::max(0, gSettingsContentHeight - client.dy));
+    int dy = pos - gSettingsScrollPos;
+    if (dy == 0) {
+        return;
+    }
+    // Keep the category navigation fixed; move the settings on the right,
+    // including controls currently below the window.
+    // ScrollWindowEx only moves children intersecting its scroll rectangle.
+    DeferWinPosHelper positions;
+    for (HWND child = GetWindow(hDlg, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        if (GetDlgCtrlID(child) == IDC_SETTINGS_CATEGORY) {
+            continue;
+        }
+        Rect r = MapRectToWindow(WindowRect(child), HWND_DESKTOP, hDlg);
+        positions.SetWindowPos(child, nullptr, r.x, r.y - dy, 0, 0,
+                               SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+    }
+    positions.End();
+    gSettingsScrollPos = pos;
+    SetScrollPos(hDlg, SB_VERT, pos, TRUE);
+    // Leave the fixed navigation and its background out of scrolling repaints.
+    RECT repaint{0, 0, client.dx, client.dy};
+    HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
+    if (category) {
+        Rect navigation = MapRectToWindow(WindowRect(category), HWND_DESKTOP, hDlg);
+        repaint.left = navigation.x + navigation.dx;
+    }
+    // Finish this frame before more wheel messages can postpone WM_PAINT.
+    RedrawWindow(hDlg, &repaint, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
+static void UpdateSettingsScrollRange(HWND hDlg) {
+    if (!gSettingsContentHeight) {
+        return;
+    }
+    ScrollSettingsDialog(hDlg, gSettingsScrollPos);
+    SCROLLINFO si{sizeof(si)};
+    si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS | SIF_DISABLENOSCROLL;
+    si.nMax = gSettingsContentHeight - 1;
+    si.nPage = (UINT)ClientRect(hDlg).dy;
+    si.nPos = gSettingsScrollPos;
+    SetScrollInfo(hDlg, SB_VERT, &si, TRUE);
+}
+
+static void FitSettingsPageToWorkArea(HWND hDlg) {
+    if (!gSettingsAutoSize || IsZoomed(hDlg)) {
+        return;
+    }
+    Rect r = WindowRect(hDlg);
+    Rect work = GetWorkAreaRect(r, GetParent(hDlg));
+    int margin = DpiScale(hDlg, 4);
+    int height = std::min(gSettingsContentHeight + r.dy - ClientRect(hDlg).dy, work.dy - 2 * margin);
+    int y = limitValue(r.y, work.y + margin, work.Bottom() - margin - height);
+    SetWindowPos(hDlg, nullptr, r.x, y, r.dx, height, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static void FitSettingsDialogToWorkArea(HWND hDlg) {
+    gSettingsWheelRemainder = 0;
+    Rect r = WindowRect(hDlg);
+    Rect work = GetWorkAreaRect(r, GetParent(hDlg));
+    int margin = DpiScale(hDlg, 4);
+    int height = work.dy - 2 * margin;
+    // Group boxes overlap sibling controls and leave their interiors transparent.
+    // Clipping their entire rectangles prevents old labels from being erased.
+    SetWindowLongPtrW(hDlg, GWL_STYLE, (GetWindowLongPtrW(hDlg, GWL_STYLE) | WS_VSCROLL) & ~WS_CLIPCHILDREN);
+    SetWindowLongPtrW(hDlg, GWL_EXSTYLE, GetWindowLongPtrW(hDlg, GWL_EXSTYLE) | WS_EX_COMPOSITED);
+    int width = std::min(r.dx + DpiScale(hDlg, 20), work.dx);
+    gSettingsMinWidth = width;
+    height = std::min(height, r.dy);
+    SetWindowPos(hDlg, nullptr, work.x + (work.dx - width) / 2, work.y + (work.dy - height) / 2, width, height,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    UpdateSettingsScrollRange(hDlg);
+    FitSettingsPageToWorkArea(hDlg);
+}
+
+static void EnsureSettingsFocusVisible(HWND hDlg) {
+    HWND focus = GetFocus();
+    if (!gSettingsContentHeight || !focus || !IsChild(hDlg, focus)) {
+        return;
+    }
+    Rect r = MapRectToWindow(WindowRect(focus), HWND_DESKTOP, hDlg);
+    int height = ClientRect(hDlg).dy;
+    if (r.y < 0) {
+        ScrollSettingsDialog(hDlg, gSettingsScrollPos + r.y);
+    } else if (r.dy <= height && r.Bottom() > height) {
+        ScrollSettingsDialog(hDlg, gSettingsScrollPos + r.Bottom() - height);
+    }
+}
+
 static void ShowSettingsPage(HWND hDlg, int page) {
+    ScrollSettingsDialog(hDlg, 0);
     struct PageControls {
         const int* ids;
         int count;
@@ -1182,6 +1286,41 @@ static void ShowSettingsPage(HWND hDlg, int page) {
             bool show = i == page && (!isInverseSearch || showInverseSearch);
             ShowWindow(GetDlgItem(hDlg, id), show ? SW_SHOW : SW_HIDE);
         }
+    }
+    if (page == 6) {
+        HWND section = GetDlgItem(hDlg, showInverseSearch ? IDC_SECTION_INVERSESEARCH : IDC_GROUP_PDF);
+        Rect r = MapRectToWindow(WindowRect(section), HWND_DESKTOP, hDlg);
+        HWND label = GetDlgItem(hDlg, IDC_MORE_EXPERT_SETTINGS);
+        Rect text = MapRectToWindow(WindowRect(label), HWND_DESKTOP, hDlg);
+        int dy = r.Bottom() + DpiScale(hDlg, 14) - text.y;
+        for (int id : {IDC_MORE_EXPERT_SETTINGS, IDC_OPEN_ADVANCED_OPTIONS}) {
+            HWND child = GetDlgItem(hDlg, id);
+            Rect item = MapRectToWindow(WindowRect(child), HWND_DESKTOP, hDlg);
+            SetWindowPos(child, nullptr, item.x, item.y + dy, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        HWND frame = GetDlgItem(hDlg, IDC_SETTINGS_PAGE_ADVANCED);
+        Rect bounds = MapRectToWindow(WindowRect(frame), HWND_DESKTOP, hDlg);
+        Rect button = MapRectToWindow(WindowRect(GetDlgItem(hDlg, IDC_OPEN_ADVANCED_OPTIONS)), HWND_DESKTOP, hDlg);
+        SetWindowPos(frame, nullptr, 0, 0, bounds.dx, button.Bottom() + DpiScale(hDlg, 12) - bounds.y,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    Rect frame = MapRectToWindow(WindowRect(GetDlgItem(hDlg, pages[page].ids[0])), HWND_DESKTOP, hDlg);
+    HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
+    Rect navigation = MapRectToWindow(WindowRect(category), HWND_DESKTOP, hDlg);
+    int navigationHeight =
+        (int)SendMessageW(category, LB_GETCOUNT, 0, 0) * (int)SendMessageW(category, LB_GETITEMHEIGHT, 0, 0) +
+        DpiScale(hDlg, 4);
+    int bottom = std::max(frame.Bottom(), navigation.y + navigationHeight);
+    for (int id : {IDOK, IDCANCEL}) {
+        HWND button = GetDlgItem(hDlg, id);
+        Rect r = MapRectToWindow(WindowRect(button), HWND_DESKTOP, hDlg);
+        SetWindowPos(button, nullptr, r.x, bottom + DpiScale(hDlg, 12), 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        gSettingsContentHeight = bottom + r.dy + DpiScale(hDlg, 24);
+    }
+    if (gSettingsMinWidth) {
+        FitSettingsPageToWorkArea(hDlg);
+        UpdateSettingsScrollRange(hDlg);
     }
 }
 
@@ -2060,6 +2199,11 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             prefs = (GlobalPrefs*)lp;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)prefs);
             gSettingsDialogHwnd = hDlg;
+            gSettingsContentHeight = 0;
+            gSettingsScrollPos = 0;
+            gSettingsWheelRemainder = 0;
+            gSettingsMinWidth = 0;
+            gSettingsAutoSize = true;
             gSettingsDialogBrushes.Create();
             AppDialogApplyChrome(hDlg);
             EnumChildWindows(hDlg, SoftenSettingsInputTheme, 0);
@@ -2124,6 +2268,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, prefs->tabBarHeight, FALSE);
             SetDlgItemInt(hDlg, IDC_EBOOK_FONT_SIZE, (int)prefs->eBookUI.fontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
+            SetDlgItemInt(hDlg, IDC_WHEEL_SCROLL_LINES, ValidWheelScrollLines(prefs->wheelScrollLines), FALSE);
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_AUTHOR, prefs->annotations.defaultAuthor);
             SendMessageW(GetDlgItem(hDlg, IDC_DEFAULT_AUTHOR), EM_SETCUEBANNER, TRUE,
@@ -2392,6 +2537,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_SEARCH_UI_FLOATING, _TRA("Use the &floating search window"));
             HwndSetDlgItemText(hDlg, IDC_SCROLLBARS_LABEL, _TRA("&Scrollbars:"));
             HwndSetDlgItemText(hDlg, IDC_SMOOTH_SCROLL, _TRA("Use s&mooth scrolling"));
+            HwndSetDlgItemText(hDlg, IDC_WHEEL_SCROLL_LINES_LABEL, _TRA("Wheel lines (0 = Windows):"));
             HwndSetDlgItemText(hDlg, IDC_SCROLLBAR_SINGLE_PAGE, _TRA("Show a scrollbar in single-&page mode"));
             HwndSetDlgItemText(hDlg, IDC_RELOAD_MODIFIED, _TRA("Automatically &reload changed documents"));
             HwndSetDlgItemText(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN,
@@ -2458,6 +2604,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             UpdateSettingsDependencies(hDlg);
             CenterDialog(hDlg);
             HwndSetFocus(category);
+            FitSettingsDialogToWorkArea(hDlg);
             PostMessageW(hDlg, kClearSettingsComboSelMsg, 0, 0);
             return FALSE;
         }
@@ -2466,6 +2613,80 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         case kClearSettingsComboSelMsg:
             ClearSettingsComboEditSelections(hDlg);
             return TRUE;
+
+        case WM_VSCROLL: {
+            if (!gSettingsContentHeight || lp) {
+                return FALSE;
+            }
+            SCROLLINFO si{sizeof(si)};
+            si.fMask = SIF_TRACKPOS;
+            GetScrollInfo(hDlg, SB_VERT, &si);
+            int pos = gSettingsScrollPos;
+            int line = DpiScale(hDlg, 24);
+            switch (LOWORD(wp)) {
+                case SB_TOP:
+                    pos = 0;
+                    break;
+                case SB_BOTTOM:
+                    pos = gSettingsContentHeight;
+                    break;
+                case SB_LINEUP:
+                    pos -= line;
+                    break;
+                case SB_LINEDOWN:
+                    pos += line;
+                    break;
+                case SB_PAGEUP:
+                    pos -= ClientRect(hDlg).dy;
+                    break;
+                case SB_PAGEDOWN:
+                    pos += ClientRect(hDlg).dy;
+                    break;
+                case SB_THUMBTRACK:
+                case SB_THUMBPOSITION:
+                    pos = si.nTrackPos;
+                    break;
+            }
+            ScrollSettingsDialog(hDlg, pos);
+            return TRUE;
+        }
+
+        case WM_SIZE: {
+            HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
+            if (category && gSettingsContentHeight) {
+                Rect r = MapRectToWindow(WindowRect(category), HWND_DESKTOP, hDlg);
+                int height = (int)SendMessageW(category, LB_GETCOUNT, 0, 0) *
+                                 (int)SendMessageW(category, LB_GETITEMHEIGHT, 0, 0) +
+                             DpiScale(hDlg, 4);
+                height = std::min(height, std::max(0, ClientRect(hDlg).dy - r.y - DpiScale(hDlg, 4)));
+                SetWindowPos(category, nullptr, 0, 0, r.dx, height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            UpdateSettingsScrollRange(hDlg);
+            return FALSE;
+        }
+
+        case WM_EXITSIZEMOVE:
+            gSettingsAutoSize = false;
+            return FALSE;
+
+        case WM_GETMINMAXINFO:
+            if (gSettingsContentHeight) {
+                auto* info = (MINMAXINFO*)lp;
+                info->ptMinTrackSize.x = gSettingsMinWidth;
+                info->ptMinTrackSize.y = DpiScale(hDlg, 180);
+                return TRUE;
+            }
+            return FALSE;
+
+        case WM_MOUSEWHEEL:
+            if (gSettingsContentHeight) {
+                gSettingsWheelRemainder += GET_WHEEL_DELTA_WPARAM(wp);
+                int lines = gSettingsWheelRemainder / WHEEL_DELTA;
+                gSettingsWheelRemainder %= WHEEL_DELTA;
+                ScrollSettingsDialog(hDlg, gSettingsScrollPos - lines * DpiScale(hDlg, 48));
+                return TRUE;
+            }
+            return FALSE;
 
         case WM_MEASUREITEM: {
             MEASUREITEMSTRUCT* mis = (MEASUREITEMSTRUCT*)lp;
@@ -2552,6 +2773,18 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 
                 case IDOK: {
                     prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+                    BOOL wheelLinesOk = FALSE;
+                    int wheelScrollLines = (int)GetDlgItemInt(hDlg, IDC_WHEEL_SCROLL_LINES, &wheelLinesOk, FALSE);
+                    if (!wheelLinesOk || wheelScrollLines < 0 || wheelScrollLines > 100) {
+                        ListBox_SetCurSel(GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY), 2);
+                        ShowSettingsPage(hDlg, 2);
+                        MessageBoxWarning(hDlg,
+                                          _TRA("Wheel scroll lines must be between 0 and 100 (0 follows Windows)."),
+                                          _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, IDC_WHEEL_SCROLL_LINES));
+                        EnsureSettingsFocusVisible(hDlg);
+                        return TRUE;
+                    }
                     BOOL treeSizeOk = FALSE;
                     int treeFontSize = (int)GetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, &treeSizeOk, FALSE);
                     BOOL tabFontSizeOk = FALSE;
@@ -2623,6 +2856,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->tabsMru = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_TABS_MRU));
                     prefs->searchUIFloating = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SEARCH_UI_FLOATING));
                     prefs->smoothScroll = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SMOOTH_SCROLL));
+                    prefs->wheelScrollLines = wheelScrollLines;
                     prefs->scrollbarInSinglePage = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SCROLLBAR_SINGLE_PAGE));
                     prefs->reloadModifiedDocuments = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_RELOAD_MODIFIED));
                     prefs->preventSleepInFullscreen =
@@ -2911,6 +3145,9 @@ INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs, int initialPage) {
         }
         HWND dlg = GetCurrentModelessDialog();
         if (dlg && IsDialogMessageW(dlg, &msg)) {
+            if (msg.message == WM_KEYDOWN || msg.message == WM_SYSKEYDOWN) {
+                EnsureSettingsFocusVisible(hDlg);
+            }
             continue;
         }
         TranslateMessage(&msg);

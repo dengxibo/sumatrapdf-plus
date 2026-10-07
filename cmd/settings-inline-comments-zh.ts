@@ -49,6 +49,7 @@ export const settingsInlineCommentsZh: Record<string, string> = {
   Scrollbars: "滚动条 windows/smart/overlay/hidden",
   ScrollbarInSinglePage: "单页模式显示滚动条",
   SmoothScroll: "平滑滚动",
+  WheelScrollLines: "每格鼠标滚轮滚动行数：0=跟随 Windows，1-100=自定义",
   FastScrollOverScrollbar: "滚轮在滚动条区域时半页滚动",
   PreventSleepInFullscreen: "全屏/演示时阻止休眠",
   TabWidth: "单个标签最大宽度",

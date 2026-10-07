@@ -1084,6 +1084,7 @@ const globalPrefs: Field[] = [
   ),
   setVersion(mkField("ScrollbarInSinglePage", Bool, true, "if true, we show scrollbar in single page mode"), "3.6"),
   setVersion(mkField("SmoothScroll", Bool, false, "if true, implements smooth scrolling"), "3.6"),
+  mkField("WheelScrollLines", Int, 0, "lines per mouse wheel notch: 0 follows Windows, 1-100 overrides it; invalid values follow Windows"),
   setVersion(
     mkField(
       "FastScrollOverScrollbar",

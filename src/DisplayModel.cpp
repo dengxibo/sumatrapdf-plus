@@ -2852,30 +2852,13 @@ bool DisplayModel::GoToPrevPage(int scrollY) {
     }
     if (zoomVirtual == kZoomFitContent && -pageInfo->pageOnScreen.y <= top.y) {
         scrollY = 0; // continue, even though the current page isn't fully visible
-    } else if (IsContinuous(GetDisplayMode())) {
-        // scrollY 0 means "top of this page". scrollY < 0 means "bottom"
-        // (GoToPrevPage(true)); it is not a pixel threshold. Comparing it with
-        // max(-pageOnScreen.y, 0) is always true, so a wheel-up on a page that
-        // already fits stays on that page. Show the hidden part first, and
-        // leave the page only once that part is already on screen.
-        bool showedMore = false;
-        if (scrollY < 0) {
-            int pageBottom = pageInfo->pageOnScreen.y + pageInfo->pageOnScreen.dy;
-            if (pageBottom > viewPort.dy + 1) {
-                int showBottom = pageInfo->pos.dy - viewPort.dy + windowMargin.top;
-                if (showBottom < 0) {
-                    showBottom = 0;
-                }
-                int yBefore = viewPort.y;
-                GoToPage(currPageNo, showBottom);
-                showedMore = viewPort.y != yBefore;
-            }
-        } else if (pageInfo->pageOnScreen.y < 0) {
-            int yBefore = viewPort.y;
-            GoToPage(currPageNo, scrollY);
-            showedMore = viewPort.y != yBefore;
-        }
-        if (showedMore) {
+    } else if (IsContinuous(GetDisplayMode()) && scrollY >= 0 && pageInfo->pageOnScreen.y < 0) {
+        // A nonnegative offset can reveal the top of the current page first.
+        // -1 requests the bottom of the PREVIOUS page, handled below. Showing
+        // the current page's bottom here moves wheel-up in the wrong direction.
+        int yBefore = viewPort.y;
+        GoToPage(currPageNo, scrollY);
+        if (viewPort.y != yBefore) {
             cb->OnUserPageTurn(this);
             return true;
         }
