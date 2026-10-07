@@ -723,6 +723,12 @@ inline bool PdfDarkModeV2ShouldCrushMrcBackgroundGhosts(float paperRatio) {
     return paperRatio >= 0.65f;
 }
 
+// MRC text plates use a 1-bit ImageMask / JBIG2 stencil. 8-bit soft masks on
+// photos and covers are not MRC — ink-plate luminance remap would gray them out.
+inline bool PdfDarkModeV2MaskIsMrcStencil(bool maskIsImageMask, int maskBpc) {
+    return maskIsImageMask || maskBpc <= 1;
+}
+
 // Word/WPS 红头与标题: a 2×2 Indexed color chip plus a high-res SMask of the glyphs.
 // Treating that chip as a "small photo" keeps original black ink on a dark page.
 inline bool PdfDarkModeV2LooksLikeSoftMaskPaintChip(int colorW, int colorH, int maskW, int maskH) {

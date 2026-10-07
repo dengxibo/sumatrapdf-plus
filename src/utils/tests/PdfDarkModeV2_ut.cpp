@@ -332,6 +332,11 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.20f, 0.05f)); // dark ink
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.70f, 0.50f)); // colorful midtone
 
+    // MRC = 1-bit stencil; 8-bit soft masks on covers must not take ink-plate remap (#98).
+    utassert(PdfDarkModeV2MaskIsMrcStencil(true, 8));
+    utassert(PdfDarkModeV2MaskIsMrcStencil(false, 1));
+    utassert(!PdfDarkModeV2MaskIsMrcStencil(false, 8));
+
     // Word 赣税函: 2×2 Indexed chip + SMask of 方正小标宋 / title glyphs.
     utassert(PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 3809, 497));
     utassert(PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 3118, 218));

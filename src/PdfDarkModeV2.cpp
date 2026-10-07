@@ -578,6 +578,17 @@ static bool v2_image_is_paint_chip(fz_image* image) {
     return PdfDarkModeV2LooksLikeSoftMaskPaintChip(image->w, image->h, image->mask->w, image->mask->h);
 }
 
+// Manual menu choice. 1-bit ImageMask ink plates (MRC) stay on the automatic
+// path: rebuilding them without the stencil paints an opaque plate over text.
+// Soft masks (Easy RL textbook figures) remapped under Tone keep their SMask.
+static bool v2_mask_is_mrc_stencil(fz_image* image) {
+    fz_image* mask = image ? image->mask : nullptr;
+    if (!mask) {
+        return false;
+    }
+    return PdfDarkModeV2MaskIsMrcStencil(mask->imagemask != 0, mask->bpc);
+}
+
 // Remap the tiny color plate (black → theme text, red 红头 keeps hue) and keep the SMask.
 static fz_image* v2_build_paint_chip_image(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette) {
     fz_pixmap* src = nullptr;
@@ -794,6 +805,18 @@ fz_image* PdfDarkModeAutoProcessImage(fz_context* ctx, fz_image* image, const Da
     DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, big ? 0.90f : 0.40f, big);
     bool fullPage = v2_image_wants_full_page_process(analysis);
     if (image->mask) {
+        // Only 1-bit MRC stencils use ink-plate remap. Soft masks on photos stay original.
+        if (!v2_mask_is_mrc_stencil(image)) {
+            if (analysis.kind == DarkImageKind::Photo || PdfDarkModeFeaturesLookLikePhoto(analysis.features) ||
+                PdfDarkModeFeaturesLookLikeGrayscalePhoto(analysis.features) ||
+                PdfDarkModeImageShouldStayOriginal(ctx, image)) {
+                return nullptr;
+            }
+            if (fullPage || big) {
+                return v2_build_page_image(ctx, image, palette, image->w, image->h, nullptr);
+            }
+            return nullptr;
+        }
         if (!fullPage && !big) {
             return nullptr;
         }
@@ -1065,17 +1088,6 @@ static void v2_fill_shade(fz_context* ctx, fz_device* dev, fz_shade* shd, fz_mat
     }
 }
 
-// Manual menu choice. 1-bit ImageMask ink plates (MRC) stay on the automatic
-// path: rebuilding them without the stencil paints an opaque plate over text.
-// Soft masks (Easy RL textbook figures) remapped under Tone keep their SMask.
-static bool v2_mask_is_mrc_stencil(fz_image* image) {
-    fz_image* mask = image ? image->mask : nullptr;
-    if (!mask) {
-        return false;
-    }
-    return mask->imagemask || mask->bpc <= 1;
-}
-
 static bool v2_fill_image_with_strategy(fz_context* ctx, pdf_dark_mode_v2_device* d, fz_image* image, fz_matrix ctm,
                                         float alpha, fz_color_params color_params) {
     PdfImageDarkStrategy strategy = GetPdfImageDarkStrategy();
@@ -1282,9 +1294,11 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
         return;
     }
 
-    // MRC text plate: color JPEG + 1-bit ImageMask. Must keep the mask (rebuilding from a)
-    // pixmap without it paints an opaque dark plate over the page and hides all text).
-    if (image->mask) {
+    // MRC text plate: color JPEG + 1-bit ImageMask/JBIG2. Must keep the stencil
+    // (rebuilding without it paints an opaque plate and hides text).
+    // 8-bit SMask on photos/covers is not MRC — ink-plate luminance remap turns
+    // dark colorful covers into near-gray (issue #98). Keep those original.
+    if (image->mask && v2_mask_is_mrc_stencil(image)) {
         fillPerf.branch = "mask";
         fz_image* cached = nullptr;
         if (d->engineCache) {
@@ -1318,6 +1332,20 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
             fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
         }
         return;
+    }
+    if (image->mask) {
+        DarkImageAnalysis softAnalysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, coverage >= kV2FullPageCoverage);
+        if (softAnalysis.kind == DarkImageKind::Photo || PdfDarkModeFeaturesLookLikePhoto(softAnalysis.features) ||
+            PdfDarkModeFeaturesLookLikeGrayscalePhoto(softAnalysis.features) ||
+            PdfDarkModeImageShouldStayOriginal(ctx, image)) {
+            fillPerf.branch = "softmask-photo";
+            fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+            if (coverage >= kV2KeptPhotoMinCoverage) {
+                v2_remember_kept_photo(d, ctm, coverage);
+            }
+            return;
+        }
+        // Soft-masked non-photo: fall through to page / layout handling.
     }
 
     // A layout textbook's nearly full-page photo is the same picture as the
