@@ -725,14 +725,16 @@ bool RenderCache::ReduceTileSize() {
 }
 
 void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, bool prioritize) {
-    if (prioritize && dm) {
+    if (prioritize && dm && !Exists(dm, pageNo, dm->GetRotation(), dm->GetZoomSafe(pageNo))) {
         // A neighbor prefetch may already be inside RenderPage, holding the
-        // engine lock. Abort it, and drop queued pages that are not this one,
-        // so a bookmark jump is not stuck behind them.
+        // engine lock. Drop off-screen work so a bookmark jump is not stuck
+        // behind it. Cached pages leave neighbor prefetches running.
+        // Keep every visible page: at a page boundary, prioritizing
+        // one visible page must not repeatedly cancel the other.
         ScopedCritSec scope(&requestAccess);
         for (int i = 0; i < nRenderThreads; i++) {
             PageRenderRequest* cr = curReqs[i];
-            if (cr && cr->dm == dm && cr->pageNo != pageNo && !cr->abort) {
+            if (cr && cr->dm == dm && cr->pageNo != pageNo && !dm->PageVisible(cr->pageNo) && !cr->abort) {
                 if (cr->abortCookie) {
                     cr->abortCookie->Abort();
                 }
@@ -743,7 +745,7 @@ void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, bool prioritize
         int curPos = 0;
         for (int i = 0; i < reqCount; i++) {
             PageRenderRequest* req = &(requests[i]);
-            bool drop = req->dm == dm && req->pageNo != pageNo;
+            bool drop = req->dm == dm && req->pageNo != pageNo && !dm->PageVisible(req->pageNo);
             if (i != curPos) {
                 requests[curPos] = requests[i];
             }

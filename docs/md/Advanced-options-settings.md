@@ -231,6 +231,10 @@ ScrollbarInSinglePage = true
 ; if true, implements smooth scrolling (introduced in version 3.6)
 SmoothScroll = false
 
+; lines per mouse wheel notch: 0 follows Windows, 1-100 overrides it; invalid
+; values follow Windows
+WheelScrollLines = 0
+
 ; if true, mouse wheel scrolling is faster when mouse is over a scrollbar
 ; (introduced in version 3.6)
 FastScrollOverScrollbar = false

@@ -3,11 +3,15 @@
 
 void UpdateDeltaPerLine();
 
+inline int ValidWheelScrollLines(int lines) {
+    return lines >= 1 && lines <= 100 ? lines : 0;
+}
+
 // Preserve subpixel input rather than waiting for a complete scroll line.
 inline int WheelScrollPixels(int delta, int lineHeight, int deltaPerLine, int& remainder) {
-    int scaled = remainder + delta * lineHeight;
-    remainder = scaled % deltaPerLine;
-    return -(scaled / deltaPerLine);
+    long long scaled = remainder + (long long)delta * lineHeight;
+    remainder = (int)(scaled % deltaPerLine);
+    return (int)-(scaled / deltaPerLine);
 }
 
 LRESULT CALLBACK WndProcCanvas(HWND, UINT, WPARAM, LPARAM);
