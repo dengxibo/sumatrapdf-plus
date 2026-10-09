@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.40
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.40/SumatraPDF-Plus.exe
-Notes: EPUB font changes preserve fit mode and reading text; faster anchor restoration; larger-size toolbar actions first; refined themed toolbar and fullscreen exit controls; fixed gray night-mode covers.
-NotesZh: EPUB 调整字号保留适应模式和阅读内容，优化文字定位；工具栏大在前、小在后；改善四主题工具栏及全屏退出按钮，修复夜间模式彩色封面变灰。
+Latest: 3.7.41
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.41/SumatraPDF-Plus.exe
+Notes: On-page PDF free-text editing; Enhance Display on EPUB; fix continuous-view scroll jump at the top; Recognize All no longer rotates or deskews the page.
+NotesZh: 页面内编辑 PDF 自由文本；显示增强可用于 EPUB；修复连续阅读滚到顶部跳动；全文识别不再自动旋转或倾斜校正页面。
