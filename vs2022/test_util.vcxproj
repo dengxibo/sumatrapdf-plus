@@ -974,6 +974,7 @@
     <ClCompile Include="..\src\utils\tests\ByteOrderDecoder_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\CryptoUtil_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\CssParser_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\FreeTextMru_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\Dict_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\FileUtil_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\HtmlPrettyPrint_ut.cpp" />

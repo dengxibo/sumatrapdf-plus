@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include "utils/BaseUtil.h"
+#include "utils/FreeTextMru.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
@@ -17,6 +18,7 @@ extern "C" {
 #include "Annotation.h"
 #include "Settings.h"
 #include "Theme.h"
+#include "PdfDarkMode.h"
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineMupdf.h"
@@ -49,6 +51,141 @@ const char* gStampIcons =
 
 static char gLastStampIcon[32] = "Final";
 
+static bool IsFreeTextFontName(const char* font) {
+    if (!font || !font[0]) {
+        return false;
+    }
+    int n = 0;
+    for (const char* p = font; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 32 || c == 127) {
+            return false;
+        }
+        if (++n > 120) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool IsBaseFreeTextFont(const char* font) {
+    return font && (str::Eq(font, "Helv") || str::Eq(font, "Cour") || str::Eq(font, "TiRo"));
+}
+
+const char* FreeTextFontLabel(const char* font) {
+    if (!font || !font[0] || str::Eq(font, "Helv")) {
+        return "Helvetica";
+    }
+    if (str::Eq(font, "Cour")) {
+        return "Courier";
+    }
+    if (str::Eq(font, "TiRo")) {
+        return "Times Roman";
+    }
+    return font;
+}
+
+const WCHAR* FreeTextWindowsFace(const char* font) {
+    if (!font || !font[0] || str::Eq(font, "Helv")) {
+        return L"Arial";
+    }
+    if (str::Eq(font, "Cour")) {
+        return L"Courier New";
+    }
+    if (str::Eq(font, "TiRo")) {
+        return L"Times New Roman";
+    }
+    return ToWStrTemp(font);
+}
+
+const char* FreeTextPresetFont() {
+    const char* font = gGlobalPrefs->annotations.freeTextFont;
+    if (!IsFreeTextFontName(font)) {
+        return "Helv";
+    }
+    return font;
+}
+
+static bool FreeTextFamilyInstalled(const char* family) {
+    const WCHAR* face = FreeTextWindowsFace(family);
+    if (!face || !face[0]) {
+        return false;
+    }
+    if (str::Eq(family, "Helv") || str::Eq(family, "Cour") || str::Eq(family, "TiRo") || str::EqI(family, "Arial") ||
+        str::EqI(family, "Courier New") || str::EqI(family, "Times New Roman")) {
+        return true;
+    }
+    HFONT font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, face);
+    if (!font) {
+        return false;
+    }
+    HDC hdc = GetDC(nullptr);
+    HGDIOBJ old = SelectObject(hdc, font);
+    WCHAR got[LF_FACESIZE]{};
+    int n = GetTextFaceW(hdc, (int)dimof(got), got);
+    SelectObject(hdc, old);
+    ReleaseDC(nullptr, hdc);
+    DeleteObject(font);
+    return n > 0 && _wcsicmp(got, face) == 0;
+}
+
+void NoteFreeTextFontUsed(const char* family) {
+    if (!IsFreeTextFontName(family) || !gGlobalPrefs) {
+        return;
+    }
+    auto& a = gGlobalPrefs->annotations;
+    char* next = FreeTextMruPush(a.freeTextRecentFonts, family);
+    if (!str::Eq(next ? next : "", a.freeTextRecentFonts ? a.freeTextRecentFonts : "")) {
+        str::ReplaceWithCopy(&a.freeTextRecentFonts, next ? next : "");
+    }
+    str::Free(next);
+}
+
+int GetFreeTextRecentFonts(const char** out, int cap) {
+    if (!out || cap <= 0 || !gGlobalPrefs) {
+        return 0;
+    }
+    Vec<char*> items;
+    FreeTextMruParse(gGlobalPrefs->annotations.freeTextRecentFonts, items);
+    int n = 0;
+    for (int i = 0; i < items.Size() && n < cap; i++) {
+        if (FreeTextFamilyInstalled(items.at(i))) {
+            out[n++] = str::DupTemp(items.at(i));
+        }
+        str::Free(items.at(i));
+    }
+    return n;
+}
+
+void RememberFreeTextPreset(const char* font, int size, float width, float height) {
+    auto& a = gGlobalPrefs->annotations;
+    if (IsFreeTextFontName(font) && !str::Eq(a.freeTextFont, font)) {
+        str::ReplaceWithCopy(&a.freeTextFont, font);
+    }
+    if (size >= 5 && size <= 128) {
+        a.freeTextSize = size;
+    }
+    if (width >= 8.f && height >= 8.f && width <= 2000.f && height <= 2000.f) {
+        a.freeTextWidth = (int)(width + 0.5f);
+        a.freeTextHeight = (int)(height + 0.5f);
+    }
+}
+
+void ResetFreeTextPreset() {
+    auto& a = gGlobalPrefs->annotations;
+    str::ReplaceWithCopy(&a.freeTextFont, "Helv");
+    a.freeTextSize = 21;
+    a.freeTextWidth = 0;
+    a.freeTextHeight = 0;
+    a.freeTextBorderWidth = 1;
+    a.freeTextOpacity = 100;
+    str::ReplaceWithCopy(&a.freeTextColor, "");
+    a.freeTextColorParsed = {};
+    str::ReplaceWithCopy(&a.freeTextBackgroundColor, "");
+    a.freeTextBackgroundColorParsed = {};
+}
+
 void RememberStampIconName(const char* name) {
     if (str::IsEmpty(name)) {
         return;
@@ -69,7 +206,458 @@ const char* DefaultStampIconName() {
 SizeF GetDefaultStampSize() {
     // Display-space size for click-to-place. Wide enough to read on a form;
     // appearance writer keeps it horizontal on /Rotate 90/270 pages.
-    return {280, 74};
+    return {140, 37};
+}
+
+COLORREF FactoryAnnotationColor(AnnotationType type) {
+    switch (type) {
+        case AnnotationType::Underline:
+            return RGB(0, 255, 0);
+        case AnnotationType::Squiggly:
+            return RGB(255, 0, 255);
+        case AnnotationType::StrikeOut:
+            return RGB(255, 0, 0);
+        case AnnotationType::FreeText:
+            return RGB(0, 0, 0);
+        case AnnotationType::Stamp:
+        case AnnotationType::Line:
+        case AnnotationType::Square:
+        case AnnotationType::Circle:
+        case AnnotationType::Ink:
+        case AnnotationType::Polygon:
+        case AnnotationType::PolyLine:
+            return RGB(255, 0, 0);
+        default:
+            return RGB(255, 255, 0);
+    }
+}
+
+float NewStrokeWidthPoints(float zoom) {
+    if (zoom < 0.05f) {
+        zoom = 1.f;
+    }
+    float pts = 2.f / zoom;
+    if (pts < 0.15f) {
+        pts = 0.15f;
+    }
+    if (pts > 24.f) {
+        pts = 24.f;
+    }
+    return pts;
+}
+
+static const char* DrawStyleTypeName(AnnotationType type) {
+    switch (type) {
+        case AnnotationType::Text:
+            return "Text";
+        case AnnotationType::FreeText:
+            return "FreeText";
+        case AnnotationType::Line:
+            return "Line";
+        case AnnotationType::Square:
+            return "Square";
+        case AnnotationType::Circle:
+            return "Circle";
+        case AnnotationType::Highlight:
+            return "Highlight";
+        case AnnotationType::Underline:
+            return "Underline";
+        case AnnotationType::Squiggly:
+            return "Squiggly";
+        case AnnotationType::StrikeOut:
+            return "StrikeOut";
+        case AnnotationType::Stamp:
+            return "Stamp";
+        case AnnotationType::Caret:
+            return "Caret";
+        case AnnotationType::Ink:
+            return "Ink";
+        case AnnotationType::FileAttachment:
+            return "FileAttachment";
+        case AnnotationType::Sound:
+            return "Sound";
+        default:
+            return nullptr;
+    }
+}
+
+static AnnotationType DrawStyleTypeFromName(const char* name) {
+    if (!name) {
+        return AnnotationType::Unknown;
+    }
+    AnnotationType types[] = {
+        AnnotationType::Text,       AnnotationType::FreeText, AnnotationType::Line,           AnnotationType::Square,
+        AnnotationType::Circle,     AnnotationType::Highlight, AnnotationType::Underline,     AnnotationType::Squiggly,
+        AnnotationType::StrikeOut,  AnnotationType::Stamp,    AnnotationType::Caret,         AnnotationType::Ink,
+        AnnotationType::FileAttachment, AnnotationType::Sound,
+    };
+    for (AnnotationType type : types) {
+        if (str::Eq(name, DrawStyleTypeName(type))) {
+            return type;
+        }
+    }
+    return AnnotationType::Unknown;
+}
+
+static AnnotDrawStyle gDrawStyles[40];
+static bool gDrawStylesLoaded = false;
+
+static int HexNibble(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static bool ParseHexColor(const char* s, COLORREF* out) {
+    if (!s || !out) {
+        return false;
+    }
+    int n[6];
+    for (int i = 0; i < 6; i++) {
+        n[i] = HexNibble(s[i]);
+        if (n[i] < 0) {
+            return false;
+        }
+    }
+    *out = MkColor((u8)(n[0] * 16 + n[1]), (u8)(n[2] * 16 + n[3]), (u8)(n[4] * 16 + n[5]));
+    return true;
+}
+
+static void AppendHexColor(StrBuilder& s, const char* key, COLORREF c) {
+    s.AppendFmt(",%s=%02x%02x%02x", key, (int)GetRed(c), (int)GetGreen(c), (int)GetBlue(c));
+}
+
+static COLORREF ColorRefFromDrawPdf(PdfColor c) {
+    u8 r, g, b, a;
+    UnpackPdfColor(c, r, g, b, a);
+    return MkColor(r, g, b);
+}
+
+static PdfColor DrawPdfFromColorRef(COLORREF c) {
+    u8 r, g, b;
+    UnpackColor(c, r, g, b);
+    return MkPdfColor(r, g, b, 0xff);
+}
+
+static void LoadDrawStyles() {
+    if (gDrawStylesLoaded) {
+        return;
+    }
+    gDrawStylesLoaded = true;
+    for (auto& style : gDrawStyles) {
+        style = {};
+    }
+    if (!gGlobalPrefs) {
+        return;
+    }
+    const char* blob = gGlobalPrefs->annotations.lastDrawStyle;
+    if (str::IsEmpty(blob)) {
+        return;
+    }
+    StrVec records;
+    Split(&records, blob, ";", true);
+    for (int i = 0; i < records.Size(); i++) {
+        const char* rec = records.At(i);
+        if (str::IsEmpty(rec)) {
+            continue;
+        }
+        StrVec fields;
+        Split(&fields, rec, ",", true);
+        if (fields.Size() < 1) {
+            continue;
+        }
+        AnnotationType type = DrawStyleTypeFromName(fields.At(0));
+        int idx = (int)type;
+        if (type == AnnotationType::Unknown || idx < 0 || idx >= dimof(gDrawStyles)) {
+            continue;
+        }
+        AnnotDrawStyle style{};
+        style.type = type;
+        for (int f = 1; f < fields.Size(); f++) {
+            const char* field = fields.At(f);
+            const char* eq = str::FindChar(field, '=');
+            if (!eq || eq == field) {
+                continue;
+            }
+            TempStr key = str::DupTemp(field, eq - field);
+            const char* val = eq + 1;
+            if (str::Eq(key, "c") && ParseHexColor(val, &style.color)) {
+                style.flags |= kDrawStyleColor;
+            } else if (str::Eq(key, "b")) {
+                float w = 0;
+                if (str::Parse(val, "%f", &w)) {
+                    style.border = w;
+                    style.flags |= kDrawStyleBorder;
+                }
+            } else if (str::Eq(key, "o")) {
+                int pct = 100;
+                if (str::Parse(val, "%d", &pct)) {
+                    style.opacityPercent = std::clamp(pct, 0, 100);
+                    style.flags |= kDrawStyleOpacity;
+                }
+            } else if (str::Eq(key, "it")) {
+                int transparent = 1;
+                str::Parse(val, "%d", &transparent);
+                style.interiorTransparent = transparent != 0;
+                style.flags |= kDrawStyleInterior;
+            } else if (str::Eq(key, "in") && ParseHexColor(val, &style.interior)) {
+                style.flags |= kDrawStyleInterior;
+            } else if (str::Eq(key, "ls")) {
+                str::Parse(val, "%d", &style.lineStart);
+                style.flags |= kDrawStyleLineEnds;
+            } else if (str::Eq(key, "le")) {
+                str::Parse(val, "%d", &style.lineEnd);
+                style.flags |= kDrawStyleLineEnds;
+            } else if (str::Eq(key, "ix")) {
+                str::BufSet(style.icon, dimof(style.icon), val);
+                style.flags |= kDrawStyleIcon;
+            } else if (str::Eq(key, "fn")) {
+                str::BufSet(style.font, dimof(style.font), val);
+                style.flags |= kDrawStyleFont;
+            } else if (str::Eq(key, "sz")) {
+                str::Parse(val, "%d", &style.textSize);
+                style.flags |= kDrawStyleTextSize;
+            } else if (str::Eq(key, "al")) {
+                str::Parse(val, "%d", &style.align);
+                style.flags |= kDrawStyleAlign;
+            } else if (str::Eq(key, "bc") && ParseHexColor(val, &style.borderColor)) {
+                style.flags |= kDrawStyleBorderColor;
+            } else if (str::Eq(key, "bt")) {
+                int transparent = 1;
+                str::Parse(val, "%d", &transparent);
+                style.backgroundTransparent = transparent != 0;
+                style.flags |= kDrawStyleBackground;
+            } else if (str::Eq(key, "bg") && ParseHexColor(val, &style.background)) {
+                style.flags |= kDrawStyleBackground;
+            }
+        }
+        if (style.flags) {
+            gDrawStyles[idx] = style;
+        }
+    }
+}
+
+static void PersistDrawStyles() {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    StrBuilder out;
+    for (int i = 0; i < dimof(gDrawStyles); i++) {
+        AnnotDrawStyle& style = gDrawStyles[i];
+        if (!style.flags) {
+            continue;
+        }
+        const char* name = DrawStyleTypeName(style.type);
+        if (!name) {
+            continue;
+        }
+        if (out.size() > 0) {
+            out.AppendChar(';');
+        }
+        out.Append(name);
+        if (style.flags & kDrawStyleColor) {
+            AppendHexColor(out, "c", style.color);
+        }
+        if (style.flags & kDrawStyleBorder) {
+            out.AppendFmt(",b=%.3f", (double)style.border);
+        }
+        if (style.flags & kDrawStyleOpacity) {
+            out.AppendFmt(",o=%d", style.opacityPercent);
+        }
+        if (style.flags & kDrawStyleInterior) {
+            out.AppendFmt(",it=%d", style.interiorTransparent ? 1 : 0);
+            if (!style.interiorTransparent) {
+                AppendHexColor(out, "in", style.interior);
+            }
+        }
+        if (style.flags & kDrawStyleLineEnds) {
+            out.AppendFmt(",ls=%d,le=%d", style.lineStart, style.lineEnd);
+        }
+        if ((style.flags & kDrawStyleIcon) && style.icon[0]) {
+            out.AppendFmt(",ix=%s", style.icon);
+        }
+        if ((style.flags & kDrawStyleFont) && style.font[0]) {
+            out.AppendFmt(",fn=%s", style.font);
+        }
+        if (style.flags & kDrawStyleTextSize) {
+            out.AppendFmt(",sz=%d", style.textSize);
+        }
+        if (style.flags & kDrawStyleAlign) {
+            out.AppendFmt(",al=%d", style.align);
+        }
+        if (style.flags & kDrawStyleBorderColor) {
+            AppendHexColor(out, "bc", style.borderColor);
+        }
+        if (style.flags & kDrawStyleBackground) {
+            out.AppendFmt(",bt=%d", style.backgroundTransparent ? 1 : 0);
+            if (!style.backgroundTransparent) {
+                AppendHexColor(out, "bg", style.background);
+            }
+        }
+    }
+    str::ReplaceWithCopy(&gGlobalPrefs->annotations.lastDrawStyle, out.Get());
+}
+
+bool FindAnnotDrawStyle(AnnotationType type, AnnotDrawStyle* out) {
+    LoadDrawStyles();
+    int idx = (int)type;
+    if (!out || idx < 0 || idx >= dimof(gDrawStyles) || !gDrawStyles[idx].flags) {
+        return false;
+    }
+    *out = gDrawStyles[idx];
+    return true;
+}
+
+void SaveAnnotDrawStyle(const AnnotDrawStyle& style) {
+    LoadDrawStyles();
+    int idx = (int)style.type;
+    if (idx < 0 || idx >= dimof(gDrawStyles) || !style.flags) {
+        return;
+    }
+    gDrawStyles[idx] = style;
+    PersistDrawStyles();
+}
+
+static int EbookBorderFromPoints(float points) {
+    if (points < 0.5f) {
+        return 0;
+    }
+    return std::clamp((int)(points + 0.5f), 0, 12);
+}
+
+void RememberPdfDrawStyle(Annotation* annot) {
+    if (!annot) {
+        return;
+    }
+    AnnotDrawStyle style{};
+    style.type = annot->type;
+    if (annot->type == AnnotationType::FreeText) {
+        PdfColor text = DefaultAppearanceTextColor(annot);
+        style.color = text ? ColorRefFromDrawPdf(text) : RGB(0, 0, 0);
+        style.flags |= kDrawStyleColor;
+        PdfColor bg = GetColor(annot);
+        style.backgroundTransparent = bg == 0;
+        if (!style.backgroundTransparent) {
+            style.background = ColorRefFromDrawPdf(bg);
+        }
+        style.flags |= kDrawStyleBackground;
+        style.borderColor = ColorRefFromDrawPdf(FreeTextBorderColor(annot));
+        style.flags |= kDrawStyleBorderColor;
+        const char* font = DefaultAppearanceTextFont(annot);
+        if (!str::IsEmpty(font)) {
+            str::BufSet(style.font, dimof(style.font), font);
+            style.flags |= kDrawStyleFont;
+        }
+        style.textSize = DefaultAppearanceTextSize(annot);
+        style.flags |= kDrawStyleTextSize;
+        style.align = Quadding(annot);
+        style.flags |= kDrawStyleAlign;
+        style.border = (float)BorderWidth(annot);
+        style.flags |= kDrawStyleBorder;
+    } else {
+        if (AnnotationSupportsColor(annot->type)) {
+            PdfColor c = GetColor(annot);
+            if (c) {
+                style.color = ColorRefFromDrawPdf(c);
+                style.flags |= kDrawStyleColor;
+            }
+        }
+        if (AnnotationSupportsBorder(annot->type)) {
+            style.border = BorderWidthF(annot);
+            style.flags |= kDrawStyleBorder;
+        }
+        if (annot->type == AnnotationType::Highlight) {
+            int opacity = Opacity(annot);
+            style.opacityPercent = std::clamp((opacity * 100 + 127) / 255, 0, 100);
+            style.flags |= kDrawStyleOpacity;
+        }
+        if (AnnotationSupportsInteriorColor(annot->type)) {
+            PdfColor interior = InteriorColor(annot);
+            style.interiorTransparent = interior == 0;
+            if (!style.interiorTransparent) {
+                style.interior = ColorRefFromDrawPdf(interior);
+            }
+            style.flags |= kDrawStyleInterior;
+        }
+        if (annot->type == AnnotationType::Line) {
+            GetLineEndingStyles(annot, &style.lineStart, &style.lineEnd);
+            style.flags |= kDrawStyleLineEnds;
+        }
+        if (annot->type == AnnotationType::Text || annot->type == AnnotationType::Stamp ||
+            annot->type == AnnotationType::FileAttachment || annot->type == AnnotationType::Sound) {
+            const char* icon = IconName(annot);
+            if (!str::IsEmpty(icon)) {
+                str::BufSet(style.icon, dimof(style.icon), icon);
+                style.flags |= kDrawStyleIcon;
+            }
+        }
+    }
+    if (style.flags) {
+        SaveAnnotDrawStyle(style);
+        if (annot->type == AnnotationType::Stamp && style.icon[0]) {
+            RememberStampIconName(style.icon);
+        }
+    }
+}
+
+void ApplyRememberedPdfDrawStyle(Annotation* annot) {
+    AnnotDrawStyle style;
+    if (!annot || !FindAnnotDrawStyle(annot->type, &style)) {
+        return;
+    }
+    if (annot->type == AnnotationType::FreeText) {
+        if (style.flags & kDrawStyleFont) {
+            SetDefaultAppearanceTextFont(annot, style.font);
+        }
+        if (style.flags & kDrawStyleTextSize) {
+            SetDefaultAppearanceTextSize(annot, style.textSize);
+        }
+        if (style.flags & kDrawStyleColor) {
+            SetDefaultAppearanceTextColor(annot, DrawPdfFromColorRef(style.color));
+        }
+        if (style.flags & kDrawStyleAlign) {
+            SetQuadding(annot, style.align);
+        }
+        if (style.flags & kDrawStyleBorder) {
+            SetBorderWidth(annot, EbookBorderFromPoints(style.border));
+        }
+        if (style.flags & kDrawStyleBorderColor) {
+            SetFreeTextBorderColor(annot, DrawPdfFromColorRef(style.borderColor));
+        }
+        if (style.flags & kDrawStyleBackground) {
+            SetColor(annot, style.backgroundTransparent ? 0 : DrawPdfFromColorRef(style.background));
+        }
+        return;
+    }
+    if ((style.flags & kDrawStyleColor) && AnnotationSupportsColor(annot->type)) {
+        SetColor(annot, DrawPdfFromColorRef(style.color));
+    }
+    if ((style.flags & kDrawStyleBorder) && AnnotationSupportsBorder(annot->type)) {
+        SetBorderWidthFloat(annot, style.border);
+    }
+    if ((style.flags & kDrawStyleOpacity) && annot->type == AnnotationType::Highlight) {
+        SetOpacity(annot, std::clamp(style.opacityPercent * 255 / 100, 0, 255));
+    }
+    if ((style.flags & kDrawStyleInterior) && AnnotationSupportsInteriorColor(annot->type)) {
+        SetInteriorColor(annot, style.interiorTransparent ? 0 : DrawPdfFromColorRef(style.interior));
+    }
+    if ((style.flags & kDrawStyleLineEnds) && annot->type == AnnotationType::Line) {
+        SetLineStartStyles(annot, style.lineStart);
+        SetLineEndStyles(annot, style.lineEnd);
+    }
+    if ((style.flags & kDrawStyleIcon) && style.icon[0]) {
+        SetIconName(annot, style.icon);
+        if (annot->type == AnnotationType::Stamp) {
+            RememberStampIconName(style.icon);
+        }
+    }
 }
 
 // clang format-off
@@ -317,6 +905,82 @@ HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotatio
         }
     }
     return hbmp;
+}
+
+// Same post-render tint as view tiles. Declared here so this file does not
+// include RenderCache.h (that header needs DisplayModel).
+void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom, const RectF* pageRect,
+                                const DarkModeProfile* profile);
+
+// The drag preview has to show the page under the mark. Inpainting from
+// neighboring screen pixels smears the glyphs the stroke crosses.
+HBITMAP RenderPagePatchHidingAnnotation(Annotation* annot, float zoom, int rotation, RectF pageRect) {
+    if (!annot || !annot->engine || zoom <= 0.f || pageRect.dx < 0.2f || pageRect.dy < 0.2f) {
+        return nullptr;
+    }
+    EngineBase* engine = annot->engine;
+    bool savedHide = engine->hideAnnotations;
+    engine->hideAnnotations = true;
+    RenderPageArgs args(annot->pageNo, zoom, rotation, &pageRect, RenderTarget::View);
+    DarkModeProfile profile{};
+    BuildViewDarkModeProfile(engine, &profile);
+    if (profile.mode != PageColorMode::Normal) {
+        args.darkProfile = &profile;
+    }
+    RenderedBitmap* bmp = engine->RenderPage(args);
+    engine->hideAnnotations = savedHide;
+    if (!bmp || !bmp->GetBitmap()) {
+        delete bmp;
+        return nullptr;
+    }
+    // View tiles tint white to the warm page color after this render. Without
+    // the same pass, the patch under a dragged mark is a white rectangle.
+    ApplyRenderThemePostColors(engine, bmp, annot->pageNo, zoom, &pageRect, args.darkProfile);
+    BITMAP bm{};
+    if (!GetObject(bmp->GetBitmap(), sizeof(bm), &bm) || bm.bmWidth <= 0 || bm.bmHeight == 0) {
+        delete bmp;
+        return nullptr;
+    }
+    int w = bm.bmWidth;
+    int h = bm.bmHeight < 0 ? -bm.bmHeight : bm.bmHeight;
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = w;
+    bmi.bmiHeader.biHeight = -h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP dst = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!dst || !bits) {
+        if (dst) {
+            DeleteObject(dst);
+        }
+        delete bmp;
+        return nullptr;
+    }
+    HDC srcDc = CreateCompatibleDC(nullptr);
+    HDC dstDc = CreateCompatibleDC(nullptr);
+    if (!srcDc || !dstDc) {
+        if (srcDc) {
+            DeleteDC(srcDc);
+        }
+        if (dstDc) {
+            DeleteDC(dstDc);
+        }
+        DeleteObject(dst);
+        delete bmp;
+        return nullptr;
+    }
+    HGDIOBJ oldSrc = SelectObject(srcDc, bmp->GetBitmap());
+    HGDIOBJ oldDst = SelectObject(dstDc, dst);
+    BitBlt(dstDc, 0, 0, w, h, srcDc, 0, 0, SRCCOPY);
+    SelectObject(srcDc, oldSrc);
+    SelectObject(dstDc, oldDst);
+    DeleteDC(srcDc);
+    DeleteDC(dstDc);
+    delete bmp;
+    return dst;
 }
 
 static HBITMAP RenderAnnotationIconPreviewImpl(EngineMupdf* engine, int pageNo, AnnotationType type, COLORREF swatch,
@@ -1135,11 +1799,19 @@ const char* DefaultAppearanceTextFont(Annotation* annot) {
     float sizeF{0.0};
     int n = 0;
     float textColor[4]{};
+    char stored[128]{};
     fz_try(ctx) {
         pdf_annot_default_appearance(ctx, a, &fontName, &sizeF, &n, textColor);
+        pdf_obj* custom = pdf_dict_gets(ctx, pdf_annot_obj(ctx, a), "SumatraFont");
+        if (pdf_is_string(ctx, custom)) {
+            fz_strlcpy(stored, pdf_to_text_string(ctx, custom), sizeof stored);
+        }
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
+    }
+    if (stored[0]) {
+        return str::DupTemp(stored);
     }
     return fontName;
 }
@@ -1156,7 +1828,14 @@ void SetDefaultAppearanceTextFont(Annotation* annot, const char* sv) {
         float textColor[4]{};
         fz_try(ctx) {
             pdf_annot_default_appearance(ctx, a, &fontName, &sizeF, &n, textColor);
-            pdf_set_annot_default_appearance(ctx, a, sv, sizeF, n, textColor);
+            const char* daFont = IsBaseFreeTextFont(sv) ? sv : "Helv";
+            pdf_set_annot_default_appearance(ctx, a, daFont, sizeF, n, textColor);
+            pdf_obj* annotObj = pdf_annot_obj(ctx, a);
+            if (IsBaseFreeTextFont(sv)) {
+                pdf_dict_dels(ctx, annotObj, "SumatraFont");
+            } else {
+                pdf_dict_puts_drop(ctx, annotObj, "SumatraFont", pdf_new_text_string(ctx, sv));
+            }
             pdf_update_annot(ctx, a);
         }
         fz_catch(ctx) {
@@ -1226,6 +1905,17 @@ PdfColor DefaultAppearanceTextColor(Annotation* annot) {
 }
 
 void SetDefaultAppearanceTextColor(Annotation* annot, PdfColor col) {
+    // The border used to follow the text color. Freeze that color before the
+    // text color changes so the stroke stays put.
+    if (annot && annot->type == AnnotationType::FreeText && !FreeTextBorderColorIsExplicit(annot)) {
+        PdfColor frozen = DefaultAppearanceTextColor(annot);
+        if (frozen == 0) {
+            frozen = 0xff000000;
+        }
+        if (frozen != col) {
+            SetFreeTextBorderColor(annot, frozen);
+        }
+    }
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
     {
@@ -1295,7 +1985,13 @@ float BorderWidthF(Annotation* annot) {
 }
 
 int BorderWidth(Annotation* annot) {
-    return (int)BorderWidthF(annot);
+    float w = BorderWidthF(annot);
+    // 0 on the slider is the hairline. A stroke of 0.8pt is the normal line
+    // you just drew; truncating it to 0 made the sidebar disagree with the page.
+    if (w < 0.5f) {
+        return 0;
+    }
+    return (int)(w + 0.5f);
 }
 
 bool GetLinePoints(Annotation* annot, PointF& a, PointF& b) {
@@ -1411,6 +2107,82 @@ bool ClearFreeTextHairlineBorder(Annotation* annot) {
 
 void SetBorderWidthFloat(Annotation* annot, float newWidth) {
     SetBorderWidthFloatImpl(annot, newWidth);
+}
+
+static pdf_obj* FreeTextBorderArray(fz_context* ctx, pdf_annot* a) {
+    return pdf_dict_gets(ctx, pdf_annot_obj(ctx, a), "SumatraBorder");
+}
+
+bool FreeTextBorderColorIsExplicit(Annotation* annot) {
+    if (!annot || !annot->engine || !annot->pdfannot || annot->type != AnnotationType::FreeText) {
+        return false;
+    }
+    EngineMupdf* e = annot->engine;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    bool has = false;
+    fz_try(ctx) {
+        pdf_obj* arr = FreeTextBorderArray(ctx, annot->pdfannot);
+        has = pdf_is_array(ctx, arr) && pdf_array_len(ctx, arr) >= 3;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return has;
+}
+
+PdfColor FreeTextBorderColor(Annotation* annot) {
+    if (!annot || annot->type != AnnotationType::FreeText) {
+        return 0xff000000;
+    }
+    if (!FreeTextBorderColorIsExplicit(annot)) {
+        PdfColor text = DefaultAppearanceTextColor(annot);
+        return text == 0 ? 0xff000000 : text;
+    }
+    EngineMupdf* e = annot->engine;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    float color[3]{};
+    bool ok = false;
+    fz_try(ctx) {
+        pdf_obj* arr = FreeTextBorderArray(ctx, annot->pdfannot);
+        color[0] = pdf_array_get_real(ctx, arr, 0);
+        color[1] = pdf_array_get_real(ctx, arr, 1);
+        color[2] = pdf_array_get_real(ctx, arr, 2);
+        ok = true;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    if (!ok) {
+        return 0xff000000;
+    }
+    return MkPdfColorFromFloat(color[0], color[1], color[2]);
+}
+
+void SetFreeTextBorderColor(Annotation* annot, PdfColor col) {
+    if (!annot || !annot->engine || !annot->pdfannot || annot->type != AnnotationType::FreeText) {
+        return;
+    }
+    EngineMupdf* e = annot->engine;
+    auto a = annot->pdfannot;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    float rgb[3]{};
+    PdfColorToFloat(col == 0 ? 0xff000000 : col, rgb);
+    fz_try(ctx) {
+        pdf_document* doc = e->pdfdoc;
+        pdf_obj* arr = pdf_new_array(ctx, doc, 3);
+        pdf_array_push_real(ctx, arr, rgb[0]);
+        pdf_array_push_real(ctx, arr, rgb[1]);
+        pdf_array_push_real(ctx, arr, rgb[2]);
+        pdf_dict_puts_drop(ctx, pdf_annot_obj(ctx, a), "SumatraBorder", arr);
+        pdf_update_annot(ctx, a);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    MarkNotificationAsModified(e, annot);
 }
 
 int Opacity(Annotation* annot) {
@@ -1738,7 +2510,28 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                     PdfColorToFloat(col.pdfCol, textColor);
                     fcol = textColor;
                 }
-                pdf_set_annot_default_appearance(ctx, annot, "Helv", (float)fontSize, nCol, fcol);
+                const char* presetFont = FreeTextPresetFont();
+                const char* daFont = IsBaseFreeTextFont(presetFont) ? presetFont : "Helv";
+                pdf_set_annot_default_appearance(ctx, annot, daFont, (float)fontSize, nCol, fcol);
+                if (!str::Eq(presetFont, daFont)) {
+                    pdf_dict_puts_drop(ctx, pdf_annot_obj(ctx, annot), "SumatraFont", pdf_new_text_string(ctx, presetFont));
+                }
+                {
+                    pdf_document* doc = epdf->pdfdoc;
+                    pdf_obj* border = pdf_new_array(ctx, doc, 3);
+                    pdf_array_push_real(ctx, border, 0);
+                    pdf_array_push_real(ctx, border, 0);
+                    pdf_array_push_real(ctx, border, 0);
+                    pdf_dict_puts_drop(ctx, pdf_annot_obj(ctx, annot), "SumatraBorder", border);
+                }
+                int boxW = gGlobalPrefs->annotations.freeTextWidth;
+                int boxH = gGlobalPrefs->annotations.freeTextHeight;
+                if (boxW >= 8 && boxH >= 8) {
+                    fz_rect trect = pdf_annot_rect(ctx, annot);
+                    trect.x1 = trect.x0 + (float)boxW;
+                    trect.y1 = trect.y0 + (float)boxH;
+                    pdf_set_annot_rect(ctx, annot, trect);
+                }
                 if (bgCol.parsedOk) {
                     float bgColor[3]{};
                     PdfColorToFloat(bgCol.pdfCol, bgColor);

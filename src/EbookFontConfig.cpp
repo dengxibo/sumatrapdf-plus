@@ -3,6 +3,7 @@
 
 #include "utils/BaseUtil.h"
 #include "Settings.h"
+#include "FileHistory.h"
 #include "SumatraPDF.h"
 #include "EbookFontConfig.h"
 #include "EbookInstalledFonts.h"
@@ -161,7 +162,46 @@ bool UsesNonDefaultEbookReaderFonts() {
     return UsesCustomInstalledEbookFonts();
 }
 
-float GetEbookReaderFontSizePt() {
+struct BookFontSize {
+    char* path;
+    float size;
+};
+static SRWLOCK gBookFontSizeLock = SRWLOCK_INIT;
+static Vec<BookFontSize> gBookFontSizes;
+static float GetBookFontSize(const char* path) {
+    if (!path) return 0.f;
+    AcquireSRWLockShared(&gBookFontSizeLock);
+    float size = 0.f;
+    for (auto& book : gBookFontSizes) {
+        if (str::EqI(book.path, path)) {
+            size = book.size;
+            break;
+        }
+    }
+    ReleaseSRWLockShared(&gBookFontSizeLock);
+    return size;
+}
+static bool SetBookFontSize(const char* path, float size) {
+    if (!path) return false;
+    FileState* fs = gFileHistory.FindByPath(path);
+    if (fs) fs->ebookFontSize = size;
+    AcquireSRWLockExclusive(&gBookFontSizeLock);
+    bool found = false;
+    for (auto& book : gBookFontSizes) {
+        if (str::EqI(book.path, path)) {
+            book.size = size;
+            found = true;
+            break;
+        }
+    }
+    if (!found) gBookFontSizes.Append({str::Dup(path), size});
+    ReleaseSRWLockExclusive(&gBookFontSizeLock);
+    return true;
+}
+
+float GetEbookReaderFontSizePt(const char* filePath) {
+    float bookSize = GetBookFontSize(filePath);
+    if (bookSize >= kEbookFontSizeMinPt && bookSize <= kEbookFontSizeMaxPt) return bookSize;
     auto* ui = GetEBookUI();
     if (!ui || ui->fontSize < kEbookFontSizeMinPt || ui->fontSize > kEbookFontSizeMaxPt) {
         return 0.f;
@@ -169,59 +209,57 @@ float GetEbookReaderFontSizePt() {
     return ui->fontSize;
 }
 
-bool UsesNonDefaultEbookFontSize() {
-    return GetEbookReaderFontSizePt() > 0.f;
+bool UsesNonDefaultEbookFontSize(const char* filePath) {
+    return filePath ? GetBookFontSize(filePath) > 0.f : GetEbookReaderFontSizePt() > 0.f;
 }
 
-float GetEffectiveEbookFontSizePt() {
-    float pt = GetEbookReaderFontSizePt();
+float GetEffectiveEbookFontSizePt(const char* filePath) {
+    float pt = GetEbookReaderFontSizePt(filePath);
     if (pt > 0.f) {
         return pt;
     }
     return kEbookFontSizeBuiltinPt;
 }
 
-bool CanIncreaseEbookFontSize() {
-    return GetEffectiveEbookFontSizePt() + kEbookFontSizeStepPt <= kEbookFontSizeMaxPt;
+bool CanIncreaseEbookFontSize(const char* filePath) {
+    return GetEffectiveEbookFontSizePt(filePath) + kEbookFontSizeStepPt <= kEbookFontSizeMaxPt;
 }
 
-bool CanDecreaseEbookFontSize() {
-    return GetEffectiveEbookFontSizePt() - kEbookFontSizeStepPt >= kEbookFontSizeMinPt;
+bool CanDecreaseEbookFontSize(const char* filePath) {
+    return GetEffectiveEbookFontSizePt(filePath) - kEbookFontSizeStepPt >= kEbookFontSizeMinPt;
 }
 
-bool AdjustEbookFontSize(int direction) {
+bool AdjustEbookFontSize(int direction, const char* filePath) {
     if (direction == 0) {
         return false;
     }
     if (direction > 0) {
-        if (!CanIncreaseEbookFontSize()) {
+        if (!CanIncreaseEbookFontSize(filePath)) {
             return false;
         }
-    } else if (!CanDecreaseEbookFontSize()) {
+    } else if (!CanDecreaseEbookFontSize(filePath)) {
         return false;
     }
-    float effective = GetEffectiveEbookFontSizePt();
+    float effective = GetEffectiveEbookFontSizePt(filePath);
     float next = effective + (float)direction * kEbookFontSizeStepPt;
     next = limitValue(next, kEbookFontSizeMinPt, kEbookFontSizeMaxPt);
-    auto* ui = GetEBookUI();
-    if (!ui) {
-        return false;
-    }
-    ui->fontSize = next;
-    return true;
+    return SetBookFontSize(filePath, next);
 }
-
-bool ResetEbookFontSize() {
-    auto* ui = GetEBookUI();
-    if (!ui || !UsesNonDefaultEbookFontSize()) {
-        return false;
-    }
-    ui->fontSize = 0.f;
-    return true;
+bool ResetEbookFontSize(const char* filePath) {
+    return GetBookFontSize(filePath) > 0.f && SetBookFontSize(filePath, 0.f);
 }
 
 void ApplyEbookFontSettingsFromPrefs() {
     EnsureEbookFontDefaults();
+    AcquireSRWLockExclusive(&gBookFontSizeLock);
+    for (auto& book : gBookFontSizes) free(book.path);
+    gBookFontSizes.Reset();
+    if (gFileHistory.states) {
+        for (auto* fs : *gFileHistory.states) {
+            if (fs->ebookFontSize > 0.f) gBookFontSizes.Append({str::Dup(fs->filePath), fs->ebookFontSize});
+        }
+    }
+    ReleaseSRWLockExclusive(&gBookFontSizeLock);
     auto* ui = GetEBookUI();
     const char* latin = ui && ui->fontFamily ? ui->fontFamily : kDefaultEbookLatinFontFamily;
     const char* cjk = ui && ui->cjkFontFamily ? ui->cjkFontFamily : kDefaultEbookCjkFontFamily;
@@ -591,8 +629,8 @@ p {
     return str::JoinTemp(css, "\n", latinInlineCss);
 }
 
-TempStr BuildEbookForceFontSizeCss(int displayDpi) {
-    float pt = GetEbookReaderFontSizePt();
+TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath) {
+    float pt = GetEbookReaderFontSizePt(filePath);
     if (pt <= 0.f) {
         return nullptr;
     }

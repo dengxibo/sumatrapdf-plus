@@ -493,10 +493,11 @@ struct fz_html_box_s
 	unsigned int suppress_border: 4;
 	unsigned int collapsed_cell : 1;
 
-	fz_html_box *up, *down, *next;
+        fz_html_box *up, *down, *next;
 
-	const char *tag, *id, *href;
-	const fz_css_style *style;
+        const char *tag, *id, *href;
+        const fz_css_style* style;
+        fz_css_style* palette_style; /* private mutable colors, allocated once on first recolor */
 #ifdef DEBUG_HTML_SEQ
 	int seq;
 #endif
@@ -636,8 +637,9 @@ fz_html *fz_store_html(fz_context *ctx, fz_html *html, void *doc, int chapter);
 fz_html *fz_find_html(fz_context *ctx, void *doc, int chapter);
 void fz_purge_stored_html(fz_context *ctx, void *doc);
 void fz_purge_stored_html_chapter(fz_context *ctx, void *doc, int chapter);
-void fz_htdoc_reparse_html(fz_context *ctx, fz_document *doc, fz_buffer *buf, float w, float h, float em);
-void fz_reset_epub_html_font_set(fz_context *ctx, fz_document *doc);
+int fz_recolor_html(fz_context* ctx, fz_html* html, fz_html* colors);
+void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, float w, float h, float em);
+void fz_reset_epub_html_font_set(fz_context* ctx, fz_document* doc);
 
 void fz_restartable_layout_html(fz_context *ctx, fz_html_tree *tree, float start_x, float start_y, float page_w, float page_h, float em, fz_html_restarter *restart);
 

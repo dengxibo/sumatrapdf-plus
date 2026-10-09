@@ -812,7 +812,7 @@ static MenuDef menuDefContext[] = {
     },
     {
         _TRN("Ask &AI"),
-        CmdOpenAskAi,
+        CmdAnalyzeSelectionWithDoubao,
     },
     {
         _TRN("&Copy Selection"),

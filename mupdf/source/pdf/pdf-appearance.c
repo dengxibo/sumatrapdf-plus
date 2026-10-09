@@ -2824,6 +2824,29 @@ pdf_write_line_caption(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_rec
 	return 0;
 }
 
+/* SumatraPDF: quote a Windows font family for the free-text HTML appearance. */
+static void
+sumatra_quote_css_family(char *out, int cap, const char *family)
+{
+	int o = 0;
+	if (cap < 3)
+	{
+		if (cap > 0)
+			out[0] = 0;
+		return;
+	}
+	out[o++] = '"';
+	for (; family && *family && o < cap - 2; family++)
+	{
+		char c = *family;
+		if (c == '"' || c == '\\' || c == ';' || c == '{' || c == '}' || c == '\n' || c == '\r')
+			continue;
+		out[o++] = c;
+	}
+	out[o++] = '"';
+	out[o] = 0;
+}
+
 static void
 pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf,
 	fz_rect *rect, fz_rect *bbox, fz_matrix *matrix, pdf_obj **res)
@@ -2873,9 +2896,37 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	pdf_write_opacity(ctx, annot, buf, res);
 	pdf_write_dash_pattern(ctx, annot, buf, res);
 
-	// Set stroke and fill colors for box and callout line
+	// Set stroke and fill colors for box and callout line.
+	// /C stays the fill (Sumatra's free-text background). The stroke is an
+	// explicit border color when stored, otherwise the text color so an old
+	// appearance is not rewritten black the next time it is regenerated.
 	ic = pdf_write_fill_color_appearance(ctx, annot, buf);
-	write_color0(ctx, buf, n, color, 1);
+	{
+		float stroke[4];
+		int sn, i;
+		pdf_obj *border_col = pdf_dict_gets(ctx, annot->obj, "SumatraBorder");
+		for (i = 0; i < 4; i++)
+			stroke[i] = 0;
+		if (pdf_is_array(ctx, border_col) && pdf_array_len(ctx, border_col) >= 3)
+		{
+			stroke[0] = pdf_array_get_real(ctx, border_col, 0);
+			stroke[1] = pdf_array_get_real(ctx, border_col, 1);
+			stroke[2] = pdf_array_get_real(ctx, border_col, 2);
+			sn = 3;
+		}
+		else
+		{
+			sn = n;
+			for (i = 0; i < n && i < 4; i++)
+				stroke[i] = color[i];
+			if (sn <= 0)
+			{
+				stroke[0] = 0;
+				sn = 1;
+			}
+		}
+		write_color0(ctx, buf, sn, stroke, 1);
+	}
 	b = pdf_write_border_appearance(ctx, annot, buf);
 	/* A zero border is stored as a hairline by older builds. Treat that as none. */
 	if (b < 0.5f)
@@ -2959,6 +3010,29 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 #if FZ_ENABLE_HTML_ENGINE
 	ds = pdf_dict_get_text_string_opt(ctx, annot->obj, PDF_NAME(DS));
 	rc = pdf_dict_get_text_string_opt(ctx, annot->obj, PDF_NAME(RC));
+	/* SumatraPDF: a chosen reading font is stored beside the DA token, which
+	 * can only name a base-14 font. Draw that family through the HTML engine
+	 * so Chinese and other installed fonts are embedded in the appearance. */
+	{
+		char family_buf[128];
+		pdf_obj *sf = pdf_dict_gets(ctx, annot->obj, "SumatraFont");
+		family_buf[0] = 0;
+		if (pdf_is_string(ctx, sf))
+			fz_strlcpy(family_buf, pdf_to_text_string(ctx, sf), sizeof family_buf);
+		if (family_buf[0])
+		{
+			char quoted[160];
+			sumatra_quote_css_family(quoted, sizeof quoted, family_buf);
+			fz_snprintf(ds_buf, sizeof ds_buf,
+				"font-family:%s;font-size:%gpt;color:#%06x;text-align:%s;",
+				quoted,
+				size > 0 ? size : 12,
+				hex_from_color(ctx, n, color),
+				(q == 0 ? "left" : q == 1 ? "center" : "right"));
+			ds = ds_buf;
+			rc = free_rc = escape_text(ctx, text ? text : "");
+		}
+	}
 	if (!rc && (ds || text_needs_rich_layout(ctx, text)))
 	{
 		rc = free_rc = escape_text(ctx, text);

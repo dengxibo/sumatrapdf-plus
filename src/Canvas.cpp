@@ -67,6 +67,7 @@
 #include "SvgIcons.h"
 #include "Translations.h"
 #include "OcrService.h"
+#include "DisplayFilter.h"
 #include "PrintedTocOverlay.h"
 #include "MediaOverlayPlayer.h"
 #include "PdfPageAudio.h"
@@ -79,6 +80,55 @@
 bool gNoFlickerRender = true;
 
 Kind kNotifAnnotation = "notifAnnotation";
+
+// Hover tip for an annotation. Color, opacity, border, and the rectangle are
+// already on the page, so the card is only the text the page does not show.
+static TempStr AnnotationMetaTipTemp(const char* note, const char* author, time_t date) {
+    StrBuilder s;
+    if (!str::IsEmptyOrWhiteSpace(note)) {
+        TempStr one = str::DupTemp(note);
+        if (one) {
+            for (char* p = one; *p; p++) {
+                if (*p == '\r' || *p == '\n' || *p == '\t') {
+                    *p = ' ';
+                }
+            }
+            s.AppendFmt("%s: %s", _TRA("Note"), ShortenStringUtf8Temp(one, 48));
+        }
+    }
+    if (!str::IsEmptyOrWhiteSpace(author)) {
+        if (!s.IsEmpty()) {
+            s.Append("\n");
+        }
+        s.AppendFmt("%s %s", _TRA("Author:"), author);
+    }
+    if (date > 0) {
+        struct tm tm {};
+        gmtime_s(&tm, &date);
+        char buf[64];
+        if (strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M UTC", &tm) > 0) {
+            if (!s.IsEmpty()) {
+                s.Append("\n");
+            }
+            s.AppendFmt("%s %s", _TRA("Date:"), buf);
+        }
+    }
+    if (s.IsEmpty()) {
+        return nullptr;
+    }
+    return str::DupTemp(s.Get());
+}
+
+static void ShowAnnotationMetaTip(MainWindow* win, DisplayModel* dm, const char* text, int pageNo, RectF pageRect) {
+    if (!win || str::IsEmpty(text) || !dm || !dm->ValidPageNo(pageNo)) {
+        if (win) {
+            win->DeleteToolTip();
+        }
+        return;
+    }
+    Rect rc = dm->CvtToScreen(pageNo, pageRect);
+    win->ShowToolTip(text, rc, true);
+}
 
 // OLE drag-drop support for dragging selected text out of the window
 class TextDropSource : public IDropSource {
@@ -1027,8 +1077,6 @@ bool IsDragDistance(int x1, int x2, int y1, int y2) {
     return dy > dragDy;
 }
 
-static bool gShowAnnotationNotification = true;
-
 // Forward declaration
 static RectF CalculateResizedRect(MainWindow* win, int x, int y);
 static RectF CalculateResizedEbookRect(MainWindow* win, int x, int y);
@@ -1286,33 +1334,9 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
 
     switch (win->mouseAction) {
         case MouseAction::None: {
-            Annotation* annot = dm->GetAnnotationAtPos(pos, nullptr);
+            Annotation* annot = dm->GetAnnotationAtPos(pos, nullptr, false);
             Annotation* prev = win->annotationUnderCursor;
-            if (annot != prev) {
-#if 0
-                TempStr name = annot ? AnnotationReadableNameTemp(annot->type) : (TempStr) "none";
-                TempStr prevName = prev ? AnnotationReadableNameTemp(prev->type) : (TempStr) "none";
-                logf("different annot under cursor. prev: %s, new: %s\n", prevName, name);
-#endif
-                if (gShowAnnotationNotification) {
-                    if (annot && !AnnotationSupportsMediaPlayback(annot->type)) {
-                        // auto r = annot->bounds;
-                        // logf("new pos: %d-%d, size: %d-%d\n", (int)r.x, (int)r.y, (int)r.dx, (int)r.dy);
-                        RemoveNotificationsForGroup(win->hwndCanvas, kNotifAnnotation);
-                        NotificationCreateArgs args;
-                        args.hwndParent = win->hwndCanvas;
-                        args.groupId = kNotifAnnotation;
-                        args.timeoutMs = 3000;
-                        args.delayInMs = 1000;
-                        args.noClose = true;
-                        TempStr name = AnnotationReadableNameTemp(annot->type);
-                        const char* fmt = _TRA("%s annotation. Ctrl+click to edit.");
-                        args.msg = str::FormatTemp(fmt, name);
-                        ShowNotification(args);
-                    }
-                }
-            }
-            if (!annot) {
+            if (annot != prev && !annot) {
                 RemoveNotificationsForGroup(win->hwndCanvas, kNotifAnnotation);
             }
             win->annotationUnderCursor = annot;
@@ -1416,7 +1440,10 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
     }
     win->dragPrevPos = pos;
 
-    if (ReadAloudCanReadFromCursor(dm, pos)) {
+    // Remember a hover position only from cached glyphs. The explicit reading
+    // command loads text later; its availability helper must not extract a
+    // scanned page or an entire EPUB chapter on every mouse move.
+    if (dm->IsOverText(pos)) {
         win->readAloudLastTextPt = pos;
         win->readAloudLastTextPtValid = true;
     }
@@ -1554,6 +1581,9 @@ static bool StopEbookAnnotationResize(MainWindow* win, bool aborted) {
         bounds = win->annotationOriginalRect;
     }
     EbookAnnotationSetPageBounds(win->CurrentTab(), win->AsFixed(), annotation, pageNo, bounds, !aborted);
+    if (!aborted && EbookAnnotationGetType(annotation) == AnnotationType::FreeText) {
+        RememberFreeTextPreset(nullptr, 0, bounds.dx, bounds.dy);
+    }
     RefreshAnnotationOverlay(win);
     return true;
 }
@@ -1780,15 +1810,16 @@ static void MarkFrameBand(u8* mask, int sw, int sh, int x, int y, int dx, int dy
     }
 }
 
-// The on-screen stroke is the page plus the annotation. Dark mode does not
-// use the same red as the raw annotation bitmap, so subtracting colors leaves
-// a ghost. Cover every stroked pixel with the nearest page pixel instead.
 // grabInset is how far the bitmap extends past the annotation rect.
-static HBITMAP UnblendAnnotFromScreen(HBITMAP screen, HBITMAP annot, int grabInset) {
+// Pixels the annotation or the selection frame cover are replaced with a
+// render of the page without that annotation. Neighbor-fill smears the glyphs.
+static HBITMAP ComposeAnnotDragBackground(HBITMAP screen, HBITMAP annot, HBITMAP clean, int grabInset) {
     u8* sb = nullptr;
     u8* ab = nullptr;
-    int sw = 0, sh = 0, ss = 0, aw = 0, ah = 0, as_ = 0;
-    if (!DibViewOf(screen, &sb, &sw, &sh, &ss) || !DibViewOf(annot, &ab, &aw, &ah, &as_)) {
+    u8* cb = nullptr;
+    int sw = 0, sh = 0, ss = 0, aw = 0, ah = 0, as_ = 0, cw = 0, ch = 0, cs = 0;
+    if (!DibViewOf(screen, &sb, &sw, &sh, &ss) || !DibViewOf(annot, &ab, &aw, &ah, &as_) ||
+        !DibViewOf(clean, &cb, &cw, &ch, &cs)) {
         return nullptr;
     }
     void* bits = nullptr;
@@ -1801,11 +1832,9 @@ static HBITMAP UnblendAnnotFromScreen(HBITMAP screen, HBITMAP annot, int grabIns
     int n = sw * sh;
     u8* hit = AllocArray<u8>((size_t)n);
     u8* wide = AllocArray<u8>((size_t)n);
-    u8* known = AllocArray<u8>((size_t)n);
-    if (!hit || !wide || !known) {
+    if (!hit || !wide) {
         free(hit);
         free(wide);
-        free(known);
         DeleteObject(out);
         return nullptr;
     }
@@ -1822,23 +1851,19 @@ static HBITMAP UnblendAnnotFromScreen(HBITMAP screen, HBITMAP annot, int grabIns
             }
         }
     }
-    memcpy(wide, hit, (size_t)n);
-    for (int pass = 0; pass < 2; pass++) {
-        memcpy(hit, wide, (size_t)n);
-        for (int y = 0; y < sh; y++) {
-            for (int x = 0; x < sw; x++) {
-                if (!hit[(ptrdiff_t)y * sw + x]) {
-                    continue;
-                }
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        int nx = x + dx;
-                        int ny = y + dy;
-                        if (nx < 0 || ny < 0 || nx >= sw || ny >= sh) {
-                            continue;
-                        }
-                        wide[(ptrdiff_t)ny * sw + nx] = 1;
+    for (int y = 0; y < sh; y++) {
+        for (int x = 0; x < sw; x++) {
+            if (!hit[(ptrdiff_t)y * sw + x]) {
+                continue;
+            }
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= sw || ny >= sh) {
+                        continue;
                     }
+                    wide[(ptrdiff_t)ny * sw + nx] = 1;
                 }
             }
         }
@@ -1852,70 +1877,30 @@ static HBITMAP UnblendAnnotFromScreen(HBITMAP screen, HBITMAP annot, int grabIns
         MarkFrameBand(wide, sw, sh, frameX, frameY, frameW, frameH, 4);
     }
     u8* dst = (u8*)bits;
-    struct FloodPt {
-        int x;
-        int y;
-    };
-    Vec<FloodPt> q;
     for (int y = 0; y < sh; y++) {
         for (int x = 0; x < sw; x++) {
             int i = y * sw + x;
-            u8* s = sb + (ptrdiff_t)y * ss + x * 4;
             u8* d = dst + (ptrdiff_t)i * 4;
+            u8* s = sb + (ptrdiff_t)y * ss + x * 4;
+            if (wide[i]) {
+                int sx = cw == sw ? x : (x * cw) / sw;
+                int sy = ch == sh ? y : (y * ch) / sh;
+                if (sx >= cw) {
+                    sx = cw - 1;
+                }
+                if (sy >= ch) {
+                    sy = ch - 1;
+                }
+                s = cb + (ptrdiff_t)sy * cs + sx * 4;
+            }
             d[0] = s[0];
             d[1] = s[1];
             d[2] = s[2];
             d[3] = 255;
-            if (!wide[i]) {
-                known[i] = 1;
-                bool edge = false;
-                for (int dy = -1; dy <= 1 && !edge; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        int nx = x + dx;
-                        int ny = y + dy;
-                        if (nx < 0 || ny < 0 || nx >= sw || ny >= sh) {
-                            continue;
-                        }
-                        if (wide[(ptrdiff_t)ny * sw + nx]) {
-                            edge = true;
-                            break;
-                        }
-                    }
-                }
-                if (edge) {
-                    q.Append(FloodPt{x, y});
-                }
-            }
-        }
-    }
-    int head = 0;
-    while (head < q.Size()) {
-        FloodPt p = q.at(head++);
-        u8* src = dst + ((ptrdiff_t)p.y * sw + p.x) * 4;
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                int nx = p.x + dx;
-                int ny = p.y + dy;
-                if (nx < 0 || ny < 0 || nx >= sw || ny >= sh) {
-                    continue;
-                }
-                int i = ny * sw + nx;
-                if (known[i] || !wide[i]) {
-                    continue;
-                }
-                u8* d = dst + (ptrdiff_t)i * 4;
-                d[0] = src[0];
-                d[1] = src[1];
-                d[2] = src[2];
-                d[3] = 255;
-                known[i] = 1;
-                q.Append(FloodPt{nx, ny});
-            }
         }
     }
     free(hit);
     free(wide);
-    free(known);
     return out;
 }
 
@@ -1990,8 +1975,51 @@ static void BeginAnnotResizePreview(MainWindow* win, Annotation* annot) {
         DeleteObject(shot);
         return;
     }
-    HBITMAP bg = UnblendAnnotFromScreen(shot, shape, 10);
+    if (gRenderCache) {
+        gRenderCache->CancelRendering(dm);
+    }
+    RectF pageRect = dm->CvtFromScreen(grab, pageNo);
+    HBITMAP clean = RenderPagePatchHidingAnnotation(annot, dm->GetZoomSafe(pageNo), dm->GetRotation(), pageRect);
+    if (clean && win->ctrl) {
+        DisplayFilterParams filter = GetDisplayFilterForController(win->ctrl);
+        if (filter.IsActive()) {
+            BITMAP bm{};
+            if (GetObject(clean, sizeof(bm), &bm) && bm.bmWidth > 0 && bm.bmHeight != 0) {
+                int fw = bm.bmWidth;
+                int fh = bm.bmHeight < 0 ? -bm.bmHeight : bm.bmHeight;
+                void* fbits = nullptr;
+                HBITMAP filtered = CreateTopDownDib(fw, fh, &fbits);
+                HDC srcDc = filtered ? CreateCompatibleDC(nullptr) : nullptr;
+                HDC dstDc = filtered ? CreateCompatibleDC(nullptr) : nullptr;
+                if (filtered && srcDc && dstDc) {
+                    HGDIOBJ oldSrc = SelectObject(srcDc, clean);
+                    HGDIOBJ oldDst = SelectObject(dstDc, filtered);
+                    bool ok = BlitWithDisplayFilter(dstDc, 0, 0, fw, fh, srcDc, 0, 0, fw, fh, filter);
+                    SelectObject(srcDc, oldSrc);
+                    SelectObject(dstDc, oldDst);
+                    if (ok) {
+                        DeleteObject(clean);
+                        clean = filtered;
+                        filtered = nullptr;
+                    }
+                }
+                if (filtered) {
+                    DeleteObject(filtered);
+                }
+                if (srcDc) {
+                    DeleteDC(srcDc);
+                }
+                if (dstDc) {
+                    DeleteDC(dstDc);
+                }
+            }
+        }
+    }
+    HBITMAP bg = clean ? ComposeAnnotDragBackground(shot, shape, clean, 10) : nullptr;
     DeleteObject(shot);
+    if (clean) {
+        DeleteObject(clean);
+    }
     if (!bg) {
         DeleteObject(shape);
         return;
@@ -2117,6 +2145,10 @@ static bool StopAnnotationResize(MainWindow* win, int x, int y, bool aborted) {
     // The annotation has already been updated during mouse move,
     // just notify and update toolbar. Keep the live shape until that
     // page render is the one on screen.
+    if (annot->type == AnnotationType::FreeText) {
+        RectF r = GetRect(annot);
+        RememberFreeTextPreset(nullptr, 0, r.dx, r.dy);
+    }
     NotifyAnnotationsChanged(win->CurrentTab()->editAnnotsWindow);
     if (preview) {
         win->annotResizeFlight = true;
@@ -2142,17 +2174,7 @@ static float kAnnotPreviewStrokePx = 2.f;
 
 static float PreviewStrokePoints(DisplayModel* dm, int pageNo) {
     float zoom = dm ? dm->GetZoomReal(pageNo) : 1.f;
-    if (zoom < 0.05f) {
-        zoom = 1.f;
-    }
-    float pts = kAnnotPreviewStrokePx / zoom;
-    if (pts < 0.15f) {
-        pts = 0.15f;
-    }
-    if (pts > 24.f) {
-        pts = 24.f;
-    }
-    return pts;
+    return NewStrokeWidthPoints(zoom);
 }
 
 // Screen inset of the stroke center for a square or circle. PDF keeps that
@@ -2323,12 +2345,13 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         if (!annotation) {
             return;
         }
-        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+        EbookAnnotation* select = AnnotationsSidebarIsShowing(tab) ? annotation : nullptr;
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, select);
         RefreshAnnotationOverlay(win);
         ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
-    if (type == AnnotationType::Stamp) {
+    if (type == AnnotationType::Stamp || type == AnnotationType::FreeText) {
         Rect screenRect = NormalizeScreenRect(start, endCanvas);
         EbookAnnotation* annotation = nullptr;
         if (screenRect.dx < 4 && screenRect.dy < 4) {
@@ -2344,6 +2367,7 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
         RefreshAnnotationOverlay(win);
         ReleaseAnnotCreateToolIfUnlocked(win);
+        if (type == AnnotationType::FreeText) StartEbookFreeTextInPlaceEdit(win, annotation);
         return;
     }
     if (type == AnnotationType::Ink) {
@@ -2361,7 +2385,8 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         if (!annotation) {
             return;
         }
-        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+        EbookAnnotation* select = AnnotationsSidebarIsShowing(tab) ? annotation : nullptr;
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, select);
         RefreshAnnotationOverlay(win);
         ReleaseAnnotCreateToolIfUnlocked(win);
         return;
@@ -2374,7 +2399,8 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
     if (!annotation) {
         return;
     }
-    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+    EbookAnnotation* select = AnnotationsSidebarIsShowing(tab) ? annotation : nullptr;
+    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, select);
     RefreshAnnotationOverlay(win);
     ReleaseAnnotCreateToolIfUnlocked(win);
 }
@@ -2400,8 +2426,8 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     }
     Point start = win->annotCreateDragStart;
     Rect screenRect = NormalizeScreenRect(start, endCanvas);
-    if (cmdId != CmdCreateAnnotInk && cmdId != CmdCreateAnnotText && cmdId != CmdCreateAnnotStamp &&
-        (screenRect.dx < 4 && screenRect.dy < 4)) {
+    if (cmdId != CmdCreateAnnotInk && cmdId != CmdCreateAnnotText && cmdId != CmdCreateAnnotFreeText &&
+        cmdId != CmdCreateAnnotStamp && (screenRect.dx < 4 && screenRect.dy < 4)) {
         return;
     }
     int pageNo = dm->GetPageNoByPoint(start);
@@ -2430,7 +2456,7 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
         if (annot) {
             SetLine(annot, a, b);
         }
-    } else if (type == AnnotationType::Stamp) {
+    } else if (type == AnnotationType::Stamp || type == AnnotationType::FreeText) {
         if (screenRect.dx < 4 && screenRect.dy < 4) {
             PointF ptOnPage = dm->CvtFromScreen(start, pageNo);
             annot = EngineMupdfCreateAnnotation(engine, pageNo, ptOnPage, &args);
@@ -2452,15 +2478,23 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     }
     if (type == AnnotationType::Ink || type == AnnotationType::Line || type == AnnotationType::Square ||
         type == AnnotationType::Circle) {
-        SetBorderWidthFloat(annot, PreviewStrokePoints(dm, pageNo));
+        AnnotDrawStyle remembered;
+        if (!FindAnnotDrawStyle(type, &remembered) || (remembered.flags & kDrawStyleBorder) == 0) {
+            SetBorderWidthFloat(annot, PreviewStrokePoints(dm, pageNo));
+        }
     }
+    ApplyRememberedPdfDrawStyle(annot);
+    RememberPdfDrawStyle(annot);
     UpdateAnnotationsList(tab->editAnnotsWindow);
-    if (type == AnnotationType::Stamp || type == AnnotationType::FreeText) {
+    if (type == AnnotationType::Stamp || type == AnnotationType::FreeText || AnnotationsSidebarIsShowing(tab)) {
         SetSelectedAnnotation(tab, annot);
     }
     MainWindowRerenderAnnotationChange(win, pageNo, annot);
     ToolbarUpdateStateForWindow(win, true);
     ReleaseAnnotCreateToolIfUnlocked(win);
+    if (type == AnnotationType::FreeText) {
+        StartFreeTextInPlaceEdit(win, annot);
+    }
 }
 
 static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
@@ -2896,14 +2930,11 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             PlaySoundAnnotation(annotAtClick);
             return;
         }
-        // Ctrl+click enters edit. A plain click only switches while a mark is
-        // already selected. The sidebar page stays open and is not edit mode.
+        // Ctrl+click enters edit and shows only the annotations page.
+        // A plain click only switches while a mark is already selected.
+        // The sidebar page stays open and is not edit mode.
         if (IsCtrlPressed()) {
-            if (tab->editAnnotsWindow) {
-                SetSelectedAnnotation(tab, annotAtClick);
-            } else {
-                ShowEditAnnotationsWindow(tab, annotAtClick);
-            }
+            ShowEditAnnotationsWindow(tab, annotAtClick);
             return;
         }
         if (tab->selectedAnnotation) {
@@ -2980,6 +3011,15 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
 bool gDisableInteractiveInverseSearch = false;
 
 static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
+    if (StartFreeTextInPlaceEditAt(win, Point{x, y})) {
+        win->mouseAction = MouseAction::None;
+        win->dragStartPending = false;
+        win->annotationBeingDragged = nullptr;
+        if (GetCapture() == win->hwndCanvas) {
+            ReleaseCapture();
+        }
+        return;
+    }
     // lf("Left button clicked on %d %d", x, y);
     auto isLeft = bit::IsMaskSet(key, (WPARAM)MK_LBUTTON);
     if (gGlobalPrefs->enableTeXEnhancements && !gDisableInteractiveInverseSearch && isLeft) {
@@ -3364,7 +3404,7 @@ NO_INLINE static void PaintCurrentEditAnnotationMark(WindowTab* tab, HDC hdc, Di
     }
 }
 
-static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
+static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea, bool* viewportRendered, bool* viewportFailed) {
     ReportIf(!win->AsFixed());
     if (!win->AsFixed()) {
         return false;
@@ -3531,6 +3571,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     }
 
     bool rendering = false;
+    bool complete = true;
     Rect screen(Point(), dm->GetViewPort().Size());
     int firstFrameY = -1;
     int visiblePageCount = 0;
@@ -3553,6 +3594,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         }
         ReportIf(!pi->isShown);
         if (!pi->isShown) {
+            complete = false;
             continue;
         }
 
@@ -3568,6 +3610,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
         // check if this page is known to have failed rendering
         if (pi->failedToRender) {
+            *viewportFailed = true;
             shouldPaint = true;
             HFONT fontRightTxt = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
             HGDIOBJ hPrevFont = SelectObject(hdc, fontRightTxt);
@@ -3580,6 +3623,9 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
         bool renderOutOfDateCue = false;
         int renderDelay = gRenderCache->Paint(hdc, bounds, dm, pageNo, pi, &renderOutOfDateCue);
+        if (renderOutOfDateCue) {
+            complete = false;
+        }
         if (renderDelay == 0) {
             shouldPaint = true;
         }
@@ -3595,6 +3641,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
                 }
                 rendering = true;
             } else {
+                *viewportFailed = true;
                 shouldPaint = true;
                 auto prevCol = SetTextColor(hdc, colDocTxt);
                 DrawCenteredText(hdc, bounds, _TRA("Couldn't render the page"), isRtl);
@@ -3688,13 +3735,17 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     }
     RestoreDC(hdc, savedDC);
     PaintFindPositionMarks(win, hdc);
+    *viewportRendered = complete && !rendering && !*viewportFailed && visiblePageCount > 0;
     return shouldPaint;
 }
 
 static void OnPaintDocument(MainWindow* win) {
+    RepositionFreeTextInPlaceEdit(win);
     auto t = TimeGet();
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
+    bool viewportRendered = false;
+    bool viewportFailed = false;
 
     WindowTab* paintTab = win->CurrentTab();
     if (paintTab && paintTab->holdPaintForFontReload) {
@@ -3766,7 +3817,7 @@ static void OnPaintDocument(MainWindow* win) {
             DrawFullscreenExitAffordance(win, hdc);
             break;
         default: {
-            bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint);
+            bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint, &viewportRendered, &viewportFailed);
             if (!gNoFlickerRender || shouldPaint) {
                 win->buffer->Flush(hdc, &ps.rcPaint);
             }
@@ -3775,6 +3826,13 @@ static void OnPaintDocument(MainWindow* win) {
     }
 
     EndPaint(win->hwndCanvas, &ps);
+    Rect canvas = ClientRect(win->hwndCanvas);
+    bool fullPaint =
+        ps.rcPaint.left <= 0 && ps.rcPaint.top <= 0 && ps.rcPaint.right >= canvas.dx && ps.rcPaint.bottom >= canvas.dy;
+    NotifyEbookFontViewportPainted(win, viewportRendered && fullPaint, viewportFailed);
+    if (paintTab && paintTab->fontReloadProgressPending && viewportRendered && !fullPaint) {
+        ScheduleRepaint(win, 0);
+    }
     if (gShowFrameRate) {
         win->frameRateWnd->ShowFrameRateDur(TimeSinceInMs(t));
     }
@@ -3814,45 +3872,82 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
 
     ResizeHandle ebookHandle = GetEbookResizeHandleAt(win, pt, tab->selectedEbookAnnotation);
     if (ebookHandle != ResizeHandle::None) {
+        win->DeleteToolTip();
         SetCursorCached(GetCursorForResizeHandle(ebookHandle));
         return TRUE;
     }
 
-    if (EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
-        /* Hand only with Ctrl (same as Ctrl+click to edit). */
+    EbookAnnotation* ebookAnnot = EbookAnnotationsSupported(tab) ? EbookAnnotationsGetAt(tab, dm, pt) : nullptr;
+    if (ebookAnnot) {
+        // The inspector already shows this once the annotation is selected.
+        if (ebookAnnot == tab->selectedEbookAnnotation) {
+            win->DeleteToolTip();
+        } else {
+            time_t when = EbookAnnotationGetModified(ebookAnnot);
+            if (when <= 0) {
+                when = EbookAnnotationGetCreated(ebookAnnot);
+            }
+            int pageNo = 0;
+            RectF bounds;
+            if (EbookAnnotationGetPageBounds(tab, dm, ebookAnnot, &pageNo, &bounds)) {
+                ShowAnnotationMetaTip(win, dm,
+                                      AnnotationMetaTipTemp(EbookAnnotationGetNote(ebookAnnot),
+                                                            EbookAnnotationGetAuthor(ebookAnnot), when),
+                                      pageNo, bounds);
+            } else {
+                win->DeleteToolTip();
+            }
+        }
         if (IsCtrlPressed() || tab->editEbookAnnotsWindow || tab->selectedEbookAnnotation) {
             SetCursorCached(IDC_HAND);
             return TRUE;
         }
+        SetTextOrArrorCursor(dm, pt);
+        return TRUE;
     }
 
     // Check if hovering over resize handle of selected annotation
     if (selected && AnnotationCanBeResized(selected->type)) {
         ResizeHandle handle = GetResizeHandleAt(win, pt, selected);
         if (handle != ResizeHandle::None) {
+            win->DeleteToolTip();
             SetCursorCached(GetCursorForResizeHandle(handle));
             return TRUE;
         }
     }
     if (selected && AnnotationCanBeMoved(selected->type) && AnnotationFrameContains(win, pt, selected)) {
+        win->DeleteToolTip();
         SetCursorCached(IDC_HAND);
         return TRUE;
     }
 
-    Annotation* annot = dm->GetAnnotationAtPos(pt, selected);
+    Annotation* annot = dm->GetAnnotationAtPos(pt, selected, false);
     if (annot) {
+        if (annot == selected) {
+            win->DeleteToolTip();
+        } else {
+            TempStr note = str::DupTemp(Contents(annot));
+            TempStr author = str::DupTemp(Author(annot));
+            ShowAnnotationMetaTip(win, dm, AnnotationMetaTipTemp(note, author, ModificationDate(annot)), PageNo(annot),
+                                  GetRect(annot));
+        }
         /* Media: click plays without Ctrl. Markup: hand only with Ctrl (or while editing). */
         if (AnnotationSupportsMediaPlayback(annot->type) || IsCtrlPressed() || selected || tab->editAnnotsWindow) {
             SetCursorCached(IDC_HAND);
             return TRUE;
         }
+        SetTextOrArrorCursor(dm, pt);
+        return TRUE;
     }
 
     int pageNo = 0;
-    // EPUB rendering deliberately skips expensive link extraction. Load it on
-    // the first hover for this page, then use the cached hit-test data so links
-    // get the hand cursor before they are clicked.
-    IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo, true);
+    // PDF rendering prepares links in the background. Hover must only read
+    // cached elements: eager image extraction also builds structured text and
+    // can block scrolling for hundreds of milliseconds on scanned pages.
+    // Click/context-menu hit tests still load the complete elements on demand.
+    EngineBase* engine = dm->GetEngine();
+    bool isPdf = engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
+    IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo, !isPdf);
     if (!pageEl) {
         SetTextOrArrorCursor(dm, pt);
         win->DeleteToolTip();
@@ -4108,7 +4203,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
 
     bool hScroll = (LOWORD(wp) & MK_SHIFT) || IsShiftPressed();
     bool vScroll = !hScroll;
-    bool isCont = !IsContinuous(win->ctrl->GetDisplayMode());
+    bool isCont = IsContinuous(win->ctrl->GetDisplayMode());
 
     // logf("delta: %d, accumDelta: %d, hscroll: %d, continuous: %d, gDeltaPerLine: %d\n", (int)delta,
     // win->wheelAccumDelta,
@@ -4128,11 +4223,10 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         return 0;
     }
 
-    // The whole page is already on screen, but neither layout preset is
-    // active (not fit-width continuous, not fit-page single). One notch
-    // turns the page. A 16px line scroll never gets there, and the page
-    // scrollbar's nPage is 1 so a pixel delta rounds to zero.
-    if (vScroll && WheelPageFitsView(dm)) {
+    // In non-continuous mode a fully visible page needs page navigation.
+    // Continuous layouts must keep scrolling by distance even when the current
+    // page is short (for example a landscape attachment after portrait pages).
+    if (vScroll && !isCont && WheelPageFitsView(dm)) {
         WheelFlipPage(win, delta);
         return 0;
     }
@@ -4256,10 +4350,10 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         }
     }
 
-    if (dm && vScroll && IsContinuous(dm->GetDisplayMode()) && (delta % WHEEL_DELTA) != 0) {
-        // A precision touchpad sends eased deltas smaller than one notch.
-        // A full mouse notch stays on the line-scroll path below, including
-        // turning the page when the view is already at the edge.
+    if (dm && vScroll && isCont && (!gGlobalPrefs->smoothScroll || (delta % WHEEL_DELTA) != 0)) {
+        // Continuous scrolling moves the model directly, for mouse notches as
+        // well as precision deltas. Do not route each notch through scrollbar
+        // line/page navigation or its rounded position and edge-turn state.
         int combinedDelta = delta;
         MSG queued;
         for (int n = 0; n < 64 && PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_NOREMOVE); n++) {
@@ -4304,7 +4398,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         }
     }
     // in non-continuous mode flip page if necessary
-    if (!vScroll || !isCont) {
+    if (!vScroll || isCont) {
         return 0;
     }
     if (!didScrollByLine) {
@@ -4644,6 +4738,13 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
     int x = GET_X_LPARAM(lp);
     int y = GET_Y_LPARAM(lp);
     switch (msg) {
+        case WM_CTLCOLOREDIT: {
+            HBRUSH brush = FreeTextInPlaceEditCtlColor((HWND)lp, (HDC)wp);
+            if (brush) {
+                return (LRESULT)brush;
+            }
+            break;
+        }
         case WM_PAINT:
             if (gRedrawLog) {
                 RECT urc;

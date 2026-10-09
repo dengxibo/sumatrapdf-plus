@@ -43,7 +43,7 @@ bool UsesNonDefaultEbookReaderFonts() {
     return false;
 }
 
-bool UsesNonDefaultEbookFontSize() {
+bool UsesNonDefaultEbookFontSize(const char*) {
     return false;
 }
 
@@ -73,7 +73,7 @@ TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind) {
     return nullptr;
 }
 
-TempStr BuildEbookForceFontSizeCss(int displayDpi) {
+TempStr BuildEbookForceFontSizeCss(int displayDpi, const char*) {
     (void)displayDpi;
     return nullptr;
 }
@@ -107,7 +107,7 @@ const WCHAR* GetEbookCjkFontFamilyW() {
     return nullptr;
 }
 
-float GetEbookReaderFontSizePt() {
+float GetEbookReaderFontSizePt(const char*) {
     return kEbookFontSizeBuiltinPt;
 }
 

@@ -7866,6 +7866,23 @@ tr:Yer imleri çıkarıldı.
 tw:書籤已提取。
 uk:Закладки видобуто.
 vn:Đã trích xuất dấu trang.
+:Border Color:
+br:Cor da borda:
+cn:边框颜色:
+de:Rahmenfarbe:
+es:Color del borde:
+fr:Couleur de la bordure :
+it:Colore bordo:
+ja:枠線色:
+kr:테두리 색상:
+nl:Randkleur:
+pl:Kolor obramowania:
+pt:Cor da borda:
+ru:Цвет рамки:
+tr:Kenarlık rengi:
+tw:邊框顏色:
+uk:Колір рамки:
+vn:Màu viền:
 :Border:
 br:Borda:
 cn:边框：
@@ -16154,23 +16171,23 @@ tr:Görüntü geliştirme açık
 tw:顯示增強已啟用
 uk:Покращення відображення увімкнено
 vn:Đã bật tăng cường hiển thị
-:Enhance Display is only available for PDF
-br:Melhoria de exibição disponível apenas para PDF
-cn:显示增强仅适用于 PDF
-de:Anzeigeverbesserung nur für PDF verfügbar
-es:La mejora de visualización solo está disponible para PDF
-fr:L’amélioration de l’affichage n’est disponible que pour les PDF
-it:Miglioramento visualizzazione disponibile solo per PDF
-ja:表示強化は PDF のみ利用できます
-kr:표시 향상은 PDF에서만 사용할 수 있습니다
-nl:Weergaveverbetering is alleen beschikbaar voor PDF
-pl:Ulepszenie wyświetlania jest dostępne tylko dla PDF
-pt:Melhoria de visualização disponível apenas para PDF
-ru:Улучшение отображения доступно только для PDF
-tr:Görüntü geliştirme yalnızca PDF için kullanılabilir
-tw:顯示增強僅適用於 PDF
-uk:Покращення відображення доступне лише для PDF
-vn:Tăng cường hiển thị chỉ dùng cho PDF
+:Enhance Display is not available for this document
+br:Melhoria de exibição não disponível para este documento
+cn:此文档不能使用显示增强
+de:Anzeigeverbesserung ist für dieses Dokument nicht verfügbar
+es:La mejora de visualización no está disponible para este documento
+fr:L’amélioration de l’affichage n’est pas disponible pour ce document
+it:Miglioramento visualizzazione non disponibile per questo documento
+ja:この文書では表示強化を使えません
+kr:이 문서에서는 표시 향상을 사용할 수 없습니다
+nl:Weergaveverbetering is niet beschikbaar voor dit document
+pl:Ulepszenie wyświetlania nie jest dostępne dla tego dokumentu
+pt:Melhoria de visualização não disponível para este documento
+ru:Улучшение отображения недоступно для этого документа
+tr:Görüntü geliştirme bu belge için kullanılamaz
+tw:此文件無法使用顯示增強
+uk:Покращення відображення недоступне для цього документа
+vn:Tăng cường hiển thị không dùng được cho tài liệu này
 :Enter a speed from 0.25x to 2.00x.
 br:Digite uma velocidade de 0.25x a 2.00x.
 cn:请输入 0.25x 到 2.00x 之间的速度。
@@ -32084,6 +32101,12 @@ tr:Geri yükle
 tw:還原
 uk:Відновити
 vn:Khôi phục
+:Restore Defaults
+cn:恢复默认设置
+:Choose Font
+cn:选择字体
+:Restore appearance
+cn:恢复默认外观
 :Restore Tab Group
 br:Restaurar Grupo de Abas
 cn:恢复标签组

@@ -429,7 +429,7 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         if (!SupportsEbookFontSizeChange(ctx.tab)) {
             return CommandVisibility::Disable;
         }
-        return CanIncreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
+        return CanIncreaseEbookFontSize(ctx.tab->filePath) ? CommandVisibility::Show : CommandVisibility::Disable;
     }
     if (origCmdId == CmdEbookFontSizeDecrease) {
         if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
@@ -438,13 +438,13 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         if (!SupportsEbookFontSizeChange(ctx.tab)) {
             return CommandVisibility::Disable;
         }
-        return CanDecreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
+        return CanDecreaseEbookFontSize(ctx.tab->filePath) ? CommandVisibility::Show : CommandVisibility::Disable;
     }
     if (origCmdId == CmdEbookFontSizeReset) {
         if (!SupportsEbookFontSizeChange(ctx.tab)) {
             return CommandVisibility::Disable;
         }
-        return UsesNonDefaultEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
+        return UsesNonDefaultEbookFontSize(ctx.tab->filePath) ? CommandVisibility::Show : CommandVisibility::Disable;
     }
 
     if (surface == CommandSurface::Palette) {
@@ -536,7 +536,9 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     }
 
     if (!ctx.supportsAnnots) {
-        if ((cmdId >= (int)CmdCreateAnnotFirst) && (cmdId <= (int)CmdCreateAnnotLast)) {
+        if ((cmdId >= (int)CmdCreateAnnotFirst) && (cmdId <= (int)CmdCreateAnnotLast) &&
+            !(cmdId == CmdCreateAnnotFreeText && ctx.tab && ctx.win && !ctx.win->isFullScreen &&
+              EbookAnnotationsSupported(ctx.tab))) {
             return CommandVisibility::Hide;
         }
         // EPUB keeps the signature button. Stamps and ink already live in the

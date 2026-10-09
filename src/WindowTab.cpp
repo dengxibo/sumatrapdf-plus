@@ -17,6 +17,7 @@
 #include "ChmModel.h"
 #include "DisplayModel.h"
 #include "SumatraPDF.h"
+#include "Notifications.h"
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "Selection.h"
@@ -38,6 +39,9 @@ void WindowTab::SetFilePath(const char* path) {
     type = Type::Document;
     if (!str::EqI(filePath, path)) {
         str::FreePtr(&lastFontReloadAnchor);
+        fontReloadProgressPending = false;
+        RemoveNotification(fontReloadProgressNotif);
+        fontReloadProgressNotif = nullptr;
     }
     str::ReplaceWithCopy(&filePath, path);
 }
@@ -48,6 +52,7 @@ bool WindowTab::IsAboutTab() const {
 }
 
 WindowTab::~WindowTab() {
+    RemoveNotification(fontReloadProgressNotif);
     logf("~WindowTab: 0x%p, dm: 0x%p\n", this, AsFixed());
     if (hwndPDFInfo) {
         DestroyWindow(hwndPDFInfo);

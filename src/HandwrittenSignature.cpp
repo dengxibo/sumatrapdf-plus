@@ -45,15 +45,79 @@ constexpr int kPadCancelId = 103;
 constexpr int kPadPhotoId = 104;
 constexpr WCHAR kPadClassName[] = L"SumatraHandwrittenSignature";
 
-// The pad is a sheet of the theme, not a white card. Ink is the theme's
-// reading color so a dark theme does not put black strokes on a bright page.
-static COLORREF SignaturePaperColor() {
-    COLORREF paper = ThemeWindowControlBackgroundColor();
-    if (ThemeUsesBlackChrome()) {
-        // Control bg is #050505, which disappears into the black dialog.
-        paper = AccentColor(paper, 18);
+// Eye-care paints the caption with the chrome color. The client used the
+// darker window color, so the form sat a shade under the title bar.
+static COLORREF SignatureDialogFaceColor() {
+    if (ThemeUsesEyeCareChrome()) {
+        return ThemeChromeBackgroundColor();
     }
-    return paper;
+    return ThemeWindowBackgroundColor();
+}
+
+// The pad is a sheet of the theme, not a white card. On light themes the sheet
+// sits a step under the old window color so it reads as a recess. That paper
+// color stays put when the form face is matched to the caption. Ink is the
+// theme's reading color so a dark theme does not put black strokes on a bright page.
+static COLORREF SignaturePaperColor() {
+    if (ThemeUsesDarkChrome()) {
+        COLORREF paper = ThemeWindowControlBackgroundColor();
+        if (ThemeUsesBlackChrome()) {
+            // Control bg is #050505, which disappears into the black dialog.
+            paper = AccentColor(paper, 18);
+        }
+        return paper;
+    }
+    return AccentColor(ThemeWindowBackgroundColor(), 6);
+}
+
+// Light from the top-left: the near walls of a recess are dark, the far walls are lit.
+// A single dark stroke around a lighter sheet reads as a card sitting on the dialog.
+static void PaintSunkenPadEdge(HDC hdc, HWND hwnd, const RECT& paper) {
+    int t = DpiScale(hwnd, 1);
+    if (t < 1) {
+        t = 1;
+    }
+    COLORREF face = SignatureDialogFaceColor();
+    COLORREF shadow;
+    COLORREF innerShadow;
+    COLORREF highlight;
+    COLORREF innerHi;
+    if (ThemeUsesDarkChrome()) {
+        shadow = AccentColor(face, 1, -28);
+        innerShadow = AccentColor(face, 1, -14);
+        highlight = AccentColor(face, 1, 22);
+        innerHi = AccentColor(face, 1, 10);
+    } else {
+        shadow = AccentColor(face, 32);
+        innerShadow = AccentColor(face, 16);
+        highlight = AccentColor(face, -24);
+        innerHi = AccentColor(face, -10);
+    }
+    auto fill = [&](int x, int y, int dx, int dy, COLORREF c) {
+        if (dx <= 0 || dy <= 0) {
+            return;
+        }
+        RECT rc{x, y, x + dx, y + dy};
+        HBRUSH br = CreateSolidBrush(c);
+        FillRect(hdc, &rc, br);
+        DeleteObject(br);
+    };
+    int L = paper.left;
+    int T = paper.top;
+    int R = paper.right;
+    int B = paper.bottom;
+    int w = R - L;
+    int h = B - T;
+    // Outer lip, then the inner lip. Corners stay with the shadow on the top-left
+    // and the highlight on the bottom-right.
+    fill(L - 2 * t, T - 2 * t, w + 3 * t, t, shadow);
+    fill(L - 2 * t, T - t, t, h + 2 * t, shadow);
+    fill(L - t, T - t, w + t, t, innerShadow);
+    fill(L - t, T, t, h, innerShadow);
+    fill(L - t, B + t, w + 3 * t, t, highlight);
+    fill(R + t, T - 2 * t, t, h + 3 * t, highlight);
+    fill(L, B, w, t, innerHi);
+    fill(R, T - t, t, h + t, innerHi);
 }
 
 static COLORREF SignatureInkColor() {
@@ -1373,7 +1437,7 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     HBRUSH face = pad->bgBrush;
     HBRUSH owned = nullptr;
     if (!face) {
-        owned = CreateSolidBrush(ThemeWindowBackgroundColor());
+        owned = CreateSolidBrush(SignatureDialogFaceColor());
         face = owned;
     }
     FillRect(hdc, &client, face);
@@ -1383,10 +1447,9 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     HBRUSH paper = CreateSolidBrush(SignaturePaperColor());
     FillRect(hdc, &pad->padRc, paper);
     DeleteObject(paper);
-    HPEN border = CreatePen(PS_SOLID, 1, SignatureGuideColor());
-    HGDIOBJ oldPen = SelectObject(hdc, border);
+    PaintSunkenPadEdge(hdc, pad->hwnd, pad->padRc);
+    HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
     HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
-    Rectangle(hdc, pad->padRc.left, pad->padRc.top, pad->padRc.right, pad->padRc.bottom);
     if (pad->hasPhoto && pad->photoDib && pad->photoW > 0 && pad->photoH > 0) {
         float aspect = (float)pad->photoH / (float)pad->photoW;
         float dw = (float)pad->padW;
@@ -1416,7 +1479,6 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
         DeleteDC(mem);
         SelectObject(hdc, oldBrush);
         SelectObject(hdc, oldPen);
-        DeleteObject(border);
         return;
     }
     int baseY = pad->padRc.bottom - DpiScale(pad->hwnd, 36);
@@ -1426,7 +1488,7 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
         int inset = DpiScale(pad->hwnd, 16);
         MoveToEx(hdc, pad->padRc.left + inset, baseY, nullptr);
         LineTo(hdc, pad->padRc.right - inset, baseY);
-        SelectObject(hdc, border);
+        SelectObject(hdc, oldPen);
         DeleteObject(basePen);
     }
     if (pad->pts.Size() == 0) {
@@ -1477,7 +1539,6 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     SelectObject(hdc, oldBrush);
     SelectObject(hdc, oldPen);
     DeleteObject(ink);
-    DeleteObject(border);
 }
 
 static PointF PadNormPoint(SigPad* pad, int x, int y) {
@@ -1572,7 +1633,7 @@ static void PadRecreateThemeBrush(SigPad* pad) {
         return;
     }
     DeleteObject(pad->bgBrush);
-    pad->bgBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+    pad->bgBrush = CreateSolidBrush(SignatureDialogFaceColor());
 }
 
 static void PadThemeRefreshCb(HWND hwnd, void* ctx) {
@@ -2198,7 +2259,7 @@ static bool CommitSignatureBox(MainWindow* win, int left, int top, int sw, int s
     }
     if (ebookOk && !pdfOk) {
         EbookAnnotation* ebookAnnot = EbookAnnotationsCreateInkStrokes(
-            tab, dm, pageNo, flat.LendData(), counts.LendData(), counts.Size(), RGB(0, 0, 0), 2);
+            tab, dm, pageNo, flat.LendData(), counts.LendData(), counts.Size(), RGB(0, 0, 0), 1);
         HandwrittenSignatureCancelPlace(win);
         if (!ebookAnnot) {
             ShowTemporaryNotification(win->hwndCanvas, _TRA("Couldn't add the signature."), kNotif5SecsTimeOut);

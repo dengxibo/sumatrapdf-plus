@@ -15,6 +15,7 @@ void SyncEbookAnnotationsSidebar(MainWindow* win, bool show);
 bool CloseAndDeleteEditEbookAnnotationsWindow(WindowTab* tab);
 void FlushEbookAnnotationEdits(WindowTab* tab);
 void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window, EbookAnnotation* preferredSelection = nullptr);
+void SyncEbookFreeTextDraft(WindowTab* tab, EbookAnnotation* annotation, const char* text);
 void RefreshEbookAnnotationExcerpts(WindowTab* tab, bool loading);
 void ClearSelectedEbookAnnotation(WindowTab* tab);
 void RefreshEbookAnnotationsWindowsTheme();

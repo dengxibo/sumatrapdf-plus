@@ -545,6 +545,7 @@ WindowTab* FindTabByFile(const char* file) {
 }
 
 static void DeferredLoadTocTree(MainWindow* win);
+static void DeferredReloadTocTree(MainWindow* win);
 static bool RefreshSidebarDpiFonts(MainWindow* win);
 static bool DefaultShowTocForPath(const char* path);
 
@@ -604,6 +605,7 @@ static bool gEbookProgressScheduled = false;
 
 static void EbookPagesProgressUI(EbookPagesProgressTask* task);
 static void FinishFontReloadPlacement(MainWindow* win, WindowTab* tab, DisplayModel* dm);
+static void UpdateEbookFontReloadProgress(WindowTab* tab, int percent);
 
 static void PostPendingEbookProgress() {
     if (!gPendingEbookProgress) {
@@ -650,6 +652,12 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         return;
     }
     dm->TryApplyPendingRestoreScroll();
+    if (tab->fontReloadProgressPending && tab->holdPaintForFontReload && tab->fontReloadChapter >= 0) {
+        int counted = EngineMupdfGetReflowChaptersCounted(dm->engine);
+        int percent =
+            15 + 70 * CalcPerc(std::min(counted, tab->fontReloadChapter + 1), tab->fontReloadChapter + 1) / 100;
+        UpdateEbookFontReloadProgress(tab, percent);
+    }
     if (tab->fontReloadAnchor || tab->holdPaintForFontReload) {
         FinishFontReloadPlacement(tab->win, tab, dm);
     }
@@ -687,9 +695,9 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
                 tab->showToc = true;
             }
             if (win->tocLoaded) {
-                ClearTocBox(win);
+                ClearTocBox(win, true);
             }
-            auto fn = MkFunc0<MainWindow>(DeferredLoadTocTree, win);
+            auto fn = MkFunc0<MainWindow>(DeferredReloadTocTree, win);
             uitask::Post(fn, "DeferredLoadToc");
         } else if (win->tocVisible) {
             InvalidateTocTree(win);
@@ -1569,9 +1577,14 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
                 pageNo = engine->PageCount();
             }
             HwndSetText(win->hwndPageEdit, str::FormatTemp("%d", pageNo));
-            ToolbarUpdateStateForWindow(win, false);
+            ToolbarUpdateStateForWindow(win, false, true);
             int totalPages = engine ? engine->PageCount() : win->ctrl->PageCount();
-            UpdateToolbarPageText(win, totalPages, win->ctrl->HasPageLabels());
+            // A page turn changes the value, not the geometry of the page slot.
+            // Reflow can change the total, in which case refresh the full slot.
+            TempStr totalText = totalPages > 0 ? str::FormatTemp(" / %d", totalPages) : (TempStr) " ";
+            if (!str::Eq(HwndGetTextTemp(win->hwndPageTotal), totalText)) {
+                UpdateToolbarPageText(win, totalPages, win->ctrl->HasPageLabels());
+            }
         }
     }
     if (pageNo == win->currPageNo) {
@@ -1885,7 +1898,10 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     ScrollState ss(1, -1, -1);
     int rotation = 0;
     const char* path = args->FilePath();
-    bool showToc = DefaultShowTocForPath(path);
+    // Async font reload has already detached win->ctrl. Preserve the live
+    // sidebar even when it differs from the last saved file state.
+    bool preserveSidebar = tab->reloadForEbookFontChange;
+    bool showToc = preserveSidebar ? tab->showToc : DefaultShowTocForPath(path);
     bool showAsFullScreen = WIN_STATE_FULLSCREEN == gGlobalPrefs->windowState;
     int showType = SW_NORMAL;
     if (gGlobalPrefs->windowState == WIN_STATE_MAXIMIZED || showAsFullScreen) {
@@ -1905,7 +1921,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         }
         if (win->presentation) {
             showToc = tab->showTocPresentation;
-        } else if (win->ctrl && str::Eq(path, win->ctrl->GetFilePath())) {
+        } else if (preserveSidebar || (win->ctrl && str::Eq(path, win->ctrl->GetFilePath()))) {
             // Preserve per-tab sidebar visibility across reloads (e.g. theme change).
             showToc = tab->showToc;
         } else {
@@ -1936,6 +1952,12 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         HideTocCalib(win);
     }
 
+    // Overlay entries and selected annotations borrow pointers from the old
+    // engine. Clear them before layout can pump WM_PAINT with the new controller.
+    EndFreeTextInPlaceEditForTab(tab, true);
+    tab->pdfMarkupOverlays.Reset();
+    tab->selectedAnnotation = nullptr;
+    tab->selectedEbookAnnotation = nullptr;
     DocController* prevCtrl = win->ctrl;
     tab->ctrl = ctrl;
     win->ctrl = tab->ctrl;
@@ -2046,7 +2068,9 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         }
         // else let win->ctrl->GoToPage(ss.page, false) verify the page number
         rotation = fs->rotation;
-        tab->tocState = *fs->tocState;
+        if (!preserveSidebar) {
+            tab->tocState = *fs->tocState;
+        }
     }
 
     // Relayout before tearing down prevCtrl so WM_PAINT during document swap
@@ -2621,6 +2645,7 @@ static void FinishFontReloadPlacement(MainWindow* win, WindowTab* tab, DisplayMo
         tab->lastFontReloadDisplayMode = dm->GetDisplayMode();
     }
     tab->holdPaintForFontReload = false;
+    UpdateEbookFontReloadProgress(tab, 90);
     ClearTabFontReloadScroll(tab);
     if (dm && win && tab == win->CurrentTab()) {
         dm->RepaintDisplay();
@@ -2881,6 +2906,38 @@ static bool IsEbookFontAsyncReload(WindowTab* tab) {
     return tab && tab->reloadForEbookFontChange && !tab->reloadOnFocus;
 }
 
+static void UpdateEbookFontReloadProgress(WindowTab* tab, int percent) {
+    if (!tab || !tab->fontReloadProgressPending) {
+        return;
+    }
+    int next = std::max(tab->fontReloadProgress, limitValue(percent, 0, 100));
+    if (next == tab->fontReloadProgress) {
+        return;
+    }
+    tab->fontReloadProgress = next;
+    logf("EpubFontProgress percent=%d holding=%d\n", next, tab->holdPaintForFontReload);
+    if (tab->fontReloadProgressNotif) {
+        UpdateNotificationProgress(tab->fontReloadProgressNotif, _TRA("Applying ebook font, reformatting pages…"),
+                                   tab->fontReloadProgress);
+    }
+}
+
+void NotifyEbookFontViewportPainted(MainWindow* win, bool rendered, bool failed) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab || !tab->fontReloadProgressPending || tab->holdPaintForFontReload || tab->asyncLoadPending ||
+        tab->reloadForEbookFontChange) {
+        return;
+    }
+    if (!failed) {
+        UpdateEbookFontReloadProgress(tab, rendered ? 100 : 95);
+    }
+    if (rendered || failed) {
+        tab->fontReloadProgressPending = false;
+        RemoveNotification(tab->fontReloadProgressNotif);
+        tab->fontReloadProgressNotif = nullptr;
+    }
+}
+
 static void FinishEbookFontAsyncReload(MainWindow* win, WindowTab* tab, bool loaded) {
     if (!IsEbookFontAsyncReload(tab)) {
         return;
@@ -2896,6 +2953,9 @@ static void FinishEbookFontAsyncReload(MainWindow* win, WindowTab* tab, bool loa
     } else {
         tab->holdPaintForFontReload = false;
         ClearTabFontReloadScroll(tab);
+        tab->fontReloadProgressPending = false;
+        RemoveNotification(tab->fontReloadProgressNotif);
+        tab->fontReloadProgressNotif = nullptr;
     }
 }
 
@@ -2912,6 +2972,8 @@ static void StartEbookFontAsyncReload(MainWindow* win, WindowTab* tab, const Fon
     // The new document opens at the cover. Hold the current frame until the
     // first visible line has been found again.
     tab->holdPaintForFontReload = true;
+    tab->fontReloadProgressPending = true;
+    tab->fontReloadProgress = 0;
     SaveTabFontReloadScroll(tab, anchor, fontSizeChange);
     tab->reloadOnFocus = false;
     LoadArgs args(tab->filePath, win);
@@ -2972,6 +3034,9 @@ void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh) {
 }
 
 void ReloadDocument(MainWindow* win, bool autoRefresh) {
+    if (IsEditingFreeTextInPlace(win)) {
+        EndFreeTextInPlaceEdit(true);
+    }
     WindowTab* tab = win->CurrentTab();
 
     if (!tab) {
@@ -3141,6 +3206,9 @@ static void UpdateToolbarSidebarText(MainWindow* win) {
     UpdateToolbarPageText(win, -1);
     UpdateToolbarFindText(win);
     UpdateToolbarButtonsToolTipsForWindow(win);
+    if (win->tocFilterEdit) {
+        win->tocFilterEdit->SetCueText(_TRA("Search Bookmarks"));
+    }
 
     win->tocLabelWithClose->SetLabel(_TRA("Bookmarks"));
     win->tocLabelWithClose->UpdateHeaderActionTooltips();
@@ -3742,7 +3810,7 @@ static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab, bool 
         EngineMupdfClearReflowTocNeedsUiReload(engine);
     }
     if (win->tocLoaded) {
-        ClearTocBox(win);
+        ClearTocBox(win, true);
     }
     if (tab->GetEngine() && tab->GetEngine()->HasToc()) {
         LoadTocTree(win);
@@ -3762,6 +3830,9 @@ static void ReflowMupdfRelayoutUiAfterCanvasResize(MainWindow* win, bool forceEv
     if (!win || !win->IsDocLoaded()) {
         return;
     }
+    DisplayModel* previousModel = win->AsFixed();
+    bool hadLayout = previousModel && previousModel->pagesInfo && previousModel->totalViewPortSize.dy > 0 &&
+                     previousModel->zoomReal > 0;
     win->lastLayoutState = {};
     RelayoutFrame(win);
     win->UpdateCanvasSize();
@@ -3775,7 +3846,13 @@ static void ReflowMupdfRelayoutUiAfterCanvasResize(MainWindow* win, bool forceEv
     if (!IsReflowMupdfEpubEngine(dm->GetEngine())) {
         return;
     }
-    dm->RelayoutPreservingAnchorPageAfterViewPortUpdate();
+    // Palette CSS does not change geometry. Existing layout remains valid;
+    // UpdateCanvasSize already relayouts if the actual canvas size changed.
+    // A full Relayout here resolves every estimated page size after progressive
+    // loading, turning the first theme toggle into a whole-book layout pass.
+    if (!hadLayout || dm != previousModel) {
+        dm->RelayoutPreservingAnchorPageAfterViewPortUpdate();
+    }
 }
 
 static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi) {
@@ -3785,7 +3862,7 @@ static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi)
     EngineBase* engine = dm->GetEngine();
     bool reflowMupdf = IsReflowMupdfEpubEngine(engine);
     if (reflowMupdf) {
-        dm->SyncPageCountWithEngine(updateUi);
+        dm->SyncPageCountWithEngine(false);
         if (!updateUi) {
             return;
         }
@@ -3956,6 +4033,7 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 }
 
 void UpdateAfterThemeChange() {
+    auto themeStart = TimeGet();
     // Theme changes touch the toolbar, rebars, sidebars, canvas background and
     // (for reflow/OCR documents) page layout at different times. Letting each
     // child paint as it becomes ready exposes a patchwork of old/new colors and
@@ -4078,6 +4156,7 @@ void UpdateAfterThemeChange() {
                      RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
     }
     FinishInlineTranslatePopupTheme();
+    logf("ThemeChange: total %.2f ms\n", TimeSinceInMs(themeStart));
 }
 
 static void RenameFileInHistory(const char* oldPath, const char* newPath) {
@@ -4304,16 +4383,19 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     StampTabReflowThemeEpoch(tab);
     EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), false);
 
-    tab->showToc = DefaultShowTocForPath(fullPath);
-    if (tab->ctrl && tab->ctrl->HasToc() && gGlobalPrefs->showToc) {
-        FileState* fs = gFileHistory.FindByPath(fullPath);
-        if (!gGlobalPrefs->rememberStatePerDocument || !fs) {
-            tab->showToc = true;
-        } else {
-            tab->showToc = fs->showToc;
+    // A font reload may finish after the user switches to another tab.
+    if (!tab->reloadForEbookFontChange) {
+        tab->showToc = DefaultShowTocForPath(fullPath);
+        if (tab->ctrl && tab->ctrl->HasToc() && gGlobalPrefs->showToc) {
+            FileState* fs = gFileHistory.FindByPath(fullPath);
+            if (!gGlobalPrefs->rememberStatePerDocument || !fs) {
+                tab->showToc = true;
+            } else {
+                tab->showToc = fs->showToc;
+            }
         }
+        LoadTabSidebarView(tab);
     }
-    LoadTabSidebarView(tab);
     if (tab->ctrl && !tab->ctrl->HasToc() && (SidebarView)tab->sidebarView == SidebarView::Bookmarks) {
         if (tab->showToc && SidebarViewAvailable(win, SidebarView::Thumbnails)) {
             tab->sidebarView = (int)SidebarView::Thumbnails;
@@ -4425,6 +4507,19 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
         win->CurrentTab()->asyncLoadPending = false;
     }
 
+    WindowTab* reloadTab = win ? win->CurrentTab() : nullptr;
+    bool fontReload =
+        args->forceReuse && reloadTab && reloadTab->reloadForEbookFontChange && str::EqI(reloadTab->filePath, fullPath);
+    HWND outline = fontReload && win->tocTreeView ? win->tocTreeView->hwnd : nullptr;
+    bool outlineVisible = outline && IsWindowVisible(outline);
+    if (outlineVisible) SendMessageW(outline, WM_SETREDRAW, FALSE, 0);
+    defer {
+        if (outlineVisible && IsWindow(outline)) {
+            SendMessageW(outline, WM_SETREDRAW, TRUE, 0);
+            RedrawWindow(outline, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
+        }
+    };
+
     bool openNewTab = SettingsUseTabs() && !args->forceReuse;
     ReportIf(openNewTab && args->forceReuse);
 
@@ -4442,7 +4537,15 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
         if (openNewTab) {
             SaveCurrentWindowTab(args->win);
         }
-        CloseDocumentInCurrentTab(win, true, args->forceReuse);
+        if (fontReload) {
+            // ReplaceDocumentInCurrentTab swaps and releases the previous
+            // controller after initializing the new layout. Do not expose an
+            // unloaded tab between the two models.
+            FileWatcherUnsubscribe(reloadTab->watcher);
+            reloadTab->watcher = nullptr;
+        } else {
+            CloseDocumentInCurrentTab(win, true, args->forceReuse);
+        }
     }
     if (!args->forceReuse) {
         // insert a new tab for the loaded document
@@ -4470,7 +4573,7 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     }
 
     // TODO: stop remembering/restoring window positions when using tabs?
-    args->placeWindow = !SettingsUseTabs();
+    args->placeWindow = !fontReload && !SettingsUseTabs();
     bool lazyLoad = args->lazyLoad;
     if (!lazyLoad) {
         if (!IsMainWindowValid(win) || win->isBeingClosed) {
@@ -4571,6 +4674,20 @@ static const char* AsyncLoadingMessage(LoadArgs* args) {
     return str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(path));
 }
 
+static WindowTab* FindFontReloadProgressTab(NotificationWnd* notification) {
+    if (!notification) {
+        return nullptr;
+    }
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            if (tab->fontReloadProgressNotif == notification) {
+                return tab;
+            }
+        }
+    }
+    return nullptr;
+}
+
 static NotificationWnd* ShowLoadingNotif(MainWindow* win, LoadArgs* args) {
     NotificationCreateArgs nargs;
     nargs.hwndParent = win->hwndCanvas;
@@ -4585,7 +4702,20 @@ static NotificationWnd* ShowLoadingNotif(MainWindow* win, LoadArgs* args) {
     // during cold start when the new frame is not yet foreground).
     nargs.font = GetAppFontForHwnd(win->hwndCanvas);
     nargs.msg = AsyncLoadingMessage(args);
+    WindowTab* fontTab = args && args->showLoadingProgress ? win->CurrentTab() : nullptr;
+    if (fontTab) {
+        nargs.onRemoved = MkFunc1<WindowTab, NotificationWnd*>(
+            [](WindowTab* tab, NotificationWnd* removed) {
+                if (IsWindowTabValid(tab) && tab->fontReloadProgressNotif == removed) {
+                    tab->fontReloadProgressNotif = nullptr;
+                }
+            },
+            fontTab);
+    }
     NotificationWnd* wnd = ShowNotification(nargs);
+    if (fontTab) {
+        fontTab->fontReloadProgressNotif = wnd;
+    }
     RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
     UpdateTocFilterForDocumentLoading(win);
     return wnd;
@@ -4595,7 +4725,12 @@ static void UpdateAsyncLoadingProgress(NotificationWnd* wnd, LoadArgs* args, int
     if (!wnd || !args || !args->showLoadingProgress) {
         return;
     }
-    UpdateNotificationProgress(wnd, AsyncLoadingMessage(args), percent);
+    WindowTab* tab = FindFontReloadProgressTab(wnd);
+    if (tab && tab->fontReloadProgressNotif == wnd && tab->fontReloadProgressPending) {
+        UpdateEbookFontReloadProgress(tab, std::min(percent, 15));
+    } else {
+        UpdateNotificationProgress(wnd, AsyncLoadingMessage(args), percent);
+    }
 }
 
 // Create/select a tab and show the window before the (slow) engine load finishes.
@@ -4604,6 +4739,15 @@ static void PrepareLoadingTab(MainWindow* win, LoadArgs* args) {
         return;
     }
     const char* fullPath = args->FilePath();
+    WindowTab* reloadTab = win->CurrentTab();
+    if (args->forceReuse && reloadTab && reloadTab->reloadForEbookFontChange && reloadTab->ctrl &&
+        str::EqI(reloadTab->filePath, fullPath)) {
+        // Keep the old controller and chrome alive while the replacement is
+        // formatted. Publishing an empty document here rebuilds the menu,
+        // clears the outline and toggles toolbar controls on every size step.
+        reloadTab->asyncLoadPending = true;
+        return;
+    }
     bool openNewTab = SettingsUseTabs() && !args->forceReuse;
 
     if (win->IsCurrentTabAbout()) {
@@ -4805,8 +4949,14 @@ static void EarlyEngineDisplayUI(EarlyEngineDisplayTask* task) {
     LoadDocumentAsyncData* d = task->d;
     defer {
         if (d && d->wndNotif) {
-            UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
-            RemoveNotification(d->wndNotif);
+            WindowTab* tab = d->targetTab;
+            if (d->args->showLoadingProgress && tab && IsWindowTabValid(tab) && tab->fontReloadProgressPending &&
+                tab->fontReloadProgressNotif == d->wndNotif) {
+                UpdateEbookFontReloadProgress(tab, 15);
+            } else {
+                UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
+                RemoveNotification(d->wndNotif);
+            }
             d->wndNotif = nullptr;
         }
         // The worker completion ran reentrantly and left deletion to us.
@@ -4863,8 +5013,14 @@ static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
         return;
     }
     if (d->wndNotif) {
-        UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
-        RemoveNotification(d->wndNotif);
+        WindowTab* tab = d->targetTab;
+        if (d->args->showLoadingProgress && tab && IsWindowTabValid(tab) && tab->fontReloadProgressPending &&
+            tab->fontReloadProgressNotif == d->wndNotif) {
+            UpdateEbookFontReloadProgress(tab, 15);
+        } else {
+            UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
+            RemoveNotification(d->wndNotif);
+        }
         d->wndNotif = nullptr;
     }
 
@@ -4898,7 +5054,7 @@ static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
         if (failTab) {
             failTab->asyncLoadPending = false;
         }
-        FinishEbookFontAsyncReload(win, win->CurrentTab(), false);
+        FinishEbookFontAsyncReload(win, failTab, false);
         ShowErrorLoadingNotification(win, path, args->noSavePrefs);
         // re-sync win->ctrl with current tab after ShowErrorLoadingNotification
         // which can pump messages and change tab selection
@@ -4940,7 +5096,13 @@ static void UpdateLoadingNotifUI(ExtractProgressUITask* task) {
         msg = str::FormatTemp("%s (%d)", loading, task->nDecoded);
     }
     if (task->ebookFontSizeChange && task->nTotal > 0) {
-        UpdateNotificationProgress(task->wnd, loading, limitValue(CalcPerc(task->nDecoded, task->nTotal), 10, 95));
+        int percent = 10 + CalcPerc(task->nDecoded, task->nTotal) * 5 / 100;
+        WindowTab* tab = FindFontReloadProgressTab(task->wnd);
+        if (tab && tab->fontReloadProgressNotif == task->wnd) {
+            UpdateEbookFontReloadProgress(tab, percent);
+        } else {
+            UpdateNotificationProgress(task->wnd, loading, percent);
+        }
     } else {
         NotificationUpdateMessage(task->wnd, msg);
     }
@@ -5754,8 +5916,24 @@ void UpdateAfterEbookLayoutChange() {
     }
 }
 
+static void UpdateBookFontSize(const char* filePath) {
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            if (!str::EqI(tab->filePath, filePath) || !SupportsEbookFontSizeChange(tab)) continue;
+            if (tab == win->CurrentTab()) {
+                ApplyEbookFontSizeChangeToTab(win, tab);
+            } else {
+                CaptureFontReloadAnchor(tab);
+                SaveTabFontReloadScroll(tab, CaptureFontReloadScroll(tab), true);
+                tab->reloadOnFocus = true;
+            }
+        }
+    }
+}
+
 struct EbookFontSizeChangeTask {
     MainWindow* win = nullptr;
+    WindowTab* tab = nullptr;
     int pendingSteps = 0;
     HWND timerHwnd = nullptr;
 };
@@ -5811,23 +5989,17 @@ static void ApplyPendingEbookFontSizeChange() {
         gEbookFontSizeTaskPosted = false;
         return;
     }
-    while (steps != 0) {
-        int dir = steps > 0 ? 1 : -1;
-        if (!AdjustEbookFontSize(dir)) {
-            break;
-        }
-        steps -= dir;
-    }
-    WindowTab* tab = win->CurrentTab();
-    if (!tab || !SupportsEbookFontSizeChange(tab)) {
+    WindowTab* tab = gEbookFontSizeTask.tab;
+    if (win->CurrentTab() != tab || !SupportsEbookFontSizeChange(tab)) {
         gEbookFontSizeTaskPosted = false;
-        ScheduleEbookFontSizeChangeIfNeeded();
         return;
     }
-    // Font size is a global ebook preference. Reformat visible ebook tabs now
-    // and mark hidden tabs for one lazy reload when they are first activated.
-    // Multiple A+/A- presses collapse to the latest global value.
-    UpdateAfterEbookLayoutChange();
+    while (steps != 0) {
+        int dir = steps > 0 ? 1 : -1;
+        if (!AdjustEbookFontSize(dir, tab->filePath)) break;
+        steps -= dir;
+    }
+    UpdateBookFontSize(tab->filePath);
     SaveSettings();
     ToolbarUpdateStateForWindow(win, false);
     gEbookFontSizeTaskPosted = false;
@@ -5842,13 +6014,15 @@ void RequestEbookFontSizeChange(MainWindow* win, int direction) {
     if (!tab || !SupportsEbookFontSizeChange(tab)) {
         return;
     }
-    if (direction > 0 && !CanIncreaseEbookFontSize()) {
+    if (direction > 0 && !CanIncreaseEbookFontSize(tab->filePath)) {
         return;
     }
-    if (direction < 0 && !CanDecreaseEbookFontSize()) {
+    if (direction < 0 && !CanDecreaseEbookFontSize(tab->filePath)) {
         return;
     }
+    if (gEbookFontSizeTask.tab != tab) gEbookFontSizeTask.pendingSteps = 0;
     gEbookFontSizeTask.win = win;
+    gEbookFontSizeTask.tab = tab;
     gEbookFontSizeTask.pendingSteps += direction;
     ScheduleEbookFontSizeChangeIfNeeded();
 }
@@ -5866,10 +6040,10 @@ static void RequestEbookFontSizeReset(MainWindow* win) {
     }
     gEbookFontSizeTask = {};
     gEbookFontSizeTaskPosted = false;
-    if (!ResetEbookFontSize()) {
+    if (!ResetEbookFontSize(tab->filePath)) {
         return;
     }
-    UpdateAfterEbookLayoutChange();
+    UpdateBookFontSize(tab->filePath);
     SaveSettings();
     ToolbarUpdateStateForWindow(win, false);
 }
@@ -6050,6 +6224,7 @@ static void OnMenuExit() {
 // into the tab right afterwards and ReplaceDocumentInCurrentTab would revert
 // the UI disabling afterwards anyway)
 static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool deleteModel) {
+    EndFreeTextInPlaceEditForTab(win->CurrentTab(), true);
     if (win->ctrl && !WinCtrlIsOwnedByAnyTab(win, win->ctrl)) {
         win->ctrl = nullptr;
     }
@@ -6293,6 +6468,7 @@ static void ShowSaveAnnotationError(ShowErrorData* d, const char* err) {
 }
 
 bool SaveAnnotationsToExistingFile(WindowTab* tab) {
+    EndFreeTextInPlaceEditForTab(tab, true);
     if (!tab) {
         return false;
     }
@@ -6312,6 +6488,8 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
     AutoFreeStr savedPath(str::Dup(engine->FilePath()));
     const char* path = savedPath;
     bool hadEditAnnotationsBeforeSave = tab->editAnnotsWindow != nullptr;
+    int selectedPage = tab->selectedAnnotation ? tab->selectedAnnotation->pageNo : 0;
+    int selectedId = EngineMupdfAnnotationId(tab->selectedAnnotation);
     tab->ignoreNextAutoReload = true;
     ShowErrorData data{tab, path};
     auto fn = MkFunc1(ShowSaveAnnotationError, &data);
@@ -6362,10 +6540,21 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
             ShowEditAnnotationsWindow(tab, nullptr);
         }
     } else {
-        // In-place saving keeps this engine and its annotation objects alive.
-        // Reopening the whole PDF here blocks the UI and discards sidebar state.
-        NotifyAnnotationsChanged(tab->editAnnotsWindow);
-        ToolbarUpdateStateForWindow(tab->win, false);
+        // MuPDF's input still describes the pre-save xref. Reusing it for another
+        // incremental save can overwrite the previous revision and make /Prev
+        // refer to itself. Reopen, as upstream does, before further edits.
+        auto win = tab->win;
+        ReloadDocument(win, false);
+        tab = win->CurrentTab();
+        if (tab && tab->IsDocLoaded()) {
+            tab->ignoreNextAutoReload = true;
+            auto selected = EngineMupdfFindAnnotation(tab->GetEngine(), selectedPage, selectedId);
+            if (hadEditAnnotationsBeforeSave && !tab->editAnnotsWindow) {
+                ShowEditAnnotationsWindow(tab, selected);
+            }
+            if (selected) SetSelectedAnnotation(tab, selected);
+            ToolbarUpdateStateForWindow(win, false);
+        }
     }
 
     return true;
@@ -6385,6 +6574,7 @@ static void InvokeInverseSearch(WindowTab* tab) {
 
 // returns true if saved successully
 bool SaveAnnotationsToMaybeNewPdfFile(WindowTab* tab) {
+    EndFreeTextInPlaceEditForTab(tab, true);
     if (!tab) {
         return false;
     }
@@ -6791,6 +6981,7 @@ SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath, bo
 // if returns true, can proceed with closing
 // if returns false, should cancel closing
 static bool MaybeSaveAnnotations(WindowTab* tab) {
+    EndFreeTextInPlaceEditForTab(tab, true);
     if (!tab) {
         return true;
     }
@@ -8869,8 +9060,23 @@ void SetCurrentLanguageAndRefreshUI(const char* langCode) {
 
     for (MainWindow* win : gWindows) {
         RebuildMenuBarForWindow(win);
-        UpdateToolbarSidebarText(win);
         UpdateWindowRtlLayout(win);
+        UpdateToolbarSidebarText(win);
+        if (win->tocLabelWithClose) win->tocLabelWithClose->Layout();
+        if (win->favLabelWithClose) win->favLabelWithClose->Layout();
+        HWND sidebarWindows[] = {win->hwndTocBox, win->hwndFavBox, win->hwndSidebarThumbs, win->hwndAiSidebar};
+        for (HWND hwnd : sidebarWindows) {
+            if (hwnd) {
+                RedrawWindow(hwnd, nullptr, nullptr,
+                             RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
+            }
+        }
+        // Translated labels move the page controls. Erase their old positions
+        // and repaint every child, including the clipped page edit control.
+        if (win->hwndReBar) {
+            RedrawWindow(win->hwndReBar, nullptr, nullptr,
+                         RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+        }
         HideSelectionToolbar(win);
     }
 
@@ -9907,7 +10113,7 @@ static void AddUniquePageNo(Vec<int>& v, int pageNo) {
 
 // create one or more annotations from current selection
 // returns last created annotations
-static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs* args) {
+static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs* args, bool useRememberedStyle = true) {
     // converts current selection to annotation (or back to regular text
     // if it's already an annotation)
     DisplayModel* dm = tab->AsFixed();
@@ -9959,6 +10165,10 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
             return nullptr;
         }
         SetQuadPointsAsRect(annot, rects);
+        if (useRememberedStyle) {
+            ApplyRememberedPdfDrawStyle(annot);
+        }
+        RememberPdfDrawStyle(annot);
         annot->bounds = GetBounds(annot);
         created.Append(CreatedMarkup{pageNo, annot});
     }
@@ -10589,6 +10799,11 @@ static void MaybeRunTocDragBench(MainWindow* win) {
     logfa("TOC-DRAG-BENCH end");
 }
 
+static void DeferredReloadTocTree(MainWindow* win) {
+    if (!IsMainWindowValid(win) || win->isBeingClosed || !win->ctrl || !win->tocVisible) return;
+    LoadTocTree(win);
+}
+
 static void DeferredLoadTocTree(MainWindow* win) {
     if (!IsMainWindowValid(win) || win->isBeingClosed) {
         return;
@@ -10653,7 +10868,8 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         // Defer TreeView population so the first page can paint before a large
         // bookmark list is inserted. GetToc() is preferably pre-warmed on the
         // load thread (see LoadDocumentAsync); this post only attaches the UI.
-        auto fn = MkFunc0<MainWindow>(DeferredLoadTocTree, win);
+        auto fn = MkFunc0<MainWindow>(
+            tab && tab->reloadForEbookFontChange ? DeferredReloadTocTree : DeferredLoadTocTree, win);
         uitask::Post(fn, "DeferredLoadToc");
     }
 
@@ -13113,7 +13329,8 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 }
                 return 0;
             }
-            lastCreatedAnnot = MakeAnnotationsFromSelection(tab, &args);
+            bool builtinStyle = !cmd || cmd->id == cmd->origId;
+            lastCreatedAnnot = MakeAnnotationsFromSelection(tab, &args, builtinStyle);
             if (cmd) {
                 // for custom commands must explicitly provide "openedit" argument
                 openAnnotationEdit = GetCommandBoolArg(cmd, kCmdArgOpenEdit, false);
@@ -13149,8 +13366,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             HWND cmdHwnd = (HWND)lp;
             bool fromToolbar = cmdHwnd == win->hwndToolbar || lp == 0;
             if (fromToolbar &&
-                (cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotSquare || cmdId == CmdCreateAnnotCircle ||
-                 cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk || cmdId == CmdCreateAnnotStamp)) {
+                (cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotSquare ||
+                 cmdId == CmdCreateAnnotCircle || cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk ||
+                 cmdId == CmdCreateAnnotStamp)) {
                 bool canQuickAnnot = EbookAnnotationsSupported(tab);
                 if (!canQuickAnnot) {
                     EngineBase* engine = dm->GetEngine();
@@ -13181,13 +13399,14 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                     win->ebookAnnotationDragPending = nullptr;
                     ClearMouseState(win);
                     bool enterEdit = annotType == AnnotationType::Stamp || annotType == AnnotationType::FreeText;
+                    bool selectInList = enterEdit || AnnotationsSidebarIsShowing(tab);
                     if (annotType == AnnotationType::Stamp) {
                         tab->selectedEbookAnnotation = annotation;
                     }
-                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, enterEdit ? annotation : nullptr);
+                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, selectInList ? annotation : nullptr);
                     MainWindowRerender(win);
                     if (annotType == AnnotationType::FreeText) {
-                        ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
+                        StartEbookFreeTextInPlaceEdit(win, annotation);
                     }
                 }
                 return 0;
@@ -13219,6 +13438,12 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             AnnotCreateArgs args{annotType};
             SetAnnotCreateArgs(args, cmd);
             lastCreatedAnnot = EngineMupdfCreateAnnotation(engine, pageNoUnderCursor, ptOnPage, &args);
+            if (lastCreatedAnnot && (!cmd || cmd->id == cmd->origId)) {
+                ApplyRememberedPdfDrawStyle(lastCreatedAnnot);
+            }
+            if (lastCreatedAnnot) {
+                RememberPdfDrawStyle(lastCreatedAnnot);
+            }
             openAnnotationEdit = GetCommandBoolArg(cmd, kCmdArgOpenEdit, false);
         } break;
 
@@ -13320,17 +13545,17 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             return 0;
         }
         case AnnotationType::FreeText: {
-            // for FreeText you want to edit text so show edit window
-            ShowEditAnnotationsWindow(tab, lastCreatedAnnot, focusTarget);
+            SetSelectedAnnotation(tab, lastCreatedAnnot);
+            StartFreeTextInPlaceEdit(win, lastCreatedAnnot);
             return 0;
         } break;
     }
 
-    // Stamp stays selected so it can be moved. Other new marks are finished;
-    // they are not put into edit mode.
-    if (lastCreatedAnnot->type == AnnotationType::Stamp) {
+    // Stamp stays selected so it can be moved. With the annotation sidebar
+    // open, every new mark is selected in the list. Closed sidebar leaves
+    // finished marks out of edit mode.
+    if (lastCreatedAnnot->type == AnnotationType::Stamp || AnnotationsSidebarIsShowing(tab)) {
         SetSelectedAnnotation(tab, lastCreatedAnnot);
-        return 0;
     }
     MainWindowRerenderAnnotationChange(win, lastCreatedAnnot->pageNo, lastCreatedAnnot);
     ToolbarUpdateStateForWindow(win, false);
@@ -16811,14 +17036,6 @@ static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     AppendMenuW(menu, canDeskew ? MF_STRING : MF_STRING | MF_GRAYED, CmdDeskewAllScannedPages,
                 ToWStrTemp(_TRA("Deskew All Scanned Pages")));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    UINT deskewFlags = MF_STRING;
-    if (gGlobalPrefs && gGlobalPrefs->ocrDeskew) {
-        deskewFlags |= MF_CHECKED;
-    }
-    if (!canOcr || !canDeskew) {
-        deskewFlags |= MF_GRAYED;
-    }
-    AppendMenuW(menu, deskewFlags, CmdToggleOcrDeskew, ToWStrTemp(_TRA("Deskew during OCR")));
     UINT autoSaveFlags = MF_STRING;
     if (gGlobalPrefs && gGlobalPrefs->ocrAutoSave) {
         autoSaveFlags |= MF_CHECKED;

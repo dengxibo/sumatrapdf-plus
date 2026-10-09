@@ -59,6 +59,8 @@ typedef struct
 	char *dc_title, *dc_creator;
 	epub_accelerator *accel;
 	uint32_t user_css_sum; /* cached checksum of current user_css */
+	uint64_t style_epoch; /* invalidate chapter HTML lazily after CSS changes */
+	uint64_t geometry_style_epoch, previous_geometry_style_epoch;
 
 	/* A common pattern of use is for us to open a document,
 	 * load a page, draw it, drop it, load the next page,
@@ -77,6 +79,7 @@ struct epub_chapter
 	epub_document *doc;
 	char *path;
 	int number;
+	uint64_t style_epoch;
 };
 
 struct epub_page
@@ -265,16 +268,19 @@ epub_resolve_link(fz_context *ctx, fz_document *doc_, const char *dest)
 static void
 epub_style(fz_context *ctx, fz_document *doc_)
 {
-	epub_document *doc = (epub_document*)doc_;
+    epub_document* doc = (epub_document*)doc_;
 
-	doc->user_css_sum = checksum_css(ctx, doc->super.user_css);
+    doc->user_css_sum = checksum_css(ctx, doc->super.user_css);
 
-	// new user style sheet applied, we need to reparse the html
-	fz_purge_stored_html(ctx, doc);
-	fz_drop_html(ctx, doc->most_recent_html);
-	doc->most_recent_html = NULL;
+    /* Avoid destroying every chapter on the UI thread. Each chapter replaces
+     * its old HTML on first access; the bounded store can evict it normally. */
+    doc->style_epoch++;
+    doc->previous_geometry_style_epoch = doc->geometry_style_epoch;
+    doc->geometry_style_epoch = doc->style_epoch;
+    fz_drop_html(ctx, doc->most_recent_html);
+    doc->most_recent_html = NULL;
 
-	// Note: the accelerator will be checked in the layout call which always happens directly after style
+    // Note: the accelerator will be checked in the layout call which always happens directly after style
 }
 
 static void
@@ -451,35 +457,60 @@ epub_load_chapter(fz_context *ctx, epub_document *doc, const char *path, int i)
 		fz_rethrow(ctx);
 	}
 
-	return ch;
+        return ch;
 }
 
-static fz_html *
-epub_parse_chapter(fz_context *ctx, epub_document *doc, epub_chapter *ch)
-{
-	fz_archive *zip = doc->zip;
-	fz_buffer *buf;
-	char base_uri[2048];
-	fz_html *html;
+static fz_html* epub_parse_chapter_colors(fz_context* ctx, epub_document* doc, epub_chapter* ch) {
+    fz_archive* zip = doc->zip;
+    fz_buffer* buf;
+    char base_uri[2048];
+    fz_html* html;
 
-	/* Look for one we made earlier */
-	html = fz_find_html(ctx, doc, ch->number);
-	if (html)
-		return html;
+    fz_dirname(base_uri, ch->path, sizeof base_uri);
 
-	fz_dirname(base_uri, ch->path, sizeof base_uri);
+    buf = fz_try_read_archive_entry(ctx, zip, ch->path);
+    if (!buf)
+        buf = fz_new_buffer_from_printf(ctx, "<html><body><p><i>ERROR: cannot find chapter %<</i></p></body></html>",
+                                        ch->path);
+    fz_try(ctx) html = fz_parse_html(ctx, doc->set, zip, base_uri, buf, doc->super.user_css, 1, 1,
+                                     FZ_HTML_FLAVOR_DEFAULT, doc->super.publisher_css);
+    fz_always(ctx) fz_drop_buffer(ctx, buf);
+    fz_catch(ctx) fz_rethrow(ctx);
 
-	buf = fz_try_read_archive_entry(ctx, zip, ch->path);
-	if (!buf)
-		buf = fz_new_buffer_from_printf(ctx, "<html><body><p><i>ERROR: cannot find chapter %<</i></p></body></html>", ch->path);
-	fz_try(ctx)
-		html = fz_parse_html(ctx, doc->set, zip, base_uri, buf, doc->super.user_css, 1, 1, FZ_HTML_FLAVOR_DEFAULT, doc->super.publisher_css);
-	fz_always(ctx)
-		fz_drop_buffer(ctx, buf);
-	fz_catch(ctx)
-		fz_rethrow(ctx);
+    return html;
+}
 
-	return fz_store_html(ctx, html, doc, ch->number);
+static fz_html* epub_parse_chapter(fz_context* ctx, epub_document* doc, epub_chapter* ch) {
+    fz_html* html = fz_find_html(ctx, doc, ch->number);
+    fz_html* colors = NULL;
+    fz_var(html);
+    fz_var(colors);
+    if (html && ch->style_epoch == doc->style_epoch) return html;
+    fz_try(ctx) {
+        colors = epub_parse_chapter_colors(ctx, doc, ch);
+        if (html && ch->style_epoch >= doc->geometry_style_epoch && fz_recolor_html(ctx, html, colors)) {
+            if (getenv("SUMATRA_EPUB_THEME_BENCH"))
+                fz_warn(ctx, "EPUB palette: retained chapter %d layout", ch->number);
+            /* Preserve the old tree, glyph positions, page runs and layout dimensions. */
+            fz_drop_html(ctx, colors);
+            colors = NULL;
+        } else {
+            if (html && getenv("SUMATRA_EPUB_THEME_BENCH"))
+                fz_warn(ctx, "EPUB palette: rebuilt chapter %d layout", ch->number);
+            fz_drop_html(ctx, html);
+            html = NULL;
+            fz_purge_stored_html_chapter(ctx, doc, ch->number);
+            html = fz_store_html(ctx, colors, doc, ch->number);
+            colors = NULL;
+        }
+        ch->style_epoch = doc->style_epoch;
+    }
+    fz_catch(ctx) {
+        fz_drop_html(ctx, colors);
+        fz_drop_html(ctx, html);
+        fz_rethrow(ctx);
+    }
+    return html;
 }
 
 static fz_html *
@@ -1320,7 +1351,29 @@ as_epub_document(fz_context *ctx, fz_document *doc_)
 		return NULL;
 	if (strcmp(format, "EPUB") != 0)
 		return NULL;
-	return (epub_document *)doc_;
+        return (epub_document*)doc_;
+}
+
+/* Palette-only CSS does not change pagination. Keep the accelerator valid
+ * as well as the caller's page map: resolving an in-page link otherwise counts
+ * every preceding chapter synchronously after the first theme toggle. */
+void fz_epub_preserve_palette_page_counts(fz_context* ctx, fz_document* doc_) {
+    epub_document* doc = as_epub_document(ctx, doc_);
+    if (!doc || !doc->accel) return;
+    epub_accelerator* acc = doc->accel;
+    if (acc->layout_w == doc->super.layout_w && acc->layout_h == doc->super.layout_h &&
+        acc->layout_em == doc->super.layout_em && acc->publisher_css == doc->super.publisher_css) {
+        /* fz_style_document defers its callback until the next page access.
+         * Apply it here before updating the accelerator checksum; otherwise
+         * ensure_accelerator sees the old checksum and invalidates all pages. */
+        if (doc->super.did_style == FZ_STYLE_NEEDS_UPDATE) {
+            epub_style(ctx, doc_);
+            doc->geometry_style_epoch = doc->previous_geometry_style_epoch;
+            doc->super.did_style = FZ_STYLE_APPLIED;
+        }
+        acc->user_css_sum = doc->user_css_sum;
+        doc->super.did_layout = FZ_LAYOUT_APPLIED;
+    }
 }
 
 /* SumatraPDF Plus: spine index of the chapter whose archive path is path, or -1. */

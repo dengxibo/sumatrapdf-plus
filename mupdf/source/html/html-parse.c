@@ -867,6 +867,7 @@ static fz_html_box *new_box(fz_context *ctx, struct genstate *g, fz_xml *node, i
 #endif
 
 	box->style = fz_css_enlist(ctx, style, &g->styles, g->pool);
+	box->palette_style = NULL;
 
 	if (tag)
 	{
@@ -2946,31 +2947,58 @@ html_filter_store(fz_context *ctx, void *doc, void *key_)
 	return (doc == key->doc);
 }
 
-void fz_purge_stored_html(fz_context *ctx, void *doc)
-{
-	fz_filter_store(ctx, html_filter_store, doc, &fz_html_store_type);
+void fz_purge_stored_html(fz_context* ctx, void* doc) {
+    fz_filter_store(ctx, html_filter_store, doc, &fz_html_store_type);
 }
 
-typedef struct {
-	void *doc;
-	int chapter;
-} fz_html_chapter_filter;
-
-static int
-html_filter_chapter(fz_context *ctx, void *arg, void *key_)
-{
-	fz_html_chapter_filter *filter = (fz_html_chapter_filter *)arg;
-	fz_html_key *key = (fz_html_key *)key_;
-
-	if (filter->doc != key->doc)
-		return 0;
-	return key->chapter_num == filter->chapter;
+static void copy_palette(fz_css_style* dst, const fz_css_style* src) {
+    dst->color = src->color;
+    dst->background_color = src->background_color;
+    dst->text_fill_color = src->text_fill_color;
+    dst->text_stroke_color = src->text_stroke_color;
+    memcpy(dst->border_color, src->border_color, sizeof dst->border_color);
 }
 
-void fz_purge_stored_html_chapter(fz_context *ctx, void *doc, int chapter)
-{
-	fz_html_chapter_filter filter = { doc, chapter };
-	fz_filter_store(ctx, html_filter_chapter, &filter, &fz_html_store_type);
+/* Validate the entire tree before touching colors. The parser may change box
+ * structure for geometry CSS; never reuse layout in that case. */
+static int matching_palette_boxes(fz_html_box* a, fz_html_box* b) {
+    while (a && b) {
+        fz_css_style sa = *a->style, sb = *b->style;
+        copy_palette(&sa, &sb);
+        if (a->type != b->type || strcmp(a->tag, b->tag) || memcmp(&sa, &sb, sizeof sa)) return 0;
+        if (!matching_palette_boxes(a->down, b->down)) return 0;
+        a = a->next;
+        b = b->next;
+    }
+    return a == b;
+}
+
+static void recolor_boxes(fz_context* ctx, fz_pool* pool, fz_html_box* dst, fz_html_box* src) {
+    for (; dst; dst = dst->next, src = src->next) {
+        if (!dst->palette_style) {
+            dst->palette_style = fz_pool_alloc(ctx, pool, sizeof *dst->palette_style);
+            *dst->palette_style = *dst->style;
+            dst->style = dst->palette_style;
+        }
+        copy_palette(dst->palette_style, src->style);
+        recolor_boxes(ctx, pool, dst->down, src->down);
+    }
+}
+
+int fz_recolor_html(fz_context* ctx, fz_html* html, fz_html* colors) {
+    if (!matching_palette_boxes(html->tree.root, colors->tree.root)) return 0;
+    recolor_boxes(ctx, html->tree.pool, html->tree.root, colors->tree.root);
+    return 1;
+}
+
+/* Remove by the existing (document, chapter) hash key instead of scanning
+ * every image/font/HTML item in the shared store. */
+void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter) {
+    fz_html_key key;
+    key.refs = 1;
+    key.doc = doc;
+    key.chapter_num = chapter;
+    fz_remove_item(ctx, &fz_drop_html_imp, &key, &fz_html_store_type);
 }
 
 static void

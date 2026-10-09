@@ -23,6 +23,8 @@
 #include "DocumentEnhancer.h"
 #include "DisplayModel.h"
 #include "RenderCache.h"
+#include "Theme.h"
+#include "PdfDarkMode.h"
 
 static BYTE gFilterLut[256];
 static int gLutBrightness = INT_MIN;
@@ -69,6 +71,8 @@ static void RebuildDisplayFilterLut(int brightness, int contrast) {
     }
 }
 
+static bool IsNativeTextBookEngine(EngineBase* engine);
+
 static DisplayFilterParams ClampParams(DisplayFilterParams p) {
     if ((int)p.mode < 0 || (int)p.mode > (int)DocumentEnhancementMode::Auto) {
         p.mode = DocumentEnhancementMode::Off;
@@ -84,10 +88,11 @@ DisplayFilterParams GetDisplayFilterForTab(WindowTab* tab) {
     if (!tab) {
         return p;
     }
-    // Non-PDF: never apply enhancement, even if FileState still has it on.
+    // Pictures and comics: never apply enhancement, even if FileState still has it on.
     if (!DisplayFilterSupportedForTab(tab)) {
         return p;
     }
+    p.themedBitmap = IsNativeTextBookEngine(tab->GetEngine());
     p.mode = (DocumentEnhancementMode)tab->displayFilterMode;
     p.brightness = tab->displayFilterBrightness;
     p.contrast = tab->displayFilterContrast;
@@ -99,11 +104,37 @@ DisplayFilterParams GetDisplayFilterForTab(WindowTab* tab) {
     return ClampParams(p);
 }
 
+// Books whose pages are real text (EPUB and the same kind of file), not scans or pictures.
+static bool IsNativeTextBookEngine(EngineBase* engine) {
+    if (!engine || engine->IsImageCollection()) {
+        return false;
+    }
+    if (engine->kind == kindEngineMobi || engine->kind == kindEngineEpub || engine->kind == kindEngineFb2 ||
+        engine->kind == kindEnginePdb || engine->kind == kindEngineHtml || engine->kind == kindEngineTxt ||
+        engine->kind == kindEngineChm) {
+        return true;
+    }
+    if (engine->kind != kindEngineMupdf) {
+        return false;
+    }
+    const char* ext = engine->defaultExt;
+    if (!ext || str::EqI(ext, ".pdf") || str::EqI(ext, ".xps") || str::EqI(ext, ".oxps")) {
+        return false;
+    }
+    return true;
+}
+
 bool DisplayFilterSupportedForEngine(EngineBase* engine) {
     if (!engine || engine->IsImageCollection()) {
         return false;
     }
-    return engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
+    if (engine->kind == kindEngineMupdf) {
+        const char* ext = engine->defaultExt;
+        if (ext && (str::EqI(ext, ".pdf") || str::EqI(ext, ".xps") || str::EqI(ext, ".oxps"))) {
+            return true;
+        }
+    }
+    return IsNativeTextBookEngine(engine);
 }
 
 bool DisplayFilterSupportedForTab(WindowTab* tab) {
@@ -268,6 +299,28 @@ static void ApplySharpenToDibBits(BYTE* bits, int width, int height, int stride,
     free(src);
 }
 
+// Dark CSS / dark reader colors are already in the bitmap. Warm and original stay light paper.
+static bool ThemedBookPageIsDark() {
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        return false;
+    }
+    return IsDarkThemeSelected() || ThemeUsesDarkChrome();
+}
+
+static void RunDisplayEnhancement(BYTE* bits, int width, int height, int stride, const DisplayFilterParams& p) {
+    if (p.mode == DocumentEnhancementMode::Legacy) {
+        RebuildDisplayFilterLut(p.brightness, p.contrast);
+        ApplyLutToDibBits(bits, width, height, stride);
+        ApplySharpenToDibBits(bits, width, height, stride, p.sharpness);
+        return;
+    }
+    DocumentEnhancementParams ep = BuildEnhancementParams(p.mode, p.brightness, p.contrast, p.sharpness);
+    if (p.themedBitmap && ThemedBookPageIsDark()) {
+        ep.disablePaperNormalize = true;
+    }
+    ApplyDocumentEnhancement(bits, width, height, stride, ep, nullptr);
+}
+
 bool BlitWithDisplayFilter(HDC hdcDst, int xDst, int yDst, int dxDst, int dyDst, HDC hdcSrc, int xSrc, int ySrc,
                            int dxSrc, int dySrc, const DisplayFilterParams& pIn) {
     if (dxDst <= 0 || dyDst <= 0 || dxSrc <= 0 || dySrc <= 0) {
@@ -320,15 +373,7 @@ bool BlitWithDisplayFilter(HDC hdcDst, int xDst, int yDst, int dxDst, int dyDst,
         if (GetObjectW(dib, sizeof(bm), &bm) && bm.bmWidthBytes > 0) {
             stride = bm.bmWidthBytes;
         }
-        if (p.mode == DocumentEnhancementMode::Legacy) {
-            // Keep the original RGB LUT + RGB Laplacian path for A/B.
-            RebuildDisplayFilterLut(p.brightness, p.contrast);
-            ApplyLutToDibBits((BYTE*)bits, dxDst, dyDst, stride);
-            ApplySharpenToDibBits((BYTE*)bits, dxDst, dyDst, stride, p.sharpness);
-        } else {
-            DocumentEnhancementParams ep = BuildEnhancementParams(p.mode, p.brightness, p.contrast, p.sharpness);
-            ApplyDocumentEnhancement((uint8_t*)bits, dxDst, dyDst, stride, ep, nullptr);
-        }
+        RunDisplayEnhancement((BYTE*)bits, dxDst, dyDst, stride, p);
         ok = BitBlt(hdcDst, xDst, yDst, dxDst, dyDst, tmpDC, 0, 0, SRCCOPY);
     }
     SelectObject(tmpDC, old);
@@ -395,14 +440,7 @@ RenderedBitmap* CreateDisplayFilteredBitmap(RenderedBitmap* src, const DisplayFi
     if (GetObjectW(dib, sizeof(bm), &bm) && bm.bmWidthBytes > 0) {
         stride = bm.bmWidthBytes;
     }
-    if (p.mode == DocumentEnhancementMode::Legacy) {
-        RebuildDisplayFilterLut(p.brightness, p.contrast);
-        ApplyLutToDibBits((BYTE*)bits, sz.dx, sz.dy, stride);
-        ApplySharpenToDibBits((BYTE*)bits, sz.dx, sz.dy, stride, p.sharpness);
-    } else {
-        DocumentEnhancementParams ep = BuildEnhancementParams(p.mode, p.brightness, p.contrast, p.sharpness);
-        ApplyDocumentEnhancement((uint8_t*)bits, sz.dx, sz.dy, stride, ep, nullptr);
-    }
+    RunDisplayEnhancement((BYTE*)bits, sz.dx, sz.dy, stride, p);
     return new RenderedBitmap(dib, sz);
 }
 

@@ -478,6 +478,15 @@ const annotations: Field[] = [
   ),
   setVersion(mkField("FreeTextSize", Int, 21, "size of free text annotation"), "3.5"),
   setVersion(mkField("FreeTextBorderWidth", Int, 1, "width of free text annotation border"), "3.5"),
+  setVersion(
+    mkField(
+      "FreeTextRecentFonts",
+      Str,
+      "",
+      "up to three recently chosen free text fonts, newest first, separated by |",
+    ),
+    "3.7",
+  ),
   mkField("TextIconColor", Color, "", "text icon annotation color"),
   mkField(
     "TextIconType",
@@ -611,6 +620,7 @@ const fileSettings: Field[] = [
     "which sidebar view was showing for this document: bookmarks, thumbnails, or favorites",
   ),
   mkField("SidebarDx", Int, 0, "width of the left sidebar panel containing the table of contents"),
+  mkField("EbookFontSize", Float, 0, "ebook font size for this file; 0 inherits the reading options default"),
   mkField(
     "DisplayR2L",
     Bool,

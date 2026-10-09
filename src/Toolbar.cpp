@@ -41,6 +41,7 @@ extern "C" {
 #include "TextToSpeech.h"
 #include "EbookFontConfig.h"
 #include "EbookFontMenu.h"
+#include "EbookAnnotations.h"
 
 #include "Translations.h"
 #include "SvgIcons.h"
@@ -83,6 +84,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Print, CmdPrint, _TRN("Print")},
     {TbIcon::None, 0, nullptr},
     {TbIcon::None, PageInfoId, nullptr}, // text box for page number + show current page / no of pages
+    {TbIcon::None, 0, nullptr},
     {TbIcon::PagePrev, CmdGoToPrevPage, _TRN("Previous Page")},
     {TbIcon::PageNext, CmdGoToNextPage, _TRN("Next Page")},
     {TbIcon::NavigateBack, CmdNavigateBack, _TRN("Navigate Back")},
@@ -104,6 +106,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotFreeText, CmdCreateAnnotFreeText, _TRN("Free Text")},
     {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp")},
     {TbIcon::AnnotSignature, CmdAddHandwrittenSignature, _TRN("Handwritten Signature")},
     {TbIcon::None, 0, nullptr},
@@ -340,7 +343,7 @@ void UpdateDisplayFilterToolbarTip(MainWindow* win) {
     WindowTab* tab = win->CurrentTab();
     const char* tip = _TRN("Enable Enhance Display");
     if (!DisplayFilterSupportedForTab(tab)) {
-        tip = _TRN("Enhance Display is only available for PDF");
+        tip = _TRN("Enhance Display is not available for this document");
     } else if (GetDisplayFilterForTab(tab).IsActive()) {
         tip = _TRN("Enhance Display is enabled");
     }
@@ -430,8 +433,15 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdSetPdfDocumentColorModeLight:
             return NeedsDocumentColorModeUI(win);
         case CmdDisplayFilter:
-            // Keep visible; gray out for non-PDF via IsCmdEnabled.
+            // Keep visible; gray out for pictures and comics via IsCmdEnabled.
             return true;
+        case CmdCreateAnnotFreeText:
+            if (!gGlobalPrefs->showAnnotToolbarButtons || !win->AsFixed() ||
+                (!EngineSupportsAnnotations(win->AsFixed()->GetEngine()) &&
+                 !EbookAnnotationsSupported(win->CurrentTab()))) {
+                return false;
+            }
+            break;
         case CmdCreateAnnotText:
         case CmdCreateAnnotSquare:
         case CmdCreateAnnotCircle:
@@ -467,9 +477,11 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
         case CmdToggleLightDarkTheme:
             return true;
         case CmdEbookFontSizeDecrease:
-            return SupportsEbookFontSizeChange(win->CurrentTab()) && CanDecreaseEbookFontSize();
+            return SupportsEbookFontSizeChange(win->CurrentTab()) &&
+                   CanDecreaseEbookFontSize(win->CurrentTab()->filePath);
         case CmdEbookFontSizeIncrease:
-            return SupportsEbookFontSizeChange(win->CurrentTab()) && CanIncreaseEbookFontSize();
+            return SupportsEbookFontSizeChange(win->CurrentTab()) &&
+                   CanIncreaseEbookFontSize(win->CurrentTab()->filePath);
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
@@ -623,12 +635,16 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
 
 // TODO: this is called too often
 // TODO: also set checked state instead of calling SetToolbarButtonCheckedState() all over
-void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
+void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility, bool pageChangeOnly) {
     HWND hwnd = win->hwndToolbar;
     int n = TotalButtonsCount();
     for (int i = 0; i < n; i++) {
         auto& tb = GetToolbarButtonInfoByIdx(i);
         int cmdId = tb.cmdId;
+        if (pageChangeOnly && cmdId != CmdGoToPrevPage && cmdId != CmdGoToNextPage && cmdId != CmdNavigateBack &&
+            cmdId != CmdNavigateForward && cmdId != CmdReadAloud && cmdId != CmdPauseReadAloud) {
+            continue;
+        }
         if (setButtonsVisibility && cmdId != WarningMsgId && cmdId != 0) {
             // Document capabilities affect enabled state, not toolbar geometry.
             // Still honor the explicit preference to hide annotation tools.
@@ -640,7 +656,35 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         if (SkipBuiltInButton(tb)) {
             continue;
         }
-        bool isEnabled = IsCmdAvailable(win, cmdId) && IsCmdEnabled(win, cmdId);
+        bool isEnabled;
+        if (pageChangeOnly) {
+            // These controls depend only on navigation/session state. Building
+            // a menu context here hit-tests links/images and annotations, which
+            // can block the animation thread behind PDF page loading/rendering.
+            isEnabled = win->IsDocLoaded();
+            if (isEnabled) {
+                switch (cmdId) {
+                    case CmdGoToPrevPage:
+                        isEnabled = win->ctrl->CurrentPageNo() > 1;
+                        break;
+                    case CmdGoToNextPage:
+                        isEnabled = win->ctrl->CurrentPageNo() < win->ctrl->PageCount();
+                        break;
+                    case CmdNavigateBack:
+                        isEnabled = win->ctrl->CanNavigate(-1);
+                        break;
+                    case CmdNavigateForward:
+                        isEnabled = win->ctrl->CanNavigate(1);
+                        break;
+                    case CmdPauseReadAloud:
+                        isEnabled = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(win->CurrentTab()) ||
+                                    PdfPageAudioIsPlayingInTab(win->CurrentTab());
+                        break;
+                }
+            }
+        } else {
+            isEnabled = IsCmdAvailable(win, cmdId) && IsCmdEnabled(win, cmdId);
+        }
         UpdateToolbarButtonStateByIdx(hwnd, i, isEnabled, TBSTATE_ENABLED);
 
         if (cmdId == CmdReadAloud || cmdId == CmdPauseReadAloud) {
@@ -697,7 +741,7 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
     }
 
     // update dirty (unsaved annotations) flag and tooltip on each tab
-    if (win->tabsCtrl) {
+    if (!pageChangeOnly && win->tabsCtrl) {
         int nTabs = win->TabCount();
         for (int i = 0; i < nTabs; i++) {
             WindowTab* tab = win->GetTab(i);
@@ -1483,7 +1527,7 @@ static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
 
     HMENU menu = CreatePopupMenu();
     UINT flags = MF_STRING;
-    if (!UsesNonDefaultEbookFontSize()) {
+    if (!UsesNonDefaultEbookFontSize(win->CurrentTab()->filePath)) {
         flags |= MF_DISABLED | MF_GRAYED;
     }
     AppendMenuW(menu, flags, CmdEbookFontSizeReset, ToWStrTemp(_TRA("Reset Font Si&ze to Default")));
@@ -1496,6 +1540,24 @@ static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
         SendMessageW(win->hwndFrame, WM_COMMAND, cmdId, 0);
     }
     return true;
+}
+
+// The toolbar paints through a memory DC. WS_CLIPCHILDREN is supposed to keep
+// that blit off the page box and the search field, but the left column of the
+// search field still comes out chrome until something repaints the field.
+static void ExcludeToolbarChild(HDC hdc, HWND toolbar, HWND child) {
+    if (!hdc || !toolbar || !child || !IsWindowVisible(child)) {
+        return;
+    }
+    RECT rc{};
+    if (!GetWindowRect(child, &rc)) {
+        return;
+    }
+    MapWindowPoints(nullptr, toolbar, (LPPOINT)&rc, 2);
+    if (rc.right <= rc.left || rc.bottom <= rc.top) {
+        return;
+    }
+    ExcludeClipRect(hdc, rc.left, rc.top, rc.right, rc.bottom);
 }
 
 static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1525,6 +1587,14 @@ static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             // and are clipped out of the final blit by WS_CLIPCHILDREN.
             CallWindowProc(DefWndProcToolbar, hwnd, WM_PRINTCLIENT, (WPARAM)memDC, PRF_CLIENT);
             PaintToolbarGroupSeparatorLines(hwnd, memDC);
+            MainWindow* paintWin = FindMainWindowByHwnd(hwnd);
+            if (paintWin) {
+                ExcludeToolbarChild(hdc, hwnd, paintWin->hwndPageLabel);
+                ExcludeToolbarChild(hdc, hwnd, paintWin->hwndPageBg);
+                ExcludeToolbarChild(hdc, hwnd, paintWin->hwndPageEdit);
+                ExcludeToolbarChild(hdc, hwnd, paintWin->hwndPageTotal);
+                ExcludeToolbarChild(hdc, hwnd, paintWin->hwndToolbarFind);
+            }
             buffer.Flush(hdc, &ps.rcPaint);
         }
         EndPaint(hwnd, &ps);
@@ -1775,6 +1845,7 @@ void UpdateAnnotToolToolbarButtons(MainWindow* win) {
         return;
     }
     // Clear all first so stale per-button toggles cannot stack checked state.
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotFreeText, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotText, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotSquare, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotCircle, false);
@@ -1782,8 +1853,8 @@ void UpdateAnnotToolToolbarButtons(MainWindow* win) {
     SetToolbarButtonCheckedState(win, CmdCreateAnnotInk, false);
     SetToolbarButtonCheckedState(win, CmdAddHandwrittenSignature, HandwrittenSignatureIsPlacing(win));
     int active = win->annotCreateToolCmd;
-    if (active == CmdCreateAnnotText || active == CmdCreateAnnotSquare || active == CmdCreateAnnotCircle ||
-        active == CmdCreateAnnotLine || active == CmdCreateAnnotInk) {
+    if (active == CmdCreateAnnotFreeText || active == CmdCreateAnnotText || active == CmdCreateAnnotSquare ||
+        active == CmdCreateAnnotCircle || active == CmdCreateAnnotLine || active == CmdCreateAnnotInk) {
         SetToolbarButtonCheckedState(win, active, true);
     }
 }
@@ -1947,46 +2018,24 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
         currY = 0;
     }
 
-    TempStr txt = nullptr;
-    Size size2;
-    Size minSize = HwndMeasureText(win->hwndPageTotal, "999 / 999");
-    minSize.dx += padX;
-    int labelDx = 0;
-    if (-1 == pageCount) {
-#if 0
-        // preserve hwndPageTotal's text and size
-        txt = HwndGetTextTemp(win->hwndPageTotal);
-        size2 = ClientRect(win->hwndPageTotal).Size();
-        size2.dx -= padX;
-        size2.dx -= DpiScale(win->hwndFrame, kButtonSpacingX);
-#endif
-        // hack: https://github.com/sumatrapdfreader/sumatrapdf/issues/4475
-        txt = (TempStr) " ";
-        minSize.dx = 0;
-        size2.dx = 0;
-    } else if (!pageCount) {
-        // hack: https://github.com/sumatrapdfreader/sumatrapdf/issues/4475
-        txt = (TempStr) " ";
-        if (KeepToolbarLayoutOnHomeTab(win)) {
-            size2.dx = minSize.dx;
-        } else {
-            minSize.dx = 0;
-            size2.dx = 0;
-        }
-    } else {
-        txt = str::FormatTemp(" / %d", pageCount);
-        size2 = HwndMeasureText(win->hwndPageTotal, txt);
-        minSize.dx = size2.dx;
+    // Keep a compact slot for this book. Reflow may grow it when necessary,
+    // but a smaller page count must not pull the following buttons left.
+    if (pageCount == -1 && win->ctrl) pageCount = win->ctrl->PageCount();
+    int digits = 5;
+    for (int n = pageCount; n >= 100000; n /= 10) digits++;
+    WindowTab* tab = win->CurrentTab();
+    if (tab) {
+        tab->toolbarPageDigits = std::max(tab->toolbarPageDigits, digits);
+        digits = tab->toolbarPageDigits;
     }
-    labelDx = size2.dx;
-    size2.dx = std::max(size2.dx, minSize.dx);
-
-    HwndSetText(win->hwndPageTotal, txt);
-    if (0 == size2.dx) {
-        size2 = HwndMeasureText(win->hwndPageTotal, txt);
-    }
-    size2.dx += padX;
-    size2.dx += DpiScale(win->hwndFrame, kButtonSpacingX);
+    char countTemplate[32] = " / ";
+    for (int i = 0; i < digits && i < 27; i++) countTemplate[3 + i] = '9';
+    TempStr txt = pageCount > 0 ? str::FormatTemp(" / %d", pageCount) : (TempStr) " ";
+    Size size2 = HwndMeasureText(win->hwndPageTotal, countTemplate);
+    Size actualSize = HwndMeasureText(win->hwndPageTotal, txt);
+    size2.dx = std::max(size2.dx, actualSize.dx);
+    int labelDx = size2.dx;
+    if (!str::Eq(HwndGetTextTemp(win->hwndPageTotal), txt)) HwndSetText(win->hwndPageTotal, txt);
 
     if (win->ctrl && pageCount > 0 && win->ctrl->ValidPageNo(win->ctrl->CurrentPageNo())) {
         HwndSetText(win->hwndPageEdit, str::FormatTemp("%d", win->ctrl->CurrentPageNo()));
@@ -2000,8 +2049,6 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     MoveWindow(win->hwndPageLabel, x, y, size.dx, size.dy, FALSE);
     if (IsUIRtl()) {
         currX += size2.dx;
-        currX -= padX;
-        currX -= DpiScale(win->hwndFrame, kButtonSpacingX);
     }
     x = currX + size.dx;
     y = currY;
@@ -2019,7 +2066,7 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
         MoveWindow(win->hwndPageTotal, x, y, size2.dx, size.dy, FALSE);
     } else {
         x = currX + size.dx + pageWndRect.dx;
-        int midX = (size2.dx - labelDx) / 2;
+        int midX = 0;
         y = (pageWndRect.dy - size.dy + 1) / 2 + currY;
         MoveWindow(win->hwndPageTotal, x + midX, y, labelDx, size.dy, FALSE);
     }
@@ -2028,7 +2075,7 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     bi.cbSize = sizeof(bi);
     bi.dwMask = TBIF_SIZE;
     SendMessageW(win->hwndToolbar, TB_GETBUTTONINFO, PageInfoId, (LPARAM)&bi);
-    size2.dx += size.dx + pageWndRect.dx + 12;
+    size2.dx += size.dx + pageWndRect.dx + DpiScale(win->hwndFrame, 1);
     int oldPageSlotDx = bi.cx;
     bool pageSlotResized = false;
     if (bi.cx != size2.dx || !updateOnly) {
@@ -2042,7 +2089,12 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
             UpdateToolbarFindText(win);
         }
     }
-    InvalidateRect(win->hwndToolbar, nullptr, TRUE);
+    if (pageSlotResized) {
+        InvalidateRect(win->hwndToolbar, nullptr, FALSE);
+    } else {
+        RECT pageRect = {currX - 1, currY, currX + size2.dx, currY + pageWndRect.dy};
+        InvalidateRect(win->hwndToolbar, &pageRect, FALSE);
+    }
 }
 
 static void CreatePageBox(MainWindow* win, HFONT font, int iconDy) {
@@ -2050,8 +2102,7 @@ static void CreatePageBox(MainWindow* win, HFONT font, int iconDy) {
 
     auto hwndFrame = win->hwndFrame;
     auto hwndToolbar = win->hwndToolbar;
-    // TODO: this is broken, result is way too small
-    int boxWidth = HwndMeasureText(hwndFrame, "999999", font).dx;
+    int boxWidth = HwndMeasureText(hwndFrame, "99999", font).dx + DpiScale(hwndFrame, 8);
     DWORD style = WS_VISIBLE | WS_CHILD;
     auto h = GetModuleHandle(nullptr);
     int dx = boxWidth;

@@ -102,6 +102,8 @@ Annotation* EngineMupdfCreateAnnotationInkStrokes(EngineBase*, int pageNo, Point
 // Photo signature: a stamp whose appearance is the PNG, with contents "Signature".
 Annotation* EngineMupdfCreateAnnotationStampPng(EngineBase*, int pageNo, RectF rect, const ByteSlice& png);
 void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
+int EngineMupdfAnnotationId(Annotation*);
+Annotation* EngineMupdfFindAnnotation(EngineBase*, int pageNo, int objectId);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase*);
 bool EngineMupdfIsPdfTocModified(EngineBase*);
@@ -111,6 +113,7 @@ bool EngineMupdfIsEncrypted(EngineBase* engine);
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
 bool EngineMupdfIsReflowWarmActive(EngineBase* engine);
 bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut);
+int EngineMupdfGetReflowChaptersCounted(EngineBase* engine);
 bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut);
 // 1 found, 0 unavailable/not found, -1 retry after progressive loading releases the document.
 int EngineMupdfFindReflowAnchor(EngineBase* engine, int chapter, const char* text, int* pageOut, RectF* rectOut);
@@ -243,7 +246,7 @@ bool OcrTextLooksLikePortraitOfficialBody(const char* s);
 int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine);
 // Book path: drop session 90/270 and restore /Rotate 0. Returns how many pages changed.
 int EngineMupdfClearOcrPageRotates(EngineBase* engine);
-Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
+Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*, bool load = true);
 ByteSlice EngineMupdfLoadAttachment(EngineBase*, int attachmentNo);
 ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase*, int objNum);
 TempStr EngineMupdfGetPdfInfo(const char* path);

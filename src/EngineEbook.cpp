@@ -126,7 +126,7 @@ static void SetupChmHtmlFormatterFont(HtmlFormatterArgs& args) {
     args.SetFontName(L"Segoe UI");
 }
 
-static float GetDefaultFontSize() {
+static float GetDefaultFontSize(const char* filePath) {
     // fonts are scaled at higher DPI settings,
     // undo this here for (mostly) consistent results
     float size = gDefaultFontSize;
@@ -134,7 +134,7 @@ static float GetDefaultFontSize() {
         size = 11.f;
     }
     auto eBookUI = GetEBookUI();
-    float readerFontSize = GetEbookReaderFontSizePt();
+    float readerFontSize = GetEbookReaderFontSizePt(filePath);
     if (readerFontSize > 0.f) {
         size = readerFontSize;
     }
@@ -1944,7 +1944,7 @@ bool EngineEpub::FinishLoading() {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
@@ -2098,7 +2098,7 @@ bool EngineFb2::FinishLoading() {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
@@ -2273,7 +2273,7 @@ bool EngineMobi::FinishLoading() {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), typographyKind);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     if (!readerStyleMobi) {
         args.fontSize *= kMobiReaderFontScale;
     }
@@ -2652,7 +2652,7 @@ bool EnginePdb::Load(const char* fileName) {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
@@ -3008,7 +3008,7 @@ bool EngineChm::Load(const char* fileName) {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupChmHtmlFormatterFont(args);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
@@ -3149,7 +3149,7 @@ bool EngineHtml::Load(const char* fileName) {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::Gdiplus;
 
@@ -3274,7 +3274,7 @@ bool EngineTxt::Load(const char* fileName) {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize(FilePath());
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::Gdiplus;
 

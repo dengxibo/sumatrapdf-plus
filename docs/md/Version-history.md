@@ -2,6 +2,38 @@
 
 ## next
 
+## 3.7.41 (2026-10-09)
+
+- 显示增强也可用于 EPUB 等原生文字图书，避免按钮置灰后看起来像图标变细。
+  Enhance Display also works on EPUB and other native-text books, so the wand is not grayed out.
+
+- 自由文本批注的编辑框与页面显示使用同一背景色、边框色和边框粗细；边框颜色可单独设置，字体选择器记住最近三种字体，浮动工具栏与划词工具栏同一套外观。
+  Free text editing now matches the page for background, border color, and border width. Border color is separate from the text color, the font picker keeps the three most recent fonts, and the floating toolbar follows the selection toolbar.
+
+- PDF 自由文本批注支持页面内直接编辑：新建后输入、双击修改、Ctrl+Enter 提交、Esc 取消，并新增工具栏入口。
+  Edit PDF Free Text annotations directly on the page, with a new toolbar button; double-click to edit, Ctrl+Enter to apply, and Esc to cancel.
+
+- 修复连续阅读 PDF 时在高缩放下向上滚到文档顶部会跳到当前页底部、反复抖动的问题（#101）。
+  Fix upward scrolling at the document top jumping to the current page bottom and jittering at high zoom in continuous PDF view (#101).
+
+- 电子书字号调整的进度条覆盖解压、分页、阅读位置恢复及渲染，直到新字号的当前视口完整刷新才结束，避免文件刚载入就提前消失。
+  Keep ebook font-change progress visible through extraction, pagination, reading-position restoration, and rendering until the current viewport has been fully painted with the new font size.
+
+- 「识别所有扫描页」不再自动旋转页面，也不再对页面做倾斜校正。识别仍可在内部使用方向和倾斜来提高准确度，文字写回原来的页面。手动「倾斜校正」和「倾斜校正全部扫描页」保留。识别菜单去掉「识别时自动校正倾斜」。
+  Recognize All Scanned Pages no longer rotates or deskews the PDF page. Orientation and deskew may still be used internally, and the text is mapped back onto the original page. Deskew Page and Deskew All Scanned Pages remain. The Deskew during OCR menu item is removed.
+
+- 显示或隐藏侧栏时，工具栏搜索框不再一次次向左移动。
+  Showing or hiding the sidebar no longer shifts the toolbar search field to the left.
+
+- 再点工具栏搜索框上的「…」会关闭详细查找，查找文字留在工具栏里。
+  Clicking the toolbar search “…” again closes Detailed Search and leaves the query in the toolbar.
+
+- 手写签名窗口的底色与标题栏一致，签名纸保留原来的颜色。
+  The handwritten-signature window matches the title bar; the signature paper keeps its own color.
+
+- 标注恢复默认会把所选标注恢复为出厂外观，并把该外观记成这一类型下次新建时的样式。
+  Restore Defaults resets the selected annotation to the factory appearance and remembers that appearance for the next annotation of the same type.
+
 ## 3.7.40 (2026-10-08)
 
 - 调整电子书字号时保留当前缩放和显示模式（包括适合宽度／适合单页），恢复原阅读文字；连续调整及后台标签页延迟重载也保留原视图。

@@ -2398,7 +2398,7 @@ IPageElement* DisplayModel::GetElementAtPos(Point pt, int* pageNoOut, bool eager
     return engine->GetElementAtPos(pageNo, pos);
 }
 
-Annotation* DisplayModel::GetAnnotationAtPos(Point pt, Annotation* annot) {
+Annotation* DisplayModel::GetAnnotationAtPos(Point pt, Annotation* annot, bool load) {
     if (AnnotationsAreDisabled()) {
         return nullptr;
     }
@@ -2412,6 +2412,9 @@ Annotation* DisplayModel::GetAnnotationAtPos(Point pt, Annotation* annot) {
     }
 
     PointF pos = CvtFromScreen(pt, pageNo);
+    if (!load && engine->kind == kindEngineMupdf) {
+        return EngineMupdfGetAnnotationAtPos(engine, pageNo, pos, annot, false);
+    }
     return EngineGetAnnotationAtPos(engine, pageNo, pos, annot);
 }
 
@@ -2853,26 +2856,12 @@ bool DisplayModel::GoToPrevPage(int scrollY) {
     if (zoomVirtual == kZoomFitContent && -pageInfo->pageOnScreen.y <= top.y) {
         scrollY = 0; // continue, even though the current page isn't fully visible
     } else if (IsContinuous(GetDisplayMode())) {
-        // scrollY 0 means "top of this page". scrollY < 0 means "bottom"
-        // (GoToPrevPage(true)); it is not a pixel threshold. Comparing it with
-        // max(-pageOnScreen.y, 0) is always true, so a wheel-up on a page that
-        // already fits stays on that page. Show the hidden part first, and
-        // leave the page only once that part is already on screen.
+        // Reveal the current page's hidden top before moving to the previous page.
+        // scrollY == -1 requests the bottom of the destination page, not this page.
         bool showedMore = false;
-        if (scrollY < 0) {
-            int pageBottom = pageInfo->pageOnScreen.y + pageInfo->pageOnScreen.dy;
-            if (pageBottom > viewPort.dy + 1) {
-                int showBottom = pageInfo->pos.dy - viewPort.dy + windowMargin.top;
-                if (showBottom < 0) {
-                    showBottom = 0;
-                }
-                int yBefore = viewPort.y;
-                GoToPage(currPageNo, showBottom);
-                showedMore = viewPort.y != yBefore;
-            }
-        } else if (pageInfo->pageOnScreen.y < 0) {
+        if (pageInfo->pageOnScreen.y < 0) {
             int yBefore = viewPort.y;
-            GoToPage(currPageNo, scrollY);
+            GoToPage(currPageNo, scrollY < 0 ? 0 : scrollY);
             showedMore = viewPort.y != yBefore;
         }
         if (showedMore) {

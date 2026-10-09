@@ -555,6 +555,29 @@ bool LoadSettings() {
     }
     setMinMax(gprefs->toolbarSize, 8, 64);
     setMinMax(gprefs->annotations.freeTextOpacity, 0, 100);
+    if (gprefs->annotations.freeTextSize < 5 || gprefs->annotations.freeTextSize > 128) {
+        gprefs->annotations.freeTextSize = 21;
+    }
+    if (gprefs->annotations.freeTextWidth < 0 || gprefs->annotations.freeTextWidth > 2000) {
+        gprefs->annotations.freeTextWidth = 0;
+    }
+    if (gprefs->annotations.freeTextHeight < 0 || gprefs->annotations.freeTextHeight > 2000) {
+        gprefs->annotations.freeTextHeight = 0;
+    }
+    {
+        const char* font = gprefs->annotations.freeTextFont;
+        bool fontOk = font && font[0];
+        int fontLen = 0;
+        for (const char* p = fontOk ? font : ""; fontOk && *p; p++) {
+            unsigned char c = (unsigned char)*p;
+            if (c < 32 || c == 127 || ++fontLen > 120) {
+                fontOk = false;
+            }
+        }
+        if (!fontOk) {
+            str::ReplaceWithCopy(&gprefs->annotations.freeTextFont, "Helv");
+        }
+    }
     {
         float& fs = gprefs->eBookUI.fontSize;
         if (fs != 0.f && (fs < kEbookFontSizeMinPt || fs > kEbookFontSizeMaxPt)) {
@@ -570,10 +593,9 @@ bool LoadSettings() {
         gprefs->treeFontName = const_cast<char*>("automatic");
     }
 
-    ApplyEbookFontSettingsFromPrefs();
-
     // TODO: verify that all states have a non-nullptr file path?
     gFileHistory.UpdateStatesSource(gprefs->fileStates);
+    ApplyEbookFontSettingsFromPrefs();
 
     ResetCachedFonts();
 

@@ -119,8 +119,10 @@ static bool PdfPageHasAudio(EngineMupdf* engine, int pageNo, bool load) {
     if (!engine || pageNo < 1) {
         return false;
     }
-    FzPageInfo* pi = load ? engine->GetFzPageInfo(pageNo, true) : engine->GetFzPageInfoFast(pageNo);
-    if (!pi) {
+    // A toolbar status query must not wait for a render/page-load lock.
+    // Explicit playback still loads the annotations as before.
+    FzPageInfo* pi = load ? engine->GetFzPageInfo(pageNo, true) : engine->GetFzPageInfoCanFail(pageNo);
+    if (!pi || (!load && !pi->fullyLoaded)) {
         return false;
     }
     for (Annotation* annot : pi->annotations) {

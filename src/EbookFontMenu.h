@@ -28,6 +28,11 @@ bool SupportsEbookFontSizeChange(WindowTab* tab);
 
 void UpdateAfterEbookFontChange();
 void ShowEbookFontPicker(HWND owner, bool cjk);
+// Same western/CJK lists as the reading font pickers. Calls onPick with the
+// family name; does not change the ebook body font.
+using FontFamilyPickedFn = void (*)(const char* family, void* ctx);
+void ShowFreeTextFontPicker(HWND owner, const char* currentFamily, FontFamilyPickedFn onPick, void* ctx);
+bool HwndBelongsToFontPicker(HWND hwnd);
 
 extern int gFirstEbookLatinFontCmdId;
 extern int gLastEbookLatinFontCmdId;

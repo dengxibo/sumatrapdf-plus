@@ -28,12 +28,25 @@
 #define DEBUG_OFFICE_TO_HTML
 #undef DEBUG_OFFICE_TO_HTML
 
+/* Strict OOXML permits physical units where transitional OOXML uses twips. */
+static float word_measure_twips(const char* value) {
+    char* unit;
+    float n;
+    if (!value) return 0;
+    n = fz_strtof(value, &unit);
+    if (!strcmp(unit, "pt")) return n * 20.0f;
+    if (!strcmp(unit, "in")) return n * 1440.0f;
+    if (!strcmp(unit, "cm")) return n * (1440.0f / 2.54f);
+    if (!strcmp(unit, "mm")) return n * (1440.0f / 25.4f);
+    if (!strcmp(unit, "pc") || !strcmp(unit, "pi")) return n * 240.0f;
+    return n;
+}
 /* Defaults are all 0's. FIXME: Very subject to change. Possibly might be removed entirely. */
 typedef struct {
-	int output_page_numbers;
-	int output_sheet_names;
-	int output_cell_markers;
-	int output_cell_row_markers;
+    int output_page_numbers;
+    int output_sheet_names;
+    int output_cell_markers;
+    int output_cell_row_markers;
 	int output_cell_names;
 	int output_formatting;
 	int output_filenames;
@@ -85,6 +98,7 @@ typedef struct {
     int skip_leading_ws;
     /* Current paragraph is a space-padded 落款 — right-align, no nbsp padding. */
     int signoff_emit;
+    int preserve_roster_spaces;
     /* Extra padding-right (em) so a shorter 落款 line centers under a longer sibling. */
     float signoff_pad_em;
 
@@ -391,20 +405,20 @@ static int word_sectpr_page_box(fz_xml* sect, float* pw, float* ph, float* mt, f
     if (!n) return 0;
     v = fz_xml_att_alt(n, "w:w", "w");
     if (!v || !v[0]) return 0;
-    *pw = (float)fz_atoi(v) / 20.0f;
+    *pw = word_measure_twips(v) / 20.0f;
     v = fz_xml_att_alt(n, "w:h", "h");
     if (!v || !v[0]) return 0;
-    *ph = (float)fz_atoi(v) / 20.0f;
+    *ph = word_measure_twips(v) / 20.0f;
     n = fz_xml_find_down(sect, "pgMar");
     if (n) {
         v = fz_xml_att_alt(n, "w:top", "top");
-        if (v && v[0] && mt) *mt = (float)fz_atoi(v) / 20.0f;
+        if (v && v[0] && mt) *mt = word_measure_twips(v) / 20.0f;
         v = fz_xml_att_alt(n, "w:right", "right");
-        if (v && v[0] && mr) *mr = (float)fz_atoi(v) / 20.0f;
+        if (v && v[0] && mr) *mr = word_measure_twips(v) / 20.0f;
         v = fz_xml_att_alt(n, "w:bottom", "bottom");
-        if (v && v[0] && mb) *mb = (float)fz_atoi(v) / 20.0f;
+        if (v && v[0] && mb) *mb = word_measure_twips(v) / 20.0f;
         v = fz_xml_att_alt(n, "w:left", "left");
-        if (v && v[0] && ml) *ml = (float)fz_atoi(v) / 20.0f;
+        if (v && v[0] && ml) *ml = word_measure_twips(v) / 20.0f;
     }
     return *pw > 72.f && *ph > 72.f;
 }
@@ -698,12 +712,20 @@ static int word_looks_like_official_doc_title(const char* plain, const char* ali
  * page width and reads as "shifted right". Normal 首行缩进 is ~2 汉字
  * (firstLineChars=200 / ~32pt); fake-center is typically ≥3.5 汉字 / ≥48pt.
  * 文号/副标题 also use a large w:ind left (no firstLine) for the same effect. */
+static int word_looks_like_roster_line(const char* plain) {
+    const char* p = word_skip_leading_space(plain);
+    if (!p || !strstr(p, "  ")) return 0;
+    return strstr(p, "处长") || strstr(p, "主任") || strstr(p, "书记") || strstr(p, "委员") || strstr(p, "调研员") ||
+           strstr(p, "局长");
+}
+
 static int word_looks_like_fake_center_indent(const char* plain, float indent_em, float indent_pt, float left_pt) {
     const char* p = word_skip_leading_space(plain);
     int glyphs;
     int large = (indent_em >= 2.5f) || (indent_pt >= 48.0f) || (left_pt >= 48.0f);
 
     if (!large || !p || !p[0]) return 0;
+    if (word_looks_like_roster_line(p)) return 0;
     /* 2. / 4. / 附件 是真左缩进的条目，不是文号那种假居中。 */
     if (word_infer_text_heading_level(p) > 0) return 0;
     /* 2025年  月  日 sits on the right via left indent, not as a centered title. */
@@ -848,20 +870,20 @@ static void word_load_page_box(fz_context* ctx, fz_archive* arch, const char* do
             n = fz_xml_find_dfs(xml, "pgSz", NULL, NULL);
             if (n) {
                 v = fz_xml_att_alt(n, "w:w", "w");
-                if (v && v[0]) *pw = (float)fz_atoi(v) / 20.0f;
+                if (v && v[0]) *pw = word_measure_twips(v) / 20.0f;
                 v = fz_xml_att_alt(n, "w:h", "h");
-                if (v && v[0]) *ph = (float)fz_atoi(v) / 20.0f;
+                if (v && v[0]) *ph = word_measure_twips(v) / 20.0f;
             }
             n = fz_xml_find_dfs(xml, "pgMar", NULL, NULL);
             if (n) {
                 v = fz_xml_att_alt(n, "w:top", "top");
-                if (v && v[0]) *mt = (float)fz_atoi(v) / 20.0f;
+                if (v && v[0]) *mt = word_measure_twips(v) / 20.0f;
                 v = fz_xml_att_alt(n, "w:right", "right");
-                if (v && v[0]) *mr = (float)fz_atoi(v) / 20.0f;
+                if (v && v[0]) *mr = word_measure_twips(v) / 20.0f;
                 v = fz_xml_att_alt(n, "w:bottom", "bottom");
-                if (v && v[0]) *mb = (float)fz_atoi(v) / 20.0f;
+                if (v && v[0]) *mb = word_measure_twips(v) / 20.0f;
                 v = fz_xml_att_alt(n, "w:left", "left");
-                if (v && v[0]) *ml = (float)fz_atoi(v) / 20.0f;
+                if (v && v[0]) *ml = word_measure_twips(v) / 20.0f;
             }
         }
     }
@@ -893,7 +915,8 @@ static const char* word_font_win_alias(const char* name) {
     if (!strcmp(name, "华文仿宋")) return "STFangsong";
     if (!strcmp(name, "华文楷体")) return "STKaiti";
     if (!strcmp(name, "微软雅黑")) return "Microsoft YaHei";
-    if (!strcmp(name, "方正小标宋简体") || !strcmp(name, "方正小标宋") || !strcmp(name, "创艺简标宋"))
+    if (!strcmp(name, "小标宋") || !strcmp(name, "方正小标宋简体") || !strcmp(name, "方正小标宋") ||
+        !strcmp(name, "创艺简标宋"))
         return "FZXiaoBiaoSong-B05S";
     if (!strcmp(name, "方正黑体简体")) return "FZHei-B01S";
     if (!strcmp(name, "方正楷体简体")) return "FZKai-Z03S";
@@ -919,6 +942,8 @@ static int word_emit_font_family_css(fz_context* ctx, doc_info* info, fz_output*
     int wrote = 0;
 
     if (word_font_is_lang_placeholder(east)) east = NULL;
+    /* Use the canonical family so Windows can resolve its Regular/Bold faces. */
+    if (east && !strcmp(east, "微软雅黑")) east = "Microsoft YaHei";
     if (!east && info) east = info->doc_default_ea ? info->doc_default_ea : info->theme_minor_ea;
     if (!latin && info) latin = info->theme_minor_latin;
     if (!east && !latin) return 0;
@@ -1375,15 +1400,15 @@ static int word_num_take(fz_context* ctx, doc_info* info, int num_id, int ilvl, 
         int tw;
         if (!left) left = start;
         if (left && left_pt) {
-            tw = fz_atoi(left);
+            tw = word_measure_twips(left);
             if (tw > 0) *left_pt = (float)tw / 20.0f;
         }
         if (hang && hanging_pt) {
-            tw = fz_atoi(hang);
+            tw = word_measure_twips(hang);
             if (tw > 0) *hanging_pt = (float)tw / 20.0f;
         }
         if (fl && first_pt) {
-            tw = fz_atoi(fl);
+            tw = word_measure_twips(fl);
             if (tw > 0) *first_pt = (float)tw / 20.0f;
         }
     }
@@ -1400,8 +1425,10 @@ static int word_num_take(fz_context* ctx, doc_info* info, int num_id, int ilvl, 
         else
             word_expand_lvl_text(lvl_text, values, ilvl + 1, marker, marker_cap);
         {
+            fz_xml* suff = fz_xml_find_down(lvl, "suff");
+            const char* suffix = suff ? fz_xml_att_alt(suff, "w:val", "val") : NULL;
             int L = (int)strlen(marker);
-            if (L > 0 && L < marker_cap - 2) {
+            if ((!suffix || strcmp(suffix, "nothing")) && L > 0 && L < marker_cap - 2) {
                 unsigned char c = (unsigned char)marker[L - 1];
                 if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80) {
                     marker[L] = ' ';
@@ -1573,6 +1600,7 @@ static void show_text(fz_context* ctx, fz_xml* top, doc_info* info) {
     /* xml:space may be stored as "space" after namespace strip. */
     sp = fz_xml_att_alt(top, "xml:space", "space");
     if (sp && !strcmp(sp, "preserve")) preserve = 1;
+    if (info && info->preserve_roster_spaces) preserve = 1;
     /* 落款: strip padding spaces and right-align instead of nbsp-indent. */
     if (info && info->signoff_emit) preserve = 0;
 
@@ -1688,18 +1716,18 @@ static void word_ppr_spacing(fz_xml* ppr, float* before_pt, float* after_pt, flo
     if (!sp) return;
     v = fz_xml_att_alt(sp, "w:before", "before");
     if (v && before_pt) {
-        int n = fz_atoi(v);
+        float n = word_measure_twips(v);
         if (n > 0) *before_pt = (float)n / 20.0f;
     }
     v = fz_xml_att_alt(sp, "w:after", "after");
     if (v && after_pt) {
-        int n = fz_atoi(v);
+        float n = word_measure_twips(v);
         if (n > 0) *after_pt = (float)n / 20.0f;
     }
     v = fz_xml_att_alt(sp, "w:line", "line");
     rule = fz_xml_att_alt(sp, "w:lineRule", "lineRule");
     if (v) {
-        int n = fz_atoi(v);
+        float n = word_measure_twips(v);
         if (n > 0) {
             if (!rule || !strcmp(rule, "auto")) {
                 /* 240 = single spacing */
@@ -1738,7 +1766,7 @@ static void word_ppr_text_indent(fz_xml* ppr, float* em_out, float* pt_out, floa
     hang = fz_xml_att_alt(ind, "w:hanging", "hanging");
     if (!left) left = start;
     if (fl) {
-        n = fz_atoi(fl);
+        n = word_measure_twips(fl);
         if (n > 0 && pt_out) *pt_out = (float)n / 20.0f;
     }
     if ((!pt_out || *pt_out <= 0) && flc) {
@@ -1746,11 +1774,11 @@ static void word_ppr_text_indent(fz_xml* ppr, float* em_out, float* pt_out, floa
         if (n > 0 && em_out) *em_out = (float)n / 100.0f;
     }
     if (left && left_pt_out) {
-        n = fz_atoi(left);
+        n = word_measure_twips(left);
         if (n > 0) *left_pt_out = (float)n / 20.0f;
     }
     if (hang && hanging_pt_out) {
-        n = fz_atoi(hang);
+        n = word_measure_twips(hang);
         if (n > 0) *hanging_pt_out = (float)n / 20.0f;
     }
 }
@@ -1813,7 +1841,8 @@ static void word_rpr_font_names(doc_info* info, fz_xml* rpr, const char** east_o
     east = fz_xml_att_alt(rfonts, "w:eastAsia", "eastAsia");
     latin = fz_xml_att_alt(rfonts, "w:ascii", "ascii");
     if (!latin) latin = fz_xml_att_alt(rfonts, "w:hAnsi", "hAnsi");
-    if (word_font_is_lang_placeholder(east)) {
+    /* A missing face inherits the paragraph/style; only an explicit placeholder uses the theme. */
+    if (east && word_font_is_lang_placeholder(east)) {
         const char* th = fz_xml_att_alt(rfonts, "w:eastAsiaTheme", "eastAsiaTheme");
         east = NULL;
         if (th && !strncmp(th, "major", 5))
@@ -2605,7 +2634,7 @@ static void word_paragraph_tab_leader(fz_xml* ppr, int* leader, float* tab_pt) {
             ch = '_';
         if (!ch) continue;
         *leader = ch;
-        if (pos && pos[0]) *tab_pt = (float)fz_atoi(pos) / 20.0f;
+        if (pos && pos[0]) *tab_pt = word_measure_twips(pos) / 20.0f;
         if (val && !strcmp(val, "right")) return;
     }
 }
@@ -2904,7 +2933,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
             const char* right = ind ? fz_xml_att_alt(ind, "w:right", "right") : NULL;
             int rw;
             if (!right && ind) right = fz_xml_att_alt(ind, "w:end", "end");
-            rw = right ? fz_atoi(right) : 0;
+            rw = right ? word_measure_twips(right) : 0;
             /* Huge right indent forces "1. 2. 3. 4." onto one marker per line. */
             if (rw > 0) right_pt = (float)rw / 20.0f;
         }
@@ -2984,6 +3013,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     {
         char plain[512];
         word_paragraph_plain_text(p, plain, (int)sizeof plain);
+        if (info) info->preserve_roster_spaces = word_looks_like_roster_line(plain);
         if (heading_level == 0 && info && info->in_table == 0) {
             int style_toc = 0;
             if (style_val) word_style_fact(ctx, info, style_val, &style_toc, NULL, NULL);
@@ -3021,8 +3051,8 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
                         if (cap > 12.0f && cap < fit_pt) fit_pt = cap;
                     }
                     if (fit_pt > 12.0f && fit_pt + 0.5f < max_run_pt) info->force_run_font_pt = fit_pt;
-                } else if (info && align && !strcmp(align, "center") && info->page_content_pt > 40.0f &&
-                           !word_xml_has_desc_tag(p, "br")) {
+                } else if (info && align && !strcmp(align, "center") && strstr(plain, "清单") &&
+                           info->page_content_pt > 40.0f && !word_xml_has_desc_tag(p, "br")) {
                     /* Fake-centered form title (整改清单): bold SimSun is wider than 1em,
                      * so the last few glyphs wrap. Fit one line, matching Word. */
                     int glyphs = word_plain_glyph_count(word_skip_leading_space(plain));
@@ -3062,6 +3092,28 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         if (!strcmp(align, "center")) left_pt = 0;
     }
 
+    /* Word sometimes combines centered dates with padding spaces to position
+     * them below a right-aligned signature. Preserved spaces can wrap the year. */
+    if (align && !strcmp(align, "center") && !(info && info->in_table)) {
+        char date_plain[512];
+        word_paragraph_plain_text(p, date_plain, (int)sizeof date_plain);
+        if (word_plain_looks_like_date_line(date_plain) && word_looks_like_signoff(date_plain)) {
+            fz_xml* prev = fz_xml_prev(p);
+            signoff = 1;
+            if (info) info->signoff_pad_em = 0;
+            if (prev && fz_xml_is_tag(prev, "p")) {
+                fz_xml* prev_jc = fz_xml_find_down(fz_xml_find_down(prev, "pPr"), "jc");
+                const char* prev_align = prev_jc ? fz_xml_att_alt(prev_jc, "w:val", "val") : NULL;
+                if (prev_align && !strcmp(prev_align, "right") && info) {
+                    char signature[512];
+                    float gap;
+                    word_paragraph_plain_text(prev, signature, (int)sizeof signature);
+                    gap = word_plain_visual_em(signature) - word_plain_visual_em(date_plain);
+                    if (gap > 0) info->signoff_pad_em = gap * 0.5f;
+                }
+            }
+        }
+    }
     if (signoff) {
         align = "right";
         indent_em = 0;
@@ -3172,13 +3224,6 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
                     indent_pt = num_first;
                     indent_em = 0;
                     hanging_pt = 0;
-                } else if (hanging_pt < 0.01f && left_pt < 0.01f && (indent_pt > 0.01f || indent_em > 0.01f)) {
-                    /* Fallback: turn paragraph firstLine into a hanging list indent. */
-                    float fl = indent_pt > 0.01f ? indent_pt : indent_em * 12.0f;
-                    hanging_pt = fl > 24.0f ? 24.0f : fl;
-                    left_pt = fl;
-                    indent_em = 0;
-                    indent_pt = 0;
                 }
             }
             /* Auto-numbered lines stay body-sized even if text looks like 1.xxx. */
@@ -3327,7 +3372,16 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         word_begin_para_leader(info, ppr, style_val, left_pt, hanging_pt, right_pt);
     }
     if (have_marker) {
-        fz_write_string(ctx, info->out, "<span class=\"w-num\">");
+        /* Numbering inherits the paragraph mark's run properties, not the body font. */
+        fz_write_string(ctx, info->out, "<span class=\"w-num\" style='");
+        if (info) {
+            const char* east = info->run_default_ea[0] ? info->run_default_ea : NULL;
+            const char* latin = info->run_default_latin[0] ? info->run_default_latin : NULL;
+            if (word_emit_font_family_css(ctx, info, info->out, east, latin)) fz_write_byte(ctx, info->out, ';');
+            if (info->run_default_font_pt > 0.5f)
+                fz_write_printf(ctx, info->out, "font-size:%.1fpt;", info->run_default_font_pt);
+        }
+        fz_write_string(ctx, info->out, "'>");
         doc_escape(ctx, info->out, marker);
         fz_write_string(ctx, info->out, "</span>");
         if (info && info->para_leader) {
@@ -3340,16 +3394,17 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         info->in_paragraph++;
         info->para_seen_text = 0;
     }
-	emit_paragraph_children(ctx, p, info);
+    emit_paragraph_children(ctx, p, info);
     word_end_para_leader(info);
     if (info && info->in_paragraph > 0) info->in_paragraph--;
     if (info) {
         info->run_default_font_pt = 0;
         info->force_run_font_pt = 0;
+        info->preserve_roster_spaces = 0;
         info->run_default_ea[0] = 0;
         info->run_default_latin[0] = 0;
     }
-	fz_write_printf(ctx, info->out, "</%s>\n", tag);
+    fz_write_printf(ctx, info->out, "</%s>\n", tag);
     if (info && (signoff || (tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6'))) {
         info->signoff_emit = 0;
         info->skip_leading_ws = 0;
@@ -3747,7 +3802,7 @@ static float word_tr_min_height_pt(fz_xml* tr) {
     if (!th) return 0;
     val = fz_xml_att_alt(th, "w:val", "val");
     if (!val || !val[0]) return 0;
-    tw = fz_atoi(val);
+    tw = word_measure_twips(val);
     if (tw <= 0) return 0;
     rule = fz_xml_att_alt(th, "w:hRule", "hRule");
     /* auto = content-sized; atLeast / exact / missing → honor val as floor. */
@@ -3796,7 +3851,7 @@ static int word_tbl_grid_widths(fz_xml* tbl, int* widths, int max_n, int* sum_ou
         int tw;
         if (!fz_xml_is_tag(n, "gridCol")) continue;
         w = fz_xml_att_alt(n, "w:w", "w");
-        tw = w ? fz_atoi(w) : 0;
+        tw = w ? word_measure_twips(w) : 0;
         if (tw <= 0) tw = 1;
         widths[nw++] = tw;
         sum += tw;
@@ -4678,6 +4733,7 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
     fz_xml* pos = NULL;
     fz_xml* rels = NULL;
     const char* schema = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+    const char* strict_schema = "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument";
     const char* schema_props = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
     doc_info info = {0};
 	int i;
@@ -4719,10 +4775,11 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
             float page_mt, page_mr, page_mb, page_ml, page_w, page_h;
             const char* office_doc = NULL;
 
-			xml = try_parse_xml_archive_entry(ctx, archive, "_rels/.rels", 0);
+            xml = try_parse_xml_archive_entry(ctx, archive, "_rels/.rels", 0);
+            if (!fz_xml_find_dfs(xml, "Relationship", "Type", schema)) schema = strict_schema;
 
-			fz_write_string(ctx, info.out, "<html>\n");
-			fz_write_string(ctx, info.out, "<head>\n");
+            fz_write_string(ctx, info.out, "<html>\n");
+            fz_write_string(ctx, info.out, "<head>\n");
 
 			pos = fz_xml_find_dfs(xml, "Relationship", "Type", schema_props);
             if (pos) {
@@ -4765,10 +4822,10 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
                     "\"Times New Roman\",serif;font-size:%.1fpt;line-height:1.55;margin:0;padding:0;color:#222;}\n",
                     body_pt);
             }
-			fz_write_string(ctx, info.out,
+            fz_write_string(ctx, info.out,
                             /* Word already sets run sizes. h1{1.7em} wrapped titles such as
                              * 整改清单 onto a second line that Word keeps on one line. */
-                            "h1,h2,h3,h4,h5,h6{font-size:1em;font-weight:inherit;line-height:inherit;margin:0;}\n"
+                            "h1,h2,h3,h4,h5,h6{font-size:1em;font-weight:normal;line-height:inherit;margin:0;}\n"
                             /* Typed 一、/（一）/1. outline: keep body font — only TOC level changes. */
                             "h1.Outline,h2.Outline,h3.Outline,h4.Outline,h5.Outline,h6.Outline{"
                             "font-size:1em;font-weight:normal;line-height:inherit;margin:0;}\n"
@@ -4786,8 +4843,8 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
                             "pre{font-family:Consolas,\"Courier New\",monospace;white-space:pre-wrap;"
                             "background:#f6f6f6;padding:.6em .8em;border-radius:3px;}\n"
                             "h6.WordBookmark{font-size:0.95em;font-weight:600;color:#444;margin:.8em 0 .3em;}\n"
-				"</style>\n");
-			fz_write_string(ctx, info.out, "</head>\n");
+                            "</style>\n");
+            fz_write_string(ctx, info.out, "</head>\n");
 
 			fz_write_string(ctx, info.out, "<body>\n");
 			pos = fz_xml_find_dfs(xml, "Relationship", "Type", schema);
@@ -4931,12 +4988,14 @@ static int office_recognize_doc_content(fz_context* ctx, const fz_document_handl
 		xml = fz_try_parse_xml_archive_entry(ctx, arch, "_rels/.rels", 0);
         if (xml) {
             if (fz_xml_find_dfs(xml, "Relationship", "Type",
-                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument")) {
-				ret = 75; /* DOCX | PPTX | XLSX */
-			}
-			break;
-		}
-	}
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument") ||
+                fz_xml_find_dfs(xml, "Relationship", "Type",
+                                "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument")) {
+                ret = 75; /* DOCX | PPTX | XLSX */
+            }
+            break;
+        }
+    }
     fz_always(ctx) {
 		fz_drop_xml(ctx, xml);
 		fz_drop_archive(ctx, arch);

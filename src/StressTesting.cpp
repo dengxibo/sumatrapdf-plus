@@ -432,6 +432,41 @@ void BenchEpubPerf(const char* path) {
     EpubPerfLogEmit("open", openKv);
     logf("open: %.2f ms, pages=%d\n", openMs, pages);
 
+    if (GetEnvironmentVariableA("SUMATRA_EPUB_THEME_BENCH", nullptr, 0)) {
+        int sample = std::min(1564, pages);
+        bool loaded = engine->BenchLoadPage(sample);
+        PageText before = engine->ExtractPageText(sample);
+        defer {
+            FreePageText(&before);
+        };
+        const char* themes[] = {"Dark-Black", "Light-Warm", "Dark-Black", "Light-Warm"};
+        for (const char* theme : themes) {
+            SetTheme(theme);
+            auto start = TimeGet();
+            bool changed = EngineMupdfRelayoutForThemeChange(engine);
+            double changeMs = TimeSinceInMs(start);
+            start = TimeGet();
+            RenderPageArgs args(sample, 1.0f, 0);
+            RenderedBitmap* bitmap = engine->RenderPage(args);
+            bool rendered = bitmap != nullptr;
+            delete bitmap;
+            double renderMs = TimeSinceInMs(start);
+            bool stable = engine->PageCount() == pages;
+            PageText after = engine->ExtractPageText(sample);
+            bool sameLayout = before.len > 0 && before.len == after.len &&
+                              memcmp(before.text, after.text, before.len * sizeof(WCHAR)) == 0 &&
+                              memcmp(before.coords, after.coords, before.len * sizeof(Rect)) == 0;
+            FreePageText(&after);
+            EpubPerfLogEmit("theme_switch",
+                            str::FormatTemp("\"theme\":\"%s\",\"pages\":%d,\"page\":%d,\"change_ms\":%.2f,"
+                                            "\"render_ms\":%.2f,\"same_layout\":%s,\"passed\":%s",
+                                            theme, pages, sample, changeMs, renderMs, sameLayout ? "true" : "false",
+                                            loaded && changed && rendered && stable && sameLayout ? "true" : "false"));
+            logf("theme %s: change %.2f ms, render %.2f ms, pages=%d, rendered=%d\n", theme, changeMs, renderMs,
+                 engine->PageCount(), rendered);
+        }
+        return;
+    }
     if (GetEnvironmentVariableA("SUMATRA_EPUB_POSITION_BENCH", nullptr, 0)) {
         bool passed = RunEpubFontPositionRegression(path);
         EpubPerfLogEmit("font_position_summary", passed ? "\"passed\":true" : "\"passed\":false");

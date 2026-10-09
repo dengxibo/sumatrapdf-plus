@@ -362,8 +362,10 @@ void MainWindow::UpdateCanvasSize() {
         DisplayModel* dm = AsFixed();
         if (dm) {
             Size view = GetViewPortSize();
-            Rect vp = dm->GetViewPort();
-            if (vp.dx != view.dx || vp.dy != view.dy) {
+            // Compare the supplied canvas size, not the inner viewport which
+            // excludes scrollbars. Otherwise a theme-only update relayouts the
+            // entire book even though the canvas has not changed.
+            if (dm->totalViewPortSize != view) {
                 dm->SetViewPortSize(view);
                 OnFindViewLayoutChanged(this);
                 ScheduleRepaint(this, 0);

@@ -15,6 +15,9 @@ struct DisplayFilterParams {
     int brightness = 0; // kept for Legacy / FileState; Auto uses 0
     int contrast = 0;
     int sharpness = 0;
+    // EPUB and other native-text books already paint theme colors into the page.
+    // PDF/XPS stay false: enhancement reads publisher pixels, then theme is reapplied.
+    bool themedBitmap = false;
 
     // Active when enhancement is on (Auto, or forced Mild/Strong/Legacy).
     bool IsActive() const { return mode != DocumentEnhancementMode::Off; }
@@ -26,7 +29,7 @@ void SetDisplayFilterForTab(WindowTab* tab, const DisplayFilterParams& p, bool s
 // fs null, or use-default: wand off. Otherwise the mode saved for that file.
 struct FileState;
 void RestoreDisplayFilterForTab(WindowTab* tab, FileState* fs);
-// Scanned-page enhancement is PDF-only (toolbar gray for other formats).
+// PDF, XPS, and native-text books (EPUB, MOBI, FB2, …). Pictures and comics stay off.
 bool DisplayFilterSupportedForEngine(EngineBase* engine);
 bool DisplayFilterSupportedForTab(WindowTab* tab);
 

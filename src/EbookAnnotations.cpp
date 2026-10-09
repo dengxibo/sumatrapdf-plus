@@ -57,6 +57,8 @@ struct EbookAnnotation {
     bool lineTLBR = false;
     bool backgroundTransparent = true;
     COLORREF backgroundColor = 0;
+    bool borderColorExplicit = false;
+    COLORREF borderColor = RGB(0, 0, 0);
     bool interiorTransparent = true;
     COLORREF interiorColor = 0;
     char* exact = nullptr;
@@ -123,8 +125,14 @@ static SizeF GetDefaultEbookPointAnnotationSize(AnnotationType type) {
     switch (type) {
         case AnnotationType::Text:
             return {22, 22};
-        case AnnotationType::FreeText:
+        case AnnotationType::FreeText: {
+            int w = gGlobalPrefs->annotations.freeTextWidth;
+            int h = gGlobalPrefs->annotations.freeTextHeight;
+            if (w >= 8 && h >= 8) {
+                return {(float)w, (float)h};
+            }
             return {200, 100};
+        }
         case AnnotationType::Stamp:
             return GetDefaultStampSize();
         case AnnotationType::Caret:
@@ -337,6 +345,11 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
                 u32 color = 0;
                 str::Parse(value, "%u", &color);
                 annotation->backgroundColor = (COLORREF)color;
+            } else if (str::Eq(property, "borderColor")) {
+                u32 color = 0;
+                str::Parse(value, "%u", &color);
+                annotation->borderColor = (COLORREF)color;
+                annotation->borderColorExplicit = true;
             } else if (str::Eq(property, "interiorTransparent")) {
                 int transparent = 1;
                 str::Parse(value, "%d", &transparent);
@@ -623,6 +636,9 @@ static bool PersistEbookAnnotations(EbookAnnotations* annotations) {
                 "\"backgroundTransparent\": %d,\n      \"backgroundColor\": %u",
                 annotation->textAlignment, annotation->textSize, annotation->borderWidth,
                 annotation->backgroundTransparent ? 1 : 0, (uint)annotation->backgroundColor);
+            if (annotation->borderColorExplicit) {
+                out.AppendFmt(",\n      \"borderColor\": %u", (uint)annotation->borderColor);
+            }
             if (!str::IsEmpty(annotation->textFont)) {
                 out.Append(",\n      \"textFont\": ");
                 AppendJsonString(out, annotation->textFont);
@@ -813,6 +829,130 @@ static char* ExtractContextTemp(EngineBase* engine, int pageNo, int fromGlyph, i
     return ToUtf8Temp(text + fromGlyph, toGlyph - fromGlyph);
 }
 
+static int DrawStyleBorderPx(float points) {
+    if (points < 0.5f) {
+        return 0;
+    }
+    return std::clamp((int)(points + 0.5f), 0, 12);
+}
+
+void AdoptEbookDrawStyle(EbookAnnotation* annotation) {
+    AnnotDrawStyle style;
+    if (!annotation || !FindAnnotDrawStyle(annotation->type, &style)) {
+        return;
+    }
+    AnnotationType type = annotation->type;
+    if (style.flags & kDrawStyleColor) {
+        annotation->color = style.color;
+    }
+    if (style.flags & kDrawStyleBorder) {
+        annotation->borderWidth = DrawStyleBorderPx(style.border);
+    }
+    if (style.flags & kDrawStyleOpacity) {
+        annotation->opacity = std::clamp(style.opacityPercent, 0, 100);
+    }
+    if ((style.flags & kDrawStyleInterior) &&
+        (type == AnnotationType::Line || type == AnnotationType::Square || type == AnnotationType::Circle)) {
+        annotation->interiorTransparent = style.interiorTransparent;
+        if (!style.interiorTransparent) {
+            annotation->interiorColor = style.interior;
+        }
+    }
+    if ((style.flags & kDrawStyleLineEnds) && type == AnnotationType::Line) {
+        annotation->lineStart = style.lineStart;
+        annotation->lineEnd = style.lineEnd;
+    }
+    if ((style.flags & kDrawStyleIcon) && style.icon[0] &&
+        (type == AnnotationType::Text || type == AnnotationType::Stamp)) {
+        str::ReplaceWithCopy(&annotation->icon, style.icon);
+    }
+    if (type == AnnotationType::FreeText) {
+        if ((style.flags & kDrawStyleFont) && style.font[0]) {
+            str::ReplaceWithCopy(&annotation->textFont, style.font);
+        }
+        if (style.flags & kDrawStyleTextSize) {
+            annotation->textSize = std::clamp(style.textSize, 5, 128);
+        }
+        if (style.flags & kDrawStyleAlign) {
+            annotation->textAlignment = std::clamp(style.align, 0, 2);
+        }
+        if (style.flags & kDrawStyleBorderColor) {
+            annotation->borderColorExplicit = true;
+            annotation->borderColor = style.borderColor;
+        }
+        if (style.flags & kDrawStyleBackground) {
+            annotation->backgroundTransparent = style.backgroundTransparent;
+            if (!style.backgroundTransparent) {
+                annotation->backgroundColor = style.background;
+            }
+        }
+    }
+}
+
+void RememberEbookDrawStyle(EbookAnnotation* annotation) {
+    if (!annotation) {
+        return;
+    }
+    AnnotDrawStyle style{};
+    style.type = annotation->type;
+    if (!IsSpecialColor(annotation->color)) {
+        style.color = annotation->color;
+        style.flags |= kDrawStyleColor;
+    }
+    if (annotation->type == AnnotationType::FreeText || annotation->type == AnnotationType::Line ||
+        annotation->type == AnnotationType::Square || annotation->type == AnnotationType::Circle ||
+        annotation->type == AnnotationType::Ink) {
+        style.border = (float)annotation->borderWidth;
+        style.flags |= kDrawStyleBorder;
+    }
+    if (annotation->type == AnnotationType::Highlight || annotation->type == AnnotationType::FreeText) {
+        style.opacityPercent = std::clamp(annotation->opacity, 0, 100);
+        style.flags |= kDrawStyleOpacity;
+    }
+    if (annotation->type == AnnotationType::Line || annotation->type == AnnotationType::Square ||
+        annotation->type == AnnotationType::Circle) {
+        style.interiorTransparent = annotation->interiorTransparent;
+        style.interior = annotation->interiorColor;
+        style.flags |= kDrawStyleInterior;
+    }
+    if (annotation->type == AnnotationType::Line) {
+        style.lineStart = annotation->lineStart;
+        style.lineEnd = annotation->lineEnd;
+        style.flags |= kDrawStyleLineEnds;
+    }
+    if ((annotation->type == AnnotationType::Text || annotation->type == AnnotationType::Stamp) &&
+        !str::IsEmpty(annotation->icon)) {
+        str::BufSet(style.icon, dimof(style.icon), annotation->icon);
+        style.flags |= kDrawStyleIcon;
+    }
+    if (annotation->type == AnnotationType::FreeText) {
+        if (!str::IsEmpty(annotation->textFont)) {
+            str::BufSet(style.font, dimof(style.font), annotation->textFont);
+            style.flags |= kDrawStyleFont;
+        }
+        style.textSize = annotation->textSize;
+        style.flags |= kDrawStyleTextSize;
+        style.align = annotation->textAlignment;
+        style.flags |= kDrawStyleAlign;
+        style.borderColor = annotation->borderColor;
+        style.flags |= kDrawStyleBorderColor;
+        style.backgroundTransparent = annotation->backgroundTransparent;
+        style.background = annotation->backgroundColor;
+        style.flags |= kDrawStyleBackground;
+    }
+    if (style.flags) {
+        SaveAnnotDrawStyle(style);
+        if (annotation->type == AnnotationType::Stamp && style.icon[0]) {
+            RememberStampIconName(style.icon);
+        }
+    }
+}
+
+static void TakeEbookDrawStyle(EbookAnnotation* annotation) {
+    AdoptEbookDrawStyle(annotation);
+    RememberEbookDrawStyle(annotation);
+}
+
 EbookAnnotation* EbookAnnotationsCreateFromSelection(WindowTab* tab, AnnotationType type, COLORREF color) {
     if (type != AnnotationType::Highlight && type != AnnotationType::Underline && type != AnnotationType::Squiggly &&
         type != AnnotationType::StrikeOut) {
@@ -878,6 +1018,7 @@ EbookAnnotation* EbookAnnotationsCreateFromSelection(WindowTab* tab, AnnotationT
     annotation->prefix = str::Dup(ExtractContextTemp(engine, fromPage, fromGlyph - kContextChars, fromGlyph));
     annotation->suffix = str::Dup(ExtractContextTemp(engine, toPage, toGlyph, toGlyph + kContextChars));
     InitEbookAnnotationMetadata(annotation);
+    TakeEbookDrawStyle(annotation);
     annotations->items.Append(annotation);
     if (!SaveEbookAnnotations(annotations)) {
         annotations->items.RemoveAt(annotations->items.size() - 1);
@@ -993,9 +1134,11 @@ EbookAnnotation* EbookAnnotationsCreateAt(WindowTab* tab, DisplayModel* dm, Poin
     annotation->height = defaultSize.dy;
     if (type == AnnotationType::FreeText) {
         annotation->note = str::Dup("This is a text...");
-        annotation->textFont = str::Dup("Helv");
+        annotation->textFont = str::Dup(FreeTextPresetFont());
         annotation->textSize = std::max(5, gGlobalPrefs->annotations.freeTextSize);
         annotation->borderWidth = std::max(0, gGlobalPrefs->annotations.freeTextBorderWidth);
+        annotation->borderColorExplicit = true;
+        annotation->borderColor = RGB(0, 0, 0);
         auto& background = gGlobalPrefs->annotations.freeTextBackgroundColorParsed;
         if (background.parsedOk) {
             annotation->backgroundTransparent = false;
@@ -1011,6 +1154,7 @@ EbookAnnotation* EbookAnnotationsCreateAt(WindowTab* tab, DisplayModel* dm, Poin
     annotation->prefix = str::Dup(ExtractContextTemp(engine, pageNo, glyph - kContextChars, glyph));
     annotation->suffix = str::Dup(ExtractContextTemp(engine, pageNo, glyph + 1, glyph + 1 + kContextChars));
     InitEbookAnnotationMetadata(annotation);
+    TakeEbookDrawStyle(annotation);
     annotations->items.Append(annotation);
     if (!SaveEbookAnnotations(annotations)) {
         annotations->items.RemoveAt(annotations->items.size() - 1);
@@ -1061,6 +1205,7 @@ EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* d
     if (type == AnnotationType::Line || type == AnnotationType::Square || type == AnnotationType::Circle) {
         annotation->borderWidth = 1;
     }
+    TakeEbookDrawStyle(annotation);
     TouchEbookAnnotationModified(annotation);
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
     if (!annotations || !SaveEbookAnnotations(annotations)) {
@@ -1084,6 +1229,7 @@ EbookAnnotation* EbookAnnotationsCreateInkStroke(WindowTab* tab, DisplayModel* d
         annotation->inkPoints.Append(points[i]);
     }
     annotation->borderWidth = 1;
+    TakeEbookDrawStyle(annotation);
     TouchEbookAnnotationModified(annotation);
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
     if (!annotations || !SaveEbookAnnotations(annotations)) {
@@ -1168,7 +1314,7 @@ EbookAnnotation* EbookAnnotationsCreateInkStrokes(WindowTab* tab, DisplayModel* 
             src += n;
         }
     }
-    annotation->borderWidth = borderWidth > 0 ? borderWidth : 2;
+    annotation->borderWidth = borderWidth > 0 ? borderWidth : 1;
     TouchEbookAnnotationModified(annotation);
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
     if (!annotations || !SaveEbookAnnotations(annotations)) {
@@ -1472,6 +1618,7 @@ bool EbookAnnotationsDeleteAt(WindowTab* tab, DisplayModel* dm, Point canvasPoin
 }
 
 bool EbookAnnotationsDelete(WindowTab* tab, EbookAnnotation* annotation) {
+    EndFreeTextInPlaceEditForTab(tab, false);
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
     int idx = annotations ? annotations->items.Find(annotation) : -1;
     if (idx < 0) {
@@ -1709,10 +1856,35 @@ bool EbookAnnotationSetIcon(WindowTab* tab, EbookAnnotation* annotation, const c
     return true;
 }
 
+static bool SaveEbookFreeTextProperties(WindowTab* tab, EbookAnnotation* annotation);
+
+COLORREF EbookAnnotationGetFreeTextBorderColor(EbookAnnotation* annotation) {
+    if (!annotation) {
+        return RGB(0, 0, 0);
+    }
+    if (annotation->borderColorExplicit) {
+        return annotation->borderColor;
+    }
+    return annotation->color == kColorUnset ? RGB(0, 0, 0) : annotation->color;
+}
+
+bool EbookAnnotationSetFreeTextBorderColor(WindowTab* tab, EbookAnnotation* annotation, COLORREF color) {
+    if (!annotation || annotation->type != AnnotationType::FreeText) {
+        return false;
+    }
+    annotation->borderColorExplicit = true;
+    annotation->borderColor = color;
+    return SaveEbookFreeTextProperties(tab, annotation);
+}
+
 bool EbookAnnotationSetColor(WindowTab* tab, EbookAnnotation* annotation, COLORREF color) {
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
     if (!annotations || annotations->items.Find(annotation) < 0) {
         return false;
+    }
+    if (annotation->type == AnnotationType::FreeText && !annotation->borderColorExplicit && annotation->color != color) {
+        annotation->borderColor = annotation->color == kColorUnset ? RGB(0, 0, 0) : annotation->color;
+        annotation->borderColorExplicit = true;
     }
     COLORREF previous = annotation->color;
     annotation->color = color;
@@ -2206,6 +2378,46 @@ static void PaintEbookTextMarker(WindowTab* tab, HDC hdc, Rect anchor, COLORREF 
     }
 }
 
+// Use GDI's edit-control word wrapping and the same integer font height as
+// the native in-place EDIT. GDI+ DrawString adds glyph padding and uses
+// different advances, causing text to rewrap when entering/leaving editing.
+// Blend a copy of the visible background to retain annotation opacity without
+// allocating a bitmap as large as a potentially oversized annotation.
+static void PaintEbookFreeText(HDC hdc, Rect content, const WCHAR* text, const WCHAR* face, int fontPx, COLORREF color,
+                               int alignment, u8 alpha) {
+    RECT clip;
+    if (!alpha || GetClipBox(hdc, &clip) == ERROR) return;
+    RECT bounds = ToRECT(content), visible;
+    if (!IntersectRect(&visible, &bounds, &clip)) return;
+    int width = visible.right - visible.left, height = visible.bottom - visible.top;
+    HDC buffer = CreateCompatibleDC(hdc);
+    HBITMAP bitmap = CreateCompatibleBitmap(hdc, width, height);
+    HFONT font = CreateFontW(-fontPx, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, face);
+    if (!buffer || !bitmap || !font) {
+        if (font) DeleteObject(font);
+        if (bitmap) DeleteObject(bitmap);
+        if (buffer) DeleteDC(buffer);
+        return;
+    }
+    HGDIOBJ oldBitmap = SelectObject(buffer, bitmap), oldFont = SelectObject(buffer, font);
+    BitBlt(buffer, 0, 0, width, height, hdc, visible.left, visible.top, SRCCOPY);
+    SetViewportOrgEx(buffer, -visible.left, -visible.top, nullptr);
+    SetBkMode(buffer, TRANSPARENT);
+    SetTextColor(buffer, color);
+    UINT format = DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX;
+    format |= alignment == 1 ? DT_CENTER : alignment == 2 ? DT_RIGHT : DT_LEFT;
+    DrawTextW(buffer, text, -1, &bounds, format);
+    SetViewportOrgEx(buffer, 0, 0, nullptr);
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, alpha, 0};
+    GdiAlphaBlend(hdc, visible.left, visible.top, width, height, buffer, 0, 0, width, height, blend);
+    SelectObject(buffer, oldFont);
+    SelectObject(buffer, oldBitmap);
+    DeleteObject(font);
+    DeleteObject(bitmap);
+    DeleteDC(buffer);
+}
+
 static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, EbookAnnotation* annotation) {
     AnnotationType type = annotation->type;
     COLORREF color = EbookAnnotationGetColor(annotation);
@@ -2249,32 +2461,29 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
         float borderWidth = (float)EbookAnnotationGetFreeTextBorderWidth(annotation);
         borderWidth = (float)DpiScale(tab->win->hwndFrame, (int)borderWidth);
         if (borderWidth > 0) {
-            Gdiplus::Pen border(Gdiplus::Color(alpha, tr, tg, tb), borderWidth);
+            COLORREF frame = EbookAnnotationGetFreeTextBorderColor(annotation);
+            frame = MapEbookAnnotationColor(frame);
+            u8 fr, fg, fb;
+            UnpackColor(frame, fr, fg, fb);
+            Gdiplus::Pen border(Gdiplus::Color(alpha, fr, fg, fb), borderWidth);
             float half = borderWidth / 2.f;
             graphics.DrawRectangle(&border, (float)marker.x + half, (float)marker.y + half,
                                    (float)marker.dx - borderWidth, (float)marker.dy - borderWidth);
         }
         TempWStr text = ToWStrTemp(str::IsEmpty(annotation->note) ? "This is a text..." : annotation->note);
         int fontSize = EbookAnnotationGetFreeTextSize(annotation);
-        const char* fontName = EbookAnnotationGetFreeTextFont(annotation);
-        const WCHAR* family = str::Eq(fontName, "Cour")   ? L"Courier New"
-                              : str::Eq(fontName, "TiRo") ? L"Times New Roman"
-                                                          : L"Arial";
-        float fontPx = (float)DpiScale(tab->win->hwndFrame, fontSize);
-        Gdiplus::Font font(family, fontPx, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::SolidBrush textBrush(Gdiplus::Color(alpha, tr, tg, tb));
+        const WCHAR* family = FreeTextWindowsFace(EbookAnnotationGetFreeTextFont(annotation));
+        int fontPx = std::max(6, DpiScale(tab->win->hwndFrame, fontSize));
         float pad = borderWidth + fontPx * 0.4f;
         float side = (float)std::min(marker.dx, marker.dy);
         if (pad > side * 0.45f) {
             pad = side * 0.45f;
         }
-        Gdiplus::RectF textBounds((float)marker.x + pad, (float)marker.y + pad, (float)marker.dx - pad * 2,
-                                  (float)marker.dy - pad * 2);
-        Gdiplus::StringFormat format;
-        format.SetAlignment(EbookAnnotationGetFreeTextAlignment(annotation) == 1   ? Gdiplus::StringAlignmentCenter
-                            : EbookAnnotationGetFreeTextAlignment(annotation) == 2 ? Gdiplus::StringAlignmentFar
-                                                                                   : Gdiplus::StringAlignmentNear);
-        graphics.DrawString(text, -1, &font, textBounds, &format, &textBrush);
+        int inset = (int)(pad + 0.5f);
+        Rect textBounds(marker.x + inset, marker.y + inset, marker.dx - inset * 2, marker.dy - inset * 2);
+        graphics.Flush(Gdiplus::FlushIntentionSync);
+        PaintEbookFreeText(hdc, textBounds, text, family, fontPx, textColor,
+                           EbookAnnotationGetFreeTextAlignment(annotation), alpha);
         return;
     }
     if (type == AnnotationType::Stamp) {
@@ -2559,7 +2768,9 @@ static void PaintEbookInkStroke(WindowTab* tab, HDC hdc, DisplayModel* dm, int p
     COLORREF color = MapEbookAnnotationColor(EbookAnnotationGetColor(annotation));
     u8 r, g, b;
     UnpackColor(color, r, g, b);
-    float width = (float)DpiScale(tab->win->hwndFrame, EbookAnnotationGetBorderWidth(annotation));
+    // Same screen thickness as a line with this border value. Line, square and
+    // circle already stroke at twice the stored width.
+    float width = (float)DpiScale(tab->win->hwndFrame, 2 * EbookAnnotationGetBorderWidth(annotation));
     Gdiplus::Graphics graphics(hdc);
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     Gdiplus::Pen pen(Gdiplus::Color(255, r, g, b), std::max(1.f, width));

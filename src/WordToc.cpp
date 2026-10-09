@@ -106,7 +106,7 @@ static char* SanitizeTitle(const char* title) {
     }
     char* s = str::Dup(title);
     for (char* p = s; *p; p++) {
-        if (*p == '\n' || *p == '\r' || *p == '\x1f') {
+        if ((unsigned char)*p < 0x20) {
             *p = ' ';
         }
     }
@@ -127,15 +127,15 @@ static void AppendNodes(StrBuilder& b, const Vec<PdfTocEditNode*>& nodes, int le
         int xi = (int)(x >= 0 ? x * 100.f + 0.5f : x * 100.f - 0.5f);
         int yi = (int)(y >= 0 ? y * 100.f + 0.5f : y * 100.f - 0.5f);
         AutoFreeStr title(SanitizeTitle(n->title));
-        b.AppendFmt("%d\x1f%d\x1f%s\x1f%d\x1f%d\x1f%d\n", level, n->isOpen ? 1 : 0, title.Get() ? title.Get() : "",
-                    page, xi, yi);
+        b.AppendFmt("%d\t%d\t%s\t%d\t%d\t%d\n", level, n->isOpen ? 1 : 0, title.Get() ? title.Get() : "", page, xi, yi);
         AppendNodes(b, n->children, level + 1);
     }
 }
 
 static char* BuildPayload(WordTocModel* m) {
     StrBuilder b;
-    b.Append("SMPT1\n");
+    // XML 1.0 forbids the unit separator used by SMPT1, even as a character reference.
+    b.Append("SMPT2\n");
     if (m) {
         AppendNodes(b, m->roots, 0);
     }
@@ -159,7 +159,13 @@ static char* FieldDup(const char* start, const char* end) {
 }
 
 static bool ParsePayload(const char* s, WordTocModel* m) {
-    if (!m || !s || !str::StartsWith(s, "SMPT1\n")) {
+    if (!m || !s) {
+        return false;
+    }
+    char separator = '\t';
+    if (str::StartsWith(s, "SMPT1\n")) {
+        separator = '\x1f';
+    } else if (!str::StartsWith(s, "SMPT2\n")) {
         return false;
     }
     DeletePdfTocEditNodes(m->roots);
@@ -183,7 +189,7 @@ static bool ParsePayload(const char* s, WordTocModel* m) {
         for (; nFields < 6; nFields++) {
             f[nFields] = p;
             const char* cut = p;
-            while (cut < end && *cut != '\x1f') {
+            while (cut < end && *cut != separator) {
                 cut++;
             }
             fe[nFields] = cut;

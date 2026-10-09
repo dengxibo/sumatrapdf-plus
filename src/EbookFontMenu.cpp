@@ -28,6 +28,7 @@
 #include "DarkModeSubclass.h"
 #include "Translations.h"
 #include "EbookFontMenu.h"
+#include "Annotation.h"
 #include "EbookInstalledFonts.h"
 #include "resource.h"
 
@@ -886,6 +887,7 @@ struct FontPickerWnd {
     bool cjk = false;
     int dpi = 96;
     int bundledCount = 0;
+    int recentCount = 0;
     Vec<char*> names;
     Vec<int> visible; // index into names, or -1 for the separator
     int sel = 0;
@@ -894,6 +896,8 @@ struct FontPickerWnd {
     HFONT uiFontBold = nullptr;
     HBRUSH bgBrush = nullptr;
     HBRUSH ctrlBrush = nullptr;
+    FontFamilyPickedFn onPick = nullptr;
+    void* pickCtx = nullptr;
 };
 
 static FontPickerWnd* gFontPicker = nullptr;
@@ -919,25 +923,38 @@ static void FontPickerFree(FontPickerWnd* p) {
 static void FontPickerRebuildVisible(FontPickerWnd* p) {
     p->visible.Reset();
     char* query = HwndGetTextTemp(p->hwndSearch);
+    auto matches = [&](int i) { return str::IsEmpty(query) || str::ContainsI(p->names[i], query); };
+    int shownRecent = 0;
+    for (int i = 0; i < p->recentCount && i < p->names.Size(); i++) {
+        if (!matches(i)) {
+            continue;
+        }
+        if (shownRecent == 0 && str::IsEmpty(query)) {
+            p->visible.Append(-2);
+        }
+        p->visible.Append(i);
+        shownRecent++;
+    }
+    int bundledStart = p->recentCount;
     int shownBundled = 0;
-    for (int i = 0; i < p->bundledCount && i < p->names.Size(); i++) {
-        if (str::IsEmpty(query) || str::ContainsI(p->names[i], query)) {
+    for (int i = bundledStart; i < p->bundledCount && i < p->names.Size(); i++) {
+        if (matches(i)) {
             p->visible.Append(i);
             shownBundled++;
         }
     }
     bool anyInstalled = false;
     for (int i = p->bundledCount; i < p->names.Size(); i++) {
-        if (str::IsEmpty(query) || str::ContainsI(p->names[i], query)) {
+        if (matches(i)) {
             anyInstalled = true;
             break;
         }
     }
-    if (shownBundled > 0 && anyInstalled) {
+    if ((shownRecent > 0 || shownBundled > 0) && anyInstalled) {
         p->visible.Append(-1);
     }
     for (int i = p->bundledCount; i < p->names.Size(); i++) {
-        if (str::IsEmpty(query) || str::ContainsI(p->names[i], query)) {
+        if (matches(i)) {
             p->visible.Append(i);
         }
     }
@@ -998,10 +1015,20 @@ static void FontPickerApplySelection(FontPickerWnd* p) {
     if (nameIdx < 0 || nameIdx >= p->names.Size()) {
         return;
     }
+    char* picked = str::Dup(p->names[nameIdx]);
+    FontFamilyPickedFn onPick = p->onPick;
+    void* pickCtx = p->pickCtx;
     int orig = p->cjk ? CmdSetEbookCjkFont : CmdSetEbookLatinFont;
-    int cmdId = FindFontMenuCmdId(orig, p->names[nameIdx]);
+    int cmdId = onPick ? 0 : FindFontMenuCmdId(orig, p->names[nameIdx]);
     HWND owner = GetWindow(p->hwnd, GW_OWNER);
     DestroyWindow(p->hwnd);
+    if (onPick) {
+        NoteFreeTextFontUsed(picked);
+        onPick(picked, pickCtx);
+        str::Free(picked);
+        return;
+    }
+    str::Free(picked);
     if (cmdId > 0 && owner) {
         HwndSendCommand(owner, cmdId);
     }
@@ -1197,6 +1224,15 @@ static void FontPickerPaintList(FontPickerWnd* p, HDC hdc) {
         RECT rr{rc.left + padX, y, rc.right - padX, y + p->rowDy};
         int nameIdx = p->visible[vis];
         if (nameIdx < 0) {
+            if (nameIdx == -2) {
+                SetTextColor(hdc, ThemeWindowTextDisabledColor());
+                HFONT old = (HFONT)SelectObject(hdc, p->uiFont);
+                DrawTextW(hdc, ToWStrTemp(_TRA("Recent")), -1, &rr,
+                          DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS | DT_NOPREFIX);
+                SelectObject(hdc, old);
+                y += p->rowDy;
+                continue;
+            }
             int mid = (rr.top + rr.bottom) / 2;
             HPEN pen = CreatePen(PS_SOLID, 1, ThemeWindowTextDisabledColor());
             HGDIOBJ old = SelectObject(hdc, pen);
@@ -1510,6 +1546,49 @@ static LRESULT CALLBACK WndProcFontPicker(HWND hwnd, UINT msg, WPARAM wp, LPARAM
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+struct FontPickExtra {
+    bool both = false;
+    const char* current = nullptr;
+    FontFamilyPickedFn onPick = nullptr;
+    void* ctx = nullptr;
+};
+
+static FontPickExtra gFontPickExtra;
+
+static void AppendPickerFontFamilies(FontPickerWnd* p, int origCmd) {
+    Vec<CustomCommand*> cmds;
+    GetCommandsWithOrigId(cmds, origCmd);
+    for (CustomCommand* cmd : cmds) {
+        const char* family = GetCommandStringArg(cmd, kCmdArgFontFamily, nullptr);
+        if (family && family[0]) {
+            p->names.Append(str::Dup(family));
+        }
+    }
+}
+
+bool HwndBelongsToFontPicker(HWND hwnd) {
+    if (!hwnd || !gFontPicker || !gFontPicker->hwnd) {
+        return false;
+    }
+    return hwnd == gFontPicker->hwnd || IsChild(gFontPicker->hwnd, hwnd);
+}
+
+void ShowFreeTextFontPicker(HWND owner, const char* currentFamily, FontFamilyPickedFn onPick, void* ctx) {
+    const char* shown = currentFamily;
+    if (!currentFamily || str::Eq(currentFamily, "Helv")) {
+        shown = "Arial";
+    } else if (str::Eq(currentFamily, "Cour")) {
+        shown = "Courier New";
+    } else if (str::Eq(currentFamily, "TiRo")) {
+        shown = "Times New Roman";
+    }
+    gFontPickExtra.both = true;
+    gFontPickExtra.current = shown;
+    gFontPickExtra.onPick = onPick;
+    gFontPickExtra.ctx = ctx;
+    ShowEbookFontPicker(owner, false);
+}
+
 void ShowEbookFontPicker(HWND owner, bool cjk) {
     if (gFontPicker && IsWindow(gFontPicker->hwnd)) {
         DestroyWindow(gFontPicker->hwnd);
@@ -1539,17 +1618,33 @@ void ShowEbookFontPicker(HWND owner, bool cjk) {
     auto* p = new FontPickerWnd();
     p->cjk = cjk;
     p->bundledCount = cjk ? gEbookCjkBundledMenuCount : gEbookLatinBundledMenuCount;
-    int orig = cjk ? CmdSetEbookCjkFont : CmdSetEbookLatinFont;
-    Vec<CustomCommand*> cmds;
-    GetCommandsWithOrigId(cmds, orig);
-    for (CustomCommand* cmd : cmds) {
-        const char* family = GetCommandStringArg(cmd, kCmdArgFontFamily, nullptr);
-        if (family && family[0]) {
-            p->names.Append(str::Dup(family));
+    bool both = gFontPickExtra.both;
+    if (both) {
+        const char* recent[3]{};
+        int nRecent = GetFreeTextRecentFonts(recent, 3);
+        for (int i = 0; i < nRecent; i++) {
+            if (recent[i] && recent[i][0]) {
+                p->names.Append(str::Dup(recent[i]));
+            }
         }
+        p->recentCount = p->names.Size();
+    }
+    char pickedCurrent[128]{};
+    if (both) {
+        if (gFontPickExtra.current) {
+            str::BufSet(pickedCurrent, dimof(pickedCurrent), gFontPickExtra.current);
+        }
+        p->onPick = gFontPickExtra.onPick;
+        p->pickCtx = gFontPickExtra.ctx;
+        AppendPickerFontFamilies(p, CmdSetEbookLatinFont);
+        p->bundledCount = p->names.Size();
+        AppendPickerFontFamilies(p, CmdSetEbookCjkFont);
+        gFontPickExtra = {};
+    } else {
+        AppendPickerFontFamilies(p, cjk ? CmdSetEbookCjkFont : CmdSetEbookLatinFont);
     }
 
-    const WCHAR* title = cjk ? _TRW("CJK Body Font") : _TRW("Western Body Font");
+    const WCHAR* title = both ? _TRW("Choose Font") : cjk ? _TRW("CJK Body Font") : _TRW("Western Body Font");
     HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kFontPickerClass, title,
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
                                 CW_USEDEFAULT, CW_USEDEFAULT, owner, nullptr, inst, p);
@@ -1596,15 +1691,22 @@ void ShowEbookFontPicker(HWND owner, bool cjk) {
     SendMessageW(p->hwndCancel, WM_SETFONT, (WPARAM)p->uiFont, TRUE);
 
     FontPickerRebuildVisible(p);
-    const char* current = cjk ? GetEbookCjkFontFamily() : GetEbookLatinFontFamily();
+    const char* current = both ? pickedCurrent : (cjk ? GetEbookCjkFontFamily() : GetEbookLatinFontFamily());
     p->sel = 0;
     for (int i = 0; i < p->visible.Size(); i++) {
         int nameIdx = p->visible[i];
         if (nameIdx < 0) {
             continue;
         }
-        bool same = cjk ? EbookCjkFontFamiliesEquivalent(p->names[nameIdx], current)
-                        : EbookLatinFontFamiliesEquivalent(p->names[nameIdx], current);
+        bool same = false;
+        if (both) {
+            same = current[0] && (str::EqI(p->names[nameIdx], current) ||
+                                  EbookLatinFontFamiliesEquivalent(p->names[nameIdx], current) ||
+                                  EbookCjkFontFamiliesEquivalent(p->names[nameIdx], current));
+        } else {
+            same = cjk ? EbookCjkFontFamiliesEquivalent(p->names[nameIdx], current)
+                       : EbookLatinFontFamiliesEquivalent(p->names[nameIdx], current);
+        }
         if (same) {
             p->sel = i;
             break;

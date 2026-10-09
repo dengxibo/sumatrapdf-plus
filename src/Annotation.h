@@ -95,6 +95,9 @@ void SetRect(Annotation*, RectF);
 // The annotation by itself, at the page zoom. 32bpp top-down BGRA, premultiplied
 // alpha. Caller DeleteObject. nullptr if it cannot be drawn quickly.
 HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotation);
+// Page pixels for pageRect with this annotation left out. 32bpp top-down.
+// Caller DeleteObject. nullptr if it cannot be rendered.
+HBITMAP RenderPagePatchHidingAnnotation(Annotation* annot, float zoom, int rotation, RectF pageRect);
 HBITMAP RenderAnnotationIconPreviewBitmap(EngineMupdf* engine, int pageNo, AnnotationType type, COLORREF color,
                                           const char* iconName, int size, int lineEnding = -1, bool lineStart = false);
 HBITMAP RenderAnnotationIconPreviewBitmap(Annotation* annot, const char* iconName, int size, int lineEnding = -1,
@@ -138,6 +141,13 @@ bool SetInteriorColor(Annotation*, PdfColor);
 bool SetQuadding(Annotation*, int);
 void SetBorderWidth(Annotation*, int);
 void SetBorderWidthFloat(Annotation*, float);
+// Independent of text color. Missing key keeps the legacy text-colored stroke.
+bool FreeTextBorderColorIsExplicit(Annotation*);
+PdfColor FreeTextBorderColor(Annotation*);
+void SetFreeTextBorderColor(Annotation*, PdfColor);
+// User-chosen font only. Opening a file or syncing a control must not call this.
+void NoteFreeTextFontUsed(const char* family);
+int GetFreeTextRecentFonts(const char** out, int cap);
 void SetOpacity(Annotation*, int);
 void SetIconName(Annotation*, const char*);
 void SetLineEndStyles(Annotation*, int end);
@@ -169,4 +179,52 @@ bool AnnotationSupportsMediaPlayback(AnnotationType tp);
 
 const char* DefaultStampIconName();
 void RememberStampIconName(const char* name);
+
+// Color of a new annotation after the settings file is deleted.
+COLORREF FactoryAnnotationColor(AnnotationType type);
+// PDF stroke width, in points, that lands on a 2px screen stroke at this zoom.
+float NewStrokeWidthPoints(float zoom);
+
+// Last drawn annotation of each type. The next draw of that type uses it.
+constexpr u32 kDrawStyleColor = 1u << 0;
+constexpr u32 kDrawStyleBorder = 1u << 1;
+constexpr u32 kDrawStyleOpacity = 1u << 2;
+constexpr u32 kDrawStyleInterior = 1u << 3;
+constexpr u32 kDrawStyleLineEnds = 1u << 4;
+constexpr u32 kDrawStyleIcon = 1u << 5;
+constexpr u32 kDrawStyleFont = 1u << 6;
+constexpr u32 kDrawStyleTextSize = 1u << 7;
+constexpr u32 kDrawStyleAlign = 1u << 8;
+constexpr u32 kDrawStyleBorderColor = 1u << 9;
+constexpr u32 kDrawStyleBackground = 1u << 10;
+
+struct AnnotDrawStyle {
+    AnnotationType type = AnnotationType::Unknown;
+    u32 flags = 0;
+    COLORREF color = 0;
+    float border = 1.f;
+    int opacityPercent = 100;
+    bool interiorTransparent = true;
+    COLORREF interior = 0;
+    int lineStart = 0;
+    int lineEnd = 0;
+    char icon[64]{};
+    char font[96]{};
+    int textSize = 21;
+    int align = 0;
+    COLORREF borderColor = 0;
+    bool backgroundTransparent = true;
+    COLORREF background = 0;
+};
+
+bool FindAnnotDrawStyle(AnnotationType type, AnnotDrawStyle* out);
+void SaveAnnotDrawStyle(const AnnotDrawStyle& style);
+void RememberPdfDrawStyle(Annotation* annot);
+void ApplyRememberedPdfDrawStyle(Annotation* annot);
+// font is Helv/Cour/TiRo; size 0 leaves size; width and height below 8 leave the box size
+const char* FreeTextPresetFont();
+const char* FreeTextFontLabel(const char* font);
+const WCHAR* FreeTextWindowsFace(const char* font);
+void RememberFreeTextPreset(const char* font, int size, float width, float height);
+void ResetFreeTextPreset();
 SizeF GetDefaultStampSize();

@@ -109,9 +109,11 @@ static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine);
 static bool ShouldPreserveImagesLegacy(EngineBase* engine);
 static void FinalizeTileSkipRects(Vec<Rect>& skipRects, Size bmpSize);
 
-// Enhancement reads publisher pixels only. Theme tint is painted afterwards.
+// PDF/XPS: enhancement reads publisher pixels, then theme tint is painted afterwards.
+// Native-text books already have theme colors in the bitmap, so keep that render.
 static bool EnhanceFromOriginalPage(DisplayModel* dm) {
-    return GetDisplayFilterForController(dm).IsActive();
+    DisplayFilterParams p = GetDisplayFilterForController(dm);
+    return p.IsActive() && !p.themedBitmap;
 }
 
 static void RecolorEnhancedOriginalForTheme(RenderedBitmap* bmp) {
@@ -727,12 +729,13 @@ bool RenderCache::ReduceTileSize() {
 void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, bool prioritize) {
     if (prioritize && dm) {
         // A neighbor prefetch may already be inside RenderPage, holding the
-        // engine lock. Abort it, and drop queued pages that are not this one,
-        // so a bookmark jump is not stuck behind them.
+        // engine lock. Abort off-screen work so a bookmark jump is not stuck
+        // behind it. Keep every visible page: at a continuous-page boundary
+        // RenderVisibleParts requests both, and they must not cancel each other.
         ScopedCritSec scope(&requestAccess);
         for (int i = 0; i < nRenderThreads; i++) {
             PageRenderRequest* cr = curReqs[i];
-            if (cr && cr->dm == dm && cr->pageNo != pageNo && !cr->abort) {
+            if (cr && cr->dm == dm && cr->pageNo != pageNo && !dm->PageVisible(cr->pageNo) && !cr->abort) {
                 if (cr->abortCookie) {
                     cr->abortCookie->Abort();
                 }
@@ -743,7 +746,7 @@ void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, bool prioritize
         int curPos = 0;
         for (int i = 0; i < reqCount; i++) {
             PageRenderRequest* req = &(requests[i]);
-            bool drop = req->dm == dm && req->pageNo != pageNo;
+            bool drop = req->dm == dm && req->pageNo != pageNo && !dm->PageVisible(req->pageNo);
             if (i != curPos) {
                 requests[curPos] = requests[i];
             }
@@ -1275,8 +1278,11 @@ int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, T
             entry->filterContrast = filter.contrast;
             entry->filterSharpness = filter.sharpness;
             entry->filterVersion = kDocumentEnhancerVersion;
-            // Theme tint is display-only, after the original page has been enhanced.
-            RecolorEnhancedOriginalForTheme(entry->filteredBitmap);
+            // PDF/XPS: theme tint after the original page has been enhanced.
+            // Native-text books are already themed in the source tile.
+            if (!filter.themedBitmap) {
+                RecolorEnhancedOriginalForTheme(entry->filteredBitmap);
+            }
         }
         if (entry->filteredBitmap && entry->filteredBitmap->IsValid()) {
             renderedBmp = entry->filteredBitmap;

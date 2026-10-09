@@ -40,6 +40,8 @@
 #include "utils/Log.h"
 #include "utils/Timer.h"
 
+#include <math.h>
+
 static Kind kNotifOcr = "ocrProgress";
 constexpr int kOcrDoneTimeoutMs = 2000;
 static bool gWarnedMissingModels = false;
@@ -78,6 +80,17 @@ static EngineBase* gOcrPendingExtractEngine = nullptr;
 static HWND gOcrPendingExtractHwnd = nullptr;
 static bool gOcrPendingExtractPersist = false;
 static bool gOcrPendingTocRefineTried = false;
+// Recognize-all-scanned-pages (fast / accurate) may turn or deskew a copy of the
+// raster so recognition is more accurate. It must not write that onto the PDF
+// page: no /Rotate, no display deskew.
+static bool gOcrKeepPageGeometry = false;
+
+static bool OcrDocumentWorkPending() {
+    gQueueLock.Lock();
+    bool doc = gOcrDocTotal > 0;
+    gQueueLock.Unlock();
+    return doc || gOcrPendingSavePath != nullptr || gOcrPendingExtractEngine != nullptr;
+}
 
 static int OcrQueueTocPages(MainWindow* win);
 
@@ -452,9 +465,9 @@ static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const Re
     return bmp;
 }
 
-// Full-page OCR: straighten for recognition and for on-screen display.
-// Display deskew is session-only (markDirty=false) so Save / OCR auto-save
-// never bake the angle into the PDF file.
+// Full-page OCR: straighten for recognition and, unless the caller is keeping
+// the PDF page as-is, for on-screen display. Display deskew is session-only
+// (markDirty=false) so Save / OCR auto-save never bake the angle into the file.
 static RenderedBitmap* RenderPageForOcrMaybeDeskew(EngineBase* engine, int pageNo, float maxSideCap = 0.f) {
     float existing = 0.f;
     if (engine && engine->kind == kindEngineMupdf) {
@@ -1755,6 +1768,109 @@ static u8* RotateRgb180(const u8* src, int w, int h, int stride, int* nw, int* n
     return dst;
 }
 
+// Small-angle copy used only to recognize. deg is the Postl/fz_rotate correction
+// (clockwise-positive in this y-down bitmap). The buffer stays the same size so
+// the inverse map lands on the original, unstraightened page.
+static u8* RotateRgbAroundCenter(const u8* src, int w, int h, int stride, float deg) {
+    if (!src || w < 8 || h < 8 || deg == 0.f) {
+        return nullptr;
+    }
+    float rad = deg * 0.0174532925f;
+    float c = cosf(rad);
+    float s = sinf(rad);
+    float cx = (w - 1) * 0.5f;
+    float cy = (h - 1) * 0.5f;
+    int ds = w * 3;
+    u8* dst = AllocArray<u8>((size_t)ds * (size_t)h);
+    if (!dst) {
+        return nullptr;
+    }
+    memset(dst, 255, (size_t)ds * (size_t)h);
+    for (int y = 0; y < h; y++) {
+        u8* row = dst + (size_t)y * (size_t)ds;
+        float dy = (float)y - cy;
+        for (int x = 0; x < w; x++) {
+            float dx = (float)x - cx;
+            // Sample the source at the inverse turn, so the copy is straightened.
+            float sx = cx + dx * c + dy * s;
+            float sy = cy - dx * s + dy * c;
+            int ix = (int)sx;
+            int iy = (int)sy;
+            if ((float)ix != sx && sx < 0.f) {
+                ix -= 1;
+            }
+            if ((float)iy != sy && sy < 0.f) {
+                iy -= 1;
+            }
+            if (ix < 0 || iy < 0 || ix >= w || iy >= h) {
+                continue;
+            }
+            const u8* sp = src + (size_t)iy * (size_t)stride + (size_t)ix * 3;
+            u8* dp = row + (size_t)x * 3;
+            dp[0] = sp[0];
+            dp[1] = sp[1];
+            dp[2] = sp[2];
+        }
+    }
+    return dst;
+}
+
+static void MapOcrBoxesUndoCenterRotate(Vec<OcrBox>& boxes, int w, int h, float deg) {
+    if (deg == 0.f || w < 2 || h < 2) {
+        return;
+    }
+    float rad = -deg * 0.0174532925f;
+    float c = cosf(rad);
+    float s = sinf(rad);
+    float cx = (w - 1) * 0.5f;
+    float cy = (h - 1) * 0.5f;
+    for (int i = 0; i < boxes.Size(); i++) {
+        OcrBox& b = boxes[i];
+        float x0 = (float)b.rect.x;
+        float y0 = (float)b.rect.y;
+        float x1 = x0 + (float)b.rect.dx;
+        float y1 = y0 + (float)b.rect.dy;
+        float xs[4] = {x0, x1, x0, x1};
+        float ys[4] = {y0, y0, y1, y1};
+        float minX = 1e9f;
+        float minY = 1e9f;
+        float maxX = -1e9f;
+        float maxY = -1e9f;
+        for (int k = 0; k < 4; k++) {
+            float dx = xs[k] - cx;
+            float dy = ys[k] - cy;
+            float rx = cx + dx * c - dy * s;
+            float ry = cy + dx * s + dy * c;
+            if (rx < minX) {
+                minX = rx;
+            }
+            if (ry < minY) {
+                minY = ry;
+            }
+            if (rx > maxX) {
+                maxX = rx;
+            }
+            if (ry > maxY) {
+                maxY = ry;
+            }
+        }
+        int ix = (int)(minX + 0.5f);
+        int iy = (int)(minY + 0.5f);
+        int dx = (int)(maxX - minX + 0.5f);
+        int dy = (int)(maxY - minY + 0.5f);
+        if (dx < 1) {
+            dx = 1;
+        }
+        if (dy < 1) {
+            dy = 1;
+        }
+        b.rect = Rect(ix, iy, dx, dy);
+        free(b.charX);
+        b.charX = nullptr;
+        b.nChar = 0;
+    }
+}
+
 static Rect MapOcrRectFrom90(const Rect& r, int origW, int origH, bool clockwise) {
     if (clockwise) {
         return Rect(r.y, origH - r.x - r.dx, r.dy, r.dx);
@@ -2330,11 +2446,14 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
         LARGE_INTEGER tPage = TimeGet();
         LARGE_INTEGER tRaster = TimeGet();
         // Opening a scan turns Auto OCR on. That pass only adds text. It does
-        // not deskew the page or write /Rotate. Turning and straightening stay
-        // on the Manually Adjust Pages command.
+        // not deskew the page or write /Rotate. The two Recognize-all menus
+        // may still turn or deskew a private copy of the raster; they do not
+        // write /Rotate or display deskew onto the PDF page.
+        bool keepPage = gOcrKeepPageGeometry;
         bool orientPages = op != OcrOperation::Auto;
-        RenderedBitmap* bmp = orientPages ? RenderPageForOcrMaybeDeskew(engine, pageNo, tocCoarse ? 1440.f : 0.f)
-                                          : RenderPageForOcr(engine, pageNo, nullptr, tocCoarse ? 1440.f : 0.f);
+        RenderedBitmap* bmp = (orientPages && !keepPage)
+                                  ? RenderPageForOcrMaybeDeskew(engine, pageNo, tocCoarse ? 1440.f : 0.f)
+                                  : RenderPageForOcr(engine, pageNo, nullptr, tocCoarse ? 1440.f : 0.f);
         timing.rasterizeMs = TimeSinceInMs(tRaster);
         logfa("OCR[%d] bmp=%p valid=%d\n", pageNo, bmp, bmp ? bmp->IsValid() : 0);
         if (bmp && bmp->IsValid()) {
@@ -2344,6 +2463,27 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
             bmp = nullptr;
             logfa("OCR[%d] rgb=%p w=%d h=%d stride=%d\n", pageNo, rgb, w, h, stride);
             if (rgb) {
+                u8* pageRgb = rgb;
+                int pageStride = stride;
+                float recognizeDeskew = 0.f;
+                // Small tilt: straighten a copy so detection sees level lines.
+                // Quarter turns stay with the orientation model. The page itself
+                // is not deskewed.
+                if (keepPage && gGlobalPrefs && gGlobalPrefs->ocrDeskew && engine->kind == kindEngineMupdf &&
+                    EngineMupdfGetPageDeskewDeg(engine, pageNo) == 0.f) {
+                    float deg = EngineMupdfEstimatePageDeskewDeg(engine, pageNo);
+                    if (deg != 0.f && fabsf(deg) <= 15.f) {
+                        u8* turned = RotateRgbAroundCenter(rgb, w, h, stride, deg);
+                        if (turned) {
+                            rgb = turned;
+                            stride = w * 3;
+                            recognizeDeskew = deg;
+                            logfa("OCR[%d] deskew recognize-only %.2f deg (page unchanged)\n", pageNo, deg);
+                        }
+                    } else if (deg != 0.f) {
+                        logfa("OCR[%d] skip page deskew %.2f deg\n", pageNo, deg);
+                    }
+                }
                 Vec<OcrBox> boxes;
                 int usedRot = 0;
                 // RapidOrientation model pre-check: detect page direction before
@@ -2565,6 +2705,13 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                 if (OcrPageBoxesAreVertical(boxes)) {
                     SortOcrBoxesVerticalReading(boxes);
                 }
+                if (recognizeDeskew != 0.f) {
+                    MapOcrBoxesUndoCenterRotate(boxes, w, h, recognizeDeskew);
+                    free(rgb);
+                    rgb = pageRgb;
+                    stride = pageStride;
+                    recognizeDeskew = 0.f;
+                }
                 OcrDumpPageBoxes(pageNo, rgb, w, h, stride, boxes);
                 // PrintedToc diagnostics: raw OCR boxes as JSON for offline
                 // parser testing (SUMATRA_PTOC_DUMP=1, no-op otherwise).
@@ -2585,9 +2732,11 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                     FreeOcrBoxes(boxes);
                     if (pt.text && pt.len > 0) {
                         engine->SetCachedPageText(pageNo, pt, utf8);
-                        engine->SetOcrPageRotate(pageNo, usedRot, modelFirstUsed);
+                        int storedRot = keepPage ? 0 : usedRot;
+                        engine->SetOcrPageRotate(pageNo, storedRot, !keepPage && modelFirstUsed);
                         engine->SetOcrCacheQuality(pageNo, OcrQualityForProfile(profile));
-                        logfa("OCR[%d] SetOcrPageRotate(%d)\n", pageNo, usedRot);
+                        logfa("OCR[%d] SetOcrPageRotate(%d) keepPage=%d recogRot=%d\n", pageNo, storedRot,
+                              (int)keepPage, usedRot);
                         // T6: result committed; the text layer can query it right
                         // now (T8 == T6, same cache read path). T2->T6 spans
                         // raster + det + rec + text-layer build.
@@ -2994,7 +3143,8 @@ static void OcrFinishUi(OcrDoneUi* d) {
                 // Apply rotations + MediaBox swaps to the running engine BEFORE saving,
                 // so the display is updated AND the file copy opened by Save sees the
                 // correct state as well (the running engine is the authoritative copy).
-                if (d->engine) {
+                // Recognize-all scanned pages does not turn the PDF.
+                if (d->engine && !gOcrKeepPageGeometry) {
                     int changed = EngineMupdfApplyPendingOcrPageRotates(d->engine);
                     logfa("OCR[doc-save] ApplyPendingOcrPageRotates changed=%d\n", changed);
                     if (changed > 0) {
@@ -3011,13 +3161,15 @@ static void OcrFinishUi(OcrDoneUi* d) {
                         }
                     }
                 }
+                gOcrKeepPageGeometry = false;
                 OcrFinishPendingSaveIfAny(d->engine);
             } else if (extractToc) {
                 OcrLogDocSummary("all-pages", 0);
                 // Also apply orientation-detected page rotations before TOC extraction
                 // (the else-for-extractToc branch had been skipping this entirely, so
-                // sideways tables would never get rotated until a later save)
-                if (d->engine) {
+                // sideways tables would never get rotated until a later save).
+                // Recognize-all scanned pages leaves the page angle alone.
+                if (d->engine && !gOcrKeepPageGeometry) {
                     int changed = EngineMupdfApplyPendingOcrPageRotates(d->engine);
                     logfa("OCR[doc-extractToc] ApplyPendingOcrPageRotates changed=%d\n", changed);
                 }
@@ -3043,21 +3195,25 @@ static void OcrFinishUi(OcrDoneUi* d) {
                     d->engine->MarkUnsavedOcrText();
                 }
                 if (win) {
-                    // Relayout so rotated pages are shown upright when TOC is displayed
+                    // Relayout so rotated pages are shown upright when TOC is displayed.
+                    // A keep-geometry pass did not change page boxes.
                     DisplayModel* dm = win->AsFixed();
-                    if (dm && dm->GetEngine() == d->engine) {
+                    if (dm && dm->GetEngine() == d->engine && !gOcrKeepPageGeometry) {
                         dm->InvalidateReflowLayoutAfterEngineReparse();
                         dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
                     }
+                    gOcrKeepPageGeometry = false;
                     HandleExtractPdfTocCommand(win, true, persist);
                     ToolbarUpdateStateForWindow(win, false);
+                } else {
+                    gOcrKeepPageGeometry = false;
                 }
             } else {
                 OcrLogDocSummary("all-pages", 0);
                 if (d->engine && d->engine->CountOcrCachedPages() > 0) {
                     d->engine->MarkUnsavedOcrText();
                 }
-                if (d->engine) {
+                if (d->engine && !gOcrKeepPageGeometry) {
                     int changed = EngineMupdfApplyPendingOcrPageRotates(d->engine);
                     logfa("OCR[doc] ApplyPendingOcrPageRotates changed=%d\n", changed);
                     if (changed > 0) {
@@ -3070,6 +3226,7 @@ static void OcrFinishUi(OcrDoneUi* d) {
                         }
                     }
                 }
+                gOcrKeepPageGeometry = false;
                 OcrShowQuietDone(d->hwndCanvas, _TRA("Ready to search"));
                 MainWindow* win =
                     d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
@@ -3407,7 +3564,14 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
         // Auto OCR produces (and therefore requires) only the Fast/Tiny quality:
         // checking against the Balanced bar here made every page OCR twice and
         // re-OCR on every revisit (Fast quality 1 < Balanced quality 2).
-        shouldRun = OcrPageShouldRecognize(engine, pageNo, OcrOperation::Auto, &forceOcr);
+        // Page changes run on the UI thread. Do not extract a new page's text
+        // here: that can wait behind rendering on the engine lock at a seam.
+        // The OCR worker already checks whether the page looks scanned before
+        // recognizing it. Only consult the cheap OCR cache metadata here.
+        u8 have = engine->GetOcrCacheQuality(pageNo);
+        u8 need = OcrQualityForProfile(GetOcrProfileForOperation(OcrOperation::Auto));
+        shouldRun = have < need && (have > 0 || !engine->WasOcrTried(pageNo));
+        forceOcr = have > 0 && have < need;
         if (!shouldRun) {
             return;
         }
@@ -3622,12 +3786,18 @@ void OcrRerunAllPages(MainWindow* win, bool accurate) {
     }
     OcrCancelQueued(win, true);
     OcrClearSessionResults(engine);
+    // Fast and accurate "recognize all scanned pages" read a turned or
+    // deskewed copy when that helps. They do not rotate or deskew the PDF.
+    gOcrKeepPageGeometry = true;
     if (win && win->hwndCanvas && IsWindow(win->hwndCanvas)) {
         InvalidateRect(win->hwndCanvas, nullptr, FALSE);
     }
     OcrScheduleDocument(win, !autoSave, true);
     if (autoSave && engine && engine->FilePath()) {
         OcrSaveSearchablePdfAfterOcr(win, engine->FilePath(), extractToc);
+    }
+    if (!OcrDocumentWorkPending()) {
+        gOcrKeepPageGeometry = false;
     }
 }
 
@@ -3789,6 +3959,7 @@ void OcrCancelQueued(MainWindow* win, bool quiet) {
         gOcrDocHwnd = nullptr;
         gOcrDocTotal = 0;
         gOcrDocDone = 0;
+        gOcrKeepPageGeometry = false;
     }
     gQueueLock.Unlock();
 

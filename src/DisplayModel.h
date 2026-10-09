@@ -187,7 +187,7 @@ struct DisplayModel : DocController {
     bool IsOverText(Point pt, bool loadText = false);
     // eagerLoadLinks loads and caches links on first hit test for a page.
     IPageElement* GetElementAtPos(Point pt, int* pageNoOut, bool eagerLoadLinks = false);
-    Annotation* GetAnnotationAtPos(Point pt, Annotation*);
+    Annotation* GetAnnotationAtPos(Point pt, Annotation*, bool load = true);
 
     int GetPageNoByPoint(Point pt) const;
     Point CvtToScreen(int pageNo, PointF pt);

@@ -6,14 +6,14 @@
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/folder.svg
 static const char* gIconFileOpen =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" />
 </svg>)";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/printer.svg
 static const char* gIconPrint =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2" />
   <path d="M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4" />
@@ -22,7 +22,7 @@ static const char* gIconPrint =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/arrow-left.svg
 static const char* gIconPagePrev =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <line x1="5" y1="12" x2="19" y2="12" />
   <line x1="5" y1="12" x2="11" y2="18" />
@@ -31,7 +31,7 @@ static const char* gIconPagePrev =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/arrow-right.svg
 static const char* gIconPageNext =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <line x1="5" y1="12" x2="19" y2="12" />
   <line x1="13" y1="18" x2="19" y2="12" />
@@ -40,7 +40,7 @@ static const char* gIconPageNext =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/layout-rows.svg
 static const char* gIconLayoutContinuous =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <rect x="3" y="3" width="18" height="18" rx="2" />
   <line x1="3" y1="12" x2="21" y2="12" />
@@ -92,7 +92,7 @@ static const char* gIconMatchWholeWord =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/zoom-in.svg
 static const char* gIconZoomIn =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <circle cx="10" cy="10" r="7" />
   <line x1="7" y1="10" x2="13" y2="10" />
@@ -102,7 +102,7 @@ static const char* gIconZoomIn =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/zoom-out.svg
 static const char* gIconZoomOut =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <circle cx="10" cy="10" r="7" />
   <line x1="7" y1="10" x2="13" y2="10" />
@@ -120,7 +120,7 @@ static const char* gIconSave =
 
 // sidebar toggle icon - custom
 static const char* gIconBookmark =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
   <rect x="3" y="4" width="18" height="16" rx="2" />
   <path d="M8 4v16" />
@@ -128,26 +128,26 @@ static const char* gIconBookmark =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/rotate-2.svg - modified
 static const char* gIconRotateLeft =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
   <path d="M15 4.55a8 8 0 0 0 -6 14.9m0 -5.45v6h-6"/>
-  <circle cx="18.37" cy="7.16" r="0.15"/>
-  <circle cx="13" cy="19.94" r="0.15"/>
-  <circle cx="16.84" cy="18.37" r="0.15"/>
-  <circle cx="19.37" cy="15.1" r="0.15"/>
-  <circle cx="19.94" cy="11" r="0.15"/>
+  <circle cx="18.37" cy="7.16" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="13" cy="19.94" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="16.84" cy="18.37" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="19.37" cy="15.1" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="19.94" cy="11" r="0.6" stroke="none" fill="currentColor"/>
 </svg>)";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/rotate-clockwise-2.svg - modified
 static const char* gIconRotateRight =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
   <path d="M9 4.55a8 8 0 0 1 6 14.9m0 -5.45v6h6"/>
-  <circle cx="5.63" cy="7.16" r="0.15"/>
-  <circle cx="4.06" cy="11" r="0.15"/>
-  <circle cx="4.63" cy="15.1" r="0.15"/>
-  <circle cx="7.16" cy="18.37" r="0.15"/>
-  <circle cx="11" cy="19.94" r="0.15"/>
+  <circle cx="5.63" cy="7.16" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="4.06" cy="11" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="4.63" cy="15.1" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="7.16" cy="18.37" r="0.6" stroke="none" fill="currentColor"/>
+  <circle cx="11" cy="19.94" r="0.6" stroke="none" fill="currentColor"/>
 </svg>)";
 
 // Win11 Fluent speaker_2 (body + two waves), sized/weighted for the Tabler
@@ -171,7 +171,7 @@ static const char* gIconPauseSpeaking =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/arrow-back-up.svg
 static const char* gIconNavigateBack =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M9 14l-4 -4l4 -4" />
   <path d="M5 10h11a4 4 0 1 1 0 8h-1" />
@@ -179,7 +179,7 @@ static const char* gIconNavigateBack =
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/arrow-forward-up.svg
 static const char* gIconNavigateForward =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M15 14l4 -4l-4 -4" />
   <path d="M19 10h-11a4 4 0 1 0 0 8h1" />
@@ -227,7 +227,7 @@ static const char* gIconThemeMoon =
 
 // magic wand: smart document color mode
 static const char* gIconDocColorAuto =
-    R"DOCAUTO(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"DOCAUTO(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M4.25 19.75L15.6 8.4" />
   <path d="M13.9 6.7L17.3 10.1" />
@@ -419,9 +419,10 @@ static const char* gIconAnnotInk =
   <path d="M4 18 L8 14 L14 11 L20 5" />
 </svg>)";
 
-// User-provided stamp outline.
+// Closed stamp outline. A 1px stroke reads heavier than the square and circle,
+// so this matches the lighter frame used by the open, print, and free-text icons.
 static const char* gIconAnnotStamp =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none" fill="none"/>
   <path d="M12 3.5 C9.9 3.5 8.3 5.1 8.3 7.1 C8.3 8.5 9 9.7 10 10.4 V12.7 C10 13.3 9.6 13.7 9 13.7 H6.8 C5.8 13.7 5 14.5 5 15.5 V18.5 H19 V15.5 C19 14.5 18.2 13.7 17.2 13.7 H15 C14.4 13.7 14 13.3 14 12.7 V10.4 C15 9.7 15.7 8.5 15.7 7.1 C15.7 5.1 14.1 3.5 12 3.5 Z" fill="none"/>
 </svg>)";
@@ -507,7 +508,7 @@ static const char* gIconTrash =
 
 // Enhance Display — magic wand (same glyph formerly used for smart dark / auto doc color)
 static const char* gIconDisplayFilter =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M4.25 19.75L15.6 8.4" />
   <path d="M13.9 6.7L17.3 10.1" />
@@ -565,11 +566,30 @@ static const char* gIconSidebarAi =
   <path d="M329.142857 347.428571a18.285714 18.285714 0 0 1 2.139429 36.443429L329.142857 384h-36.571428a91.428571 91.428571 0 0 0-91.337143 87.460571L201.142857 475.428571v182.857143a91.428571 91.428571 0 0 0 87.460572 91.337143L292.571429 749.714286h438.857142a91.428571 91.428571 0 0 0 91.337143-87.460572L822.857143 658.285714V475.428571a91.428571 91.428571 0 0 0-87.460572-91.337142L731.428571 384h-36.571428a18.285714 18.285714 0 0 1-2.139429-36.443429L694.857143 347.428571h36.571428a128 128 0 0 1 127.926858 123.611429L859.428571 475.428571v182.857143a128 128 0 0 1-123.611428 127.926857L731.428571 786.285714H292.571429a128 128 0 0 1-127.926858-123.611428L164.571429 658.285714V475.428571a128 128 0 0 1 123.611428-127.926857L292.571429 347.428571h36.571428z m54.857143 146.285715a36.571429 36.571429 0 1 1 0 73.142857 36.571429 36.571429 0 0 1 0-73.142857z m256 0a36.571429 36.571429 0 1 1 0 73.142857 36.571429 36.571429 0 0 1 0-73.142857z m44.745143-254.061715a18.285714 18.285714 0 0 1 8.173714 24.521143C664.941714 320.128 581.924571 384 512 384s-152.941714-63.853714-180.918857-119.826286a18.285714 18.285714 0 0 1 32.694857-16.347428C386.084571 292.443429 457.581714 347.428571 512 347.428571s125.915429-55.003429 148.224-99.602285a18.285714 18.285714 0 0 1 24.521143-8.173715z" fill="currentColor" />
 </svg>)";
 
-// Quill outline. Same 1px stroke as the stamp and the other annotation buttons.
+// Quill outline. Same lighter stroke as the stamp so the closed shape does not
+// sit darker than the neighboring annotation icons.
 static const char* gIconAnnotSignature =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M16 9.6l.8 .8c-.8 2.4-3.2 4.8-6.4 5.2c-2.2 .2-3.4 1.8-4 4.4h-1.6c.8 -4.8 2.4 -16 14.4 -16c-.8 2.4-1.6 4-2.4 4.8z" />
+</svg>)";
+
+// The rounded frame is a lighter stroke than the square button so it does not
+// read heavier than the neighboring outline icons. The T stays at 1px. Without
+// the full-canvas rect, MuPDF antialiases the strokes against white, so on a
+// dark toolbar the fringe stays opaque and the glyph looks heavier.
+static const char* gIconAnnotFreeText =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <rect x="4" y="4" width="16" height="16" rx="2" stroke-width="0.75" />
+  <path d="M8 8.5h8M12 8.5v7.5" />
+</svg>)";
+
+// User-supplied reset glyph; use the shared SVG renderer and theme foreground.
+static const char* gIconResetAppearance =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="none" />
+  <path fill="currentColor" d="M864 512a352 352 0 0 0-600.96-248.96c-15.744 15.872-40.704 42.88-63.232 67.648H320a32 32 0 1 1 0 64H128a31.872 31.872 0 0 1-32-32v-192a32 32 0 1 1 64 0v108.672c20.544-22.528 42.688-46.4 57.856-61.504a416 416 0 1 1 0 588.288 32 32 0 1 1 45.248-45.248A352 352 0 0 0 864 512z" />
 </svg>)";
 
 // must match order in enum class TbIcon
@@ -636,6 +656,8 @@ static const char* gIcons[] = {
     gIconAnnotSignature,
     gIconSidebarAi,
     gIconSidebarAnnotations,
+    gIconAnnotFreeText,
+    gIconResetAppearance,
 };
 // clang-format on
 

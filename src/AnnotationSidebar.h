@@ -1,5 +1,116 @@
 #pragma once
 
+#include "SvgIcons.h"
+
+// After the inspector lays out, sit the reset button on the dropdown chevron.
+inline void PlaceAnnotResetButton(HWND button) {
+    if (!button || !IsWindow(button) || !IsWindowVisible(button)) {
+        return;
+    }
+    HWND parent = GetParent(button);
+    if (!parent) {
+        return;
+    }
+    HWND combo = nullptr;
+    int bestY = 0x7fffffff;
+    for (HWND child = GetWindow(parent, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        if (child == button || !IsWindowVisible(child)) {
+            continue;
+        }
+        WCHAR cls[32]{};
+        if (GetClassNameW(child, cls, 32) <= 0 || wcscmp(cls, L"ComboBox") != 0) {
+            continue;
+        }
+        RECT rc{};
+        GetWindowRect(child, &rc);
+        MapWindowPoints(nullptr, parent, (LPPOINT)&rc, 2);
+        if (rc.top < bestY) {
+            bestY = rc.top;
+            combo = child;
+        }
+    }
+    if (!combo) {
+        return;
+    }
+    COMBOBOXINFO info{};
+    info.cbSize = sizeof(info);
+    if (!GetComboBoxInfo(combo, &info)) {
+        return;
+    }
+    POINT center{(info.rcButton.left + info.rcButton.right) / 2, 0};
+    MapWindowPoints(combo, parent, &center, 1);
+    RECT wr{};
+    GetWindowRect(button, &wr);
+    MapWindowPoints(nullptr, parent, (LPPOINT)&wr, 2);
+    int bw = wr.right - wr.left;
+    int bh = wr.bottom - wr.top;
+    int x = center.x - bw / 2 - 7;
+    int y = wr.top + 11;
+    if (x != wr.left || y != wr.top) {
+        // The layout pass just parked the button. Move it without copying bits
+        // or painting; the inspector redraws once at the final position.
+        SetWindowPos(button, nullptr, x, y, bw, bh,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+    }
+}
+
+// Child visibility, in z-order. Used to skip a full inspector relayout when
+// selecting another annotation that shows the same controls.
+inline void CaptureInspectorChildVis(HWND parent, Vec<HWND>& hwnds, Vec<u8>& vis) {
+    hwnds.Reset();
+    vis.Reset();
+    if (!parent) {
+        return;
+    }
+    for (HWND child = GetWindow(parent, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        hwnds.Append(child);
+        Wnd* wnd = WndListFindByHwnd(child);
+        vis.Append(wnd ? (u8)wnd->IsVisible() : (u8)(IsWindowVisible(child) ? 1 : 0));
+    }
+}
+
+inline bool InspectorChildVisUnchanged(HWND parent, const Vec<HWND>& hwnds, const Vec<u8>& was) {
+    if (!parent || hwnds.Size() != was.Size()) {
+        return false;
+    }
+    int i = 0;
+    for (HWND child = GetWindow(parent, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT), i++) {
+        if (i >= hwnds.Size() || child != hwnds.at(i)) {
+            return false;
+        }
+        Wnd* wnd = WndListFindByHwnd(child);
+        u8 now = wnd ? (u8)wnd->IsVisible() : (u8)(IsWindowVisible(child) ? 1 : 0);
+        if (now != was.at(i)) {
+            return false;
+        }
+    }
+    return i == hwnds.Size();
+}
+
+// Hide/show/relayout of the inspector paints each control as it changes.
+// Lock the sidebar until the final arrangement, then present it once.
+struct InspectorUpdateLock {
+    HWND hwnd = nullptr;
+    HWND pane = nullptr;
+    bool locked = false;
+    bool erase = false;
+    explicit InspectorUpdateLock(HWND window, HWND inspector) : hwnd(window), pane(inspector) {
+        locked = hwnd && LockWindowUpdate(hwnd);
+    }
+    ~InspectorUpdateLock() {
+        if (locked) {
+            LockWindowUpdate(nullptr);
+        }
+        if (!hwnd) {
+            return;
+        }
+        if (erase && pane) {
+            RedrawWindow(pane, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+        }
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
+};
+
 // Native annotation sidebar controls shared by PDF and EPUB.
 static LRESULT CALLBACK AnnotationSecondaryButtonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id,
                                                       DWORD_PTR refData) {
@@ -50,7 +161,8 @@ static LRESULT CALLBACK AnnotationSecondaryButtonProc(HWND hwnd, UINT msg, WPARA
         text.right -= pad;
         TempWStr value = HwndGetTextWTemp(hwnd);
         DrawTextW(dc, value, -1, &text,
-                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX | (combo ? DT_LEFT : DT_CENTER));
+                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX |
+                      ((combo || GetPropW(hwnd, L"AnnotLeftAligned")) ? DT_LEFT : DT_CENTER));
         if (oldFont) {
             SelectObject(dc, oldFont);
         }
@@ -408,29 +520,110 @@ struct AnnotSidebarList : ListBox {
 
 struct AnnotNoteEdit : Edit {
     int preferredHeight = 140;
-
-    void SetBounds(Rect bounds) override {
-        // Same right rail as the annotation list (sidebar client), not the
-        // inspector pane. The note's native scrollbar then lines up with the list.
-        HWND pane = GetParent(hwnd);
-        HWND sidebar = pane ? GetParent(pane) : nullptr;
-        HWND rail = sidebar ? sidebar : pane;
-        if (rail && pane && rail != pane) {
-            RECT edge{};
-            GetClientRect(rail, &edge);
-            MapWindowPoints(rail, pane, (LPPOINT)&edge, 2);
-            bounds.dx = std::max(0, (int)edge.right - bounds.x);
-        } else {
-            Rect client = ClientRect(GetParent(hwnd));
-            bounds.dx = std::max(0, client.dx - bounds.x);
-        }
-        Edit::SetBounds(bounds);
-    }
+    // Light theme: our own sunken edge. The themed client edge puts the dark
+    // line on the bottom, so the note reads as raised.
+    bool sunkenEdge = false;
 
     Size GetIdealSize() override {
         Size size = Edit::GetIdealSize();
         size.dy = DpiScale(hwnd, preferredHeight);
         return size;
+    }
+
+    void HideNoteScrollbar() {
+        if (!hwnd) {
+            return;
+        }
+        LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        if ((style & ES_AUTOVSCROLL) == 0) {
+            SetWindowLongPtrW(hwnd, GWL_STYLE, style | ES_AUTOVSCROLL);
+        }
+        ShowScrollBarIfChanged(hwnd, SB_VERT, FALSE);
+    }
+
+    void OnSize(UINT msg, UINT type, SIZE size) override {
+        Edit::OnSize(msg, type, size);
+        HideNoteScrollbar();
+    }
+
+    LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) override {
+        bool lightEdge = sunkenEdge && !ThemeUsesDarkChrome();
+        if (msg == WM_NCCALCSIZE) {
+            // Sunken edge on the top, left and bottom. No scrollbar column.
+            RECT* rc = wp ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
+            if (lightEdge) {
+                rc->left += 2;
+                rc->top += 2;
+                rc->bottom -= 2;
+            }
+            int windowRight = rc->right;
+            LRESULT res = Edit::WndProc(hwnd, msg, wp, lp);
+            rc->right = windowRight;
+            return res;
+        }
+        if (msg == WM_NCPAINT && lightEdge) {
+            LRESULT res = Edit::WndProc(hwnd, msg, wp, lp);
+            PaintSunkenNoteEdge();
+            return res;
+        }
+        // Wheel still moves the text when there is no bar.
+        if (msg == WM_MOUSEWHEEL) {
+            int delta = GET_WHEEL_DELTA_WPARAM(wp);
+            UINT lines = 3;
+            SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+            if (lines == WHEEL_PAGESCROLL) {
+                lines = 8;
+            }
+            int steps = delta / WHEEL_DELTA;
+            if (steps == 0) {
+                steps = delta > 0 ? 1 : -1;
+            }
+            SendMessageW(hwnd, EM_LINESCROLL, 0, (LPARAM)(-steps * (int)lines));
+            return 0;
+        }
+        LRESULT res = Edit::WndProc(hwnd, msg, wp, lp);
+        if (msg == WM_PAINT || msg == WM_VSCROLL) {
+            HideNoteScrollbar();
+        }
+        return res;
+    }
+
+    void PaintSunkenNoteEdge() {
+        RECT wr{};
+        if (!GetWindowRect(hwnd, &wr)) {
+            return;
+        }
+        int w = wr.right - wr.left;
+        int h = wr.bottom - wr.top;
+        if (w < 4 || h < 4) {
+            return;
+        }
+        HDC hdc = GetWindowDC(hwnd);
+        if (!hdc) {
+            return;
+        }
+        // Light from the top-left: shadow on the top and left, highlight on the bottom.
+        COLORREF shadow = RGB(168, 168, 168);
+        COLORREF innerShadow = RGB(214, 214, 214);
+        COLORREF highlight = RGB(255, 255, 255);
+        COLORREF innerHi = RGB(250, 250, 250);
+        auto fill = [&](int x, int y, int dx, int dy, COLORREF c) {
+            if (dx <= 0 || dy <= 0) {
+                return;
+            }
+            RECT rc{x, y, x + dx, y + dy};
+            ScopedGdiObj<HBRUSH> br(CreateSolidBrush(c));
+            FillRect(hdc, &rc, br);
+        };
+        fill(0, h - 1, w, 1, highlight);
+        fill(1, h - 2, w - 2, 1, innerHi);
+        fill(0, 0, w, 1, shadow);
+        fill(0, 0, 1, h, shadow);
+        fill(w - 1, 1, 1, h - 1, highlight);
+        fill(1, 1, w - 3, 1, innerShadow);
+        fill(1, 1, 1, h - 2, innerShadow);
+        fill(w - 2, 1, 1, h - 2, innerHi);
+        ReleaseDC(hwnd, hdc);
     }
 };
 
@@ -457,8 +650,7 @@ struct AnnotInspectorPane : Wnd {
     Size GetIdealSize() override { return {8, 0}; }
 
     void SetBounds(Rect bounds) override {
-        // Full sidebar width so the note editor scrollbar can sit on the outer
-        // rail. Right gutter for other controls comes from inspector Padding.
+        // Full sidebar width. Controls, including the note, keep the inspector padding.
         Rect client = ClientRect(GetParent(hwnd));
         bounds.dx = std::max(0, client.dx - bounds.x);
         Wnd::SetBounds(bounds);
@@ -510,6 +702,11 @@ inline void AnnotInspectorPane::RelayoutInner() {
     gLayoutSuspendPaint = true;
     pane->inner->SetBounds(Rect{0, 0, w, std::max(h, sz.dy)});
     gLayoutSuspendPaint = suspended;
+    for (HWND child = GetWindow(pane->hwnd, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        if (GetPropW(child, L"AnnotResetButton")) {
+            PlaceAnnotResetButton(child);
+        }
+    }
 }
 
 inline void LayoutAnnotationSidebarControls(LayoutBase* layout, AnnotInspectorPane* pane, Size size) {
@@ -750,9 +947,12 @@ inline AnnotationColorProperty AddAnnotationColorProperty(VBox* box, HWND parent
     return {label, value};
 }
 
-inline void UpdateAnnotationContentsEditChrome(Edit* edit) {
+inline void UpdateAnnotationContentsEditChrome(Edit* edit, AnnotNoteEdit* note = nullptr) {
     if (!edit || !edit->hwnd) {
         return;
+    }
+    if (note) {
+        note->sunkenEdge = !ThemeUsesDarkChrome();
     }
     if (ThemeUsesDarkChrome()) {
         // Options-dialog edit chrome: DarkModeLib border + control fill.
@@ -763,7 +963,10 @@ inline void UpdateAnnotationContentsEditChrome(Edit* edit) {
         }
         return;
     }
-    SetWindowExStyle(edit->hwnd, WS_EX_CLIENTEDGE, true);
+    // Themed WS_EX_CLIENTEDGE draws its dark pixel along the bottom. The note
+    // paints that edge itself, with the shadow on the top and left.
+    bool sunkenNote = note && note->sunkenEdge;
+    SetWindowExStyle(edit->hwnd, WS_EX_CLIENTEDGE, !sunkenNote);
     SetWindowPos(edit->hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     if (UseDarkModeLib()) {
         DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(edit->hwnd);
@@ -796,6 +999,125 @@ struct AnnotCommandButton : Button {
             }
             tooltip.SetSingle(tooltipText, ClientRect(hwnd), false);
         }
+    }
+};
+
+// Resets appearance (font, size, color, opacity, border, background, alignment),
+// not the note. It sits on the trailing edge of the gap under the note, so it
+// reads as the action for the controls below and not as a way to clear the note.
+struct AnnotResetButton : Wnd {
+    Func0 onClick;
+    bool hot = false;
+    bool pressed = false;
+    HWND tip = nullptr;
+    WCHAR tipText[160]{};
+
+    ~AnnotResetButton() override {
+        if (tip) {
+            DestroyWindow(tip);
+            tip = nullptr;
+        }
+    }
+
+    HWND Create(HWND parent) {
+        CreateCustomArgs args;
+        args.parent = parent;
+        args.style = WS_CHILD | WS_VISIBLE | WS_TABSTOP;
+        args.pos = {0, 0, 18, 18};
+        HWND created = CreateCustom(args);
+        if (!created) {
+            return nullptr;
+        }
+        SetPropW(created, L"AnnotResetButton", (HANDLE)1);
+        tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASS, nullptr, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                              CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, created, nullptr,
+                              GetModuleHandle(nullptr), nullptr);
+        if (tip) {
+            TOOLINFOW info{};
+            info.cbSize = sizeof(info);
+            info.uFlags = TTF_IDISHWND | TTF_SUBCLASS | TTF_TRANSPARENT;
+            info.hwnd = parent;
+            info.uId = (UINT_PTR)created;
+            wcsncpy_s(tipText, _TRW("Restore appearance"), _TRUNCATE);
+            info.lpszText = tipText;
+            SendMessageW(tip, TTM_ADDTOOLW, 0, (LPARAM)&info);
+            SendMessageW(tip, TTM_SETMAXTIPWIDTH, 0, 240);
+        }
+        return created;
+    }
+
+    Size GetIdealSize() override {
+        int side = hwnd ? MulDiv(DpiScale(hwnd, 22), 4, 5) : 18;
+        return {side, side};
+    }
+
+    void OnPaint(HDC hdc, PAINTSTRUCT*) override {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        COLORREF bg = ThemeWindowControlBackgroundColor();
+        if ((hot || pressed) && IsWindowEnabled(hwnd)) {
+            bg = ThemeInspectorHoverBackgroundColor();
+        }
+        ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(bg));
+        FillRect(hdc, &rc, brush);
+        COLORREF ink = !IsWindowEnabled(hwnd) ? ThemeWindowTextDisabledColor()
+                       : hot                  ? ThemeWindowLinkColor()
+                                              : ThemeInspectorSecondaryTextColor();
+        int glyph = MulDiv(DpiScale(hwnd, 16), 4, 5);
+        int side = (int)std::min(rc.right - rc.left, rc.bottom - rc.top);
+        glyph = std::min(glyph, side);
+        Rect dest((rc.right - rc.left - glyph) / 2, (rc.bottom - rc.top - glyph) / 2, glyph, glyph);
+        DrawSvgIcon(hdc, dest, TbIcon::ResetAppearance, ink, bg);
+    }
+
+    LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) override {
+        if (msg == WM_ERASEBKGND) {
+            return 1;
+        }
+        if (msg == WM_MOUSEMOVE) {
+            if (!hot) {
+                hot = true;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&track);
+        } else if (msg == WM_MOUSELEAVE) {
+            hot = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (msg == WM_SETCURSOR) {
+            SetCursor(LoadCursor(nullptr, IDC_HAND));
+            return TRUE;
+        } else if (msg == WM_LBUTTONDOWN && IsWindowEnabled(hwnd)) {
+            pressed = true;
+            HwndSetFocus(hwnd);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            SetCapture(hwnd);
+            return 0;
+        } else if (msg == WM_LBUTTONUP) {
+            bool click = pressed;
+            pressed = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            if (GetCapture() == hwnd) {
+                ReleaseCapture();
+            }
+            POINT pt{(int)(short)LOWORD(lp), (int)(short)HIWORD(lp)};
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            if (click && IsWindowEnabled(hwnd) && PtInRect(&rc, pt) && onClick.IsValid()) {
+                onClick.Call();
+            }
+            return 0;
+        } else if (msg == WM_KEYDOWN && (wp == VK_SPACE || wp == VK_RETURN)) {
+            if (IsWindowEnabled(hwnd) && onClick.IsValid()) {
+                onClick.Call();
+            }
+            return 0;
+        }
+        if (msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE || msg == WM_ENABLE) {
+            pressed = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return Wnd::WndProc(hwnd, msg, wp, lp);
     }
 };
 
@@ -941,6 +1263,8 @@ inline void LayoutAnnotationSidebar(HWND sidebar, LayoutBase* layout, ListBox* l
         int chrome = DpiScale(sidebar, 16) + DpiScale(sidebar, 28) + DpiScale(sidebar, 13) + footerH;
         int inspectorMin = DpiScale(sidebar, 80);
         int budget = dy - chrome;
+        // Fixed viewport. Extra annotations scroll inside the list, so the
+        // property controls below stay put when the count changes.
         int listPref = DpiScale(sidebar, 200);
         int listMax = DpiScale(sidebar, 220);
         int listMin = row * 3;

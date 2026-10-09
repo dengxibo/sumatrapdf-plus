@@ -51,8 +51,14 @@ static void PaintWarmPushButton(HWND hwnd, HDC hdc, bool hot) {
     if (!ThemeUsesDarkChrome()) {
         if (HWND parent = GetParent(hwnd)) {
             WCHAR cls[64]{};
-            if (GetClassNameW(parent, cls, dimof(cls)) > 0 && str::EqI(cls, L"SumatraWgDefaultWinClass")) {
-                page = ThemeWindowControlBackgroundColor();
+            if (GetClassNameW(parent, cls, dimof(cls)) > 0) {
+                // Wingui pages and the signature dialog are caption-colored.
+                // The round-rect corners must use that same face, or the old
+                // window color shows through as a darker halo.
+                if (str::EqI(cls, L"SumatraWgDefaultWinClass") ||
+                    (ThemeUsesEyeCareChrome() && str::EqI(cls, L"SumatraHandwrittenSignature"))) {
+                    page = ThemeChromeBackgroundColor();
+                }
             }
         }
     }
@@ -107,7 +113,8 @@ static void PaintWarmPushButton(HWND hwnd, HDC hdc, bool hot) {
     HGDIOBJ oldFont = font ? SelectObject(hdc, font) : nullptr;
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, enabled ? ThemeWindowTextColor() : ThemeWindowTextDisabledColor());
-    DWORD flags = DT_CENTER | DT_VCENTER | DT_SINGLELINE;
+    DWORD flags =
+        (GetPropW(hwnd, L"AnnotLeftAligned") ? DT_LEFT : DT_CENTER) | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS;
     DWORD uiState = (DWORD)SendMessageW(hwnd, WM_QUERYUISTATE, 0, 0);
     if ((uiState & UISF_HIDEACCEL) != 0) {
         flags |= DT_HIDEPREFIX;
@@ -432,8 +439,7 @@ void AppDialogThemeScrollBar(HWND hwnd) {
     if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
         DarkMode::setDarkScrollBar(hwnd);
     }
-    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
 static void ThemeWarmComboListScrollBar(HWND combo) {

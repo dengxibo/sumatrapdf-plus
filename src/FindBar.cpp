@@ -35,6 +35,7 @@
 #include "Translations.h"
 #include "Theme.h"
 #include "FloatingPopupStyle.h"
+#include "OverlayScrollbar.h"
 
 #include "utils/Log.h"
 
@@ -879,11 +880,17 @@ static void ToolbarFindLayoutInner(ToolbarFindState* st) {
 
     int minEdit = HwndMeasureText(st->hwnd, "0000", font).dx;
     int right = clusterW(st->showDetail);
-    int editW = w - edge - right - edge;
+    // Leave the outer two pixels for the border. The system edit erases one
+    // pixel past its own left edge and wipes a stroke that starts at x=1.
+    int editX = edge;
+    if (editX < 4) {
+        editX = 4;
+    }
+    int editW = w - editX - right - edge;
     if (st->hasQuery && editW < minEdit && st->showDetail) {
         st->showDetail = false;
         right = clusterW(false);
-        editW = w - edge - right - edge;
+        editW = w - editX - right - edge;
     }
     if (editW < 1) {
         editW = 1;
@@ -906,8 +913,8 @@ static void ToolbarFindLayoutInner(ToolbarFindState* st) {
         MapWindowPoints(nullptr, st->hwnd, (LPPOINT)&cur, 2);
         int curW = cur.right - cur.left;
         int curH = cur.bottom - cur.top;
-        if (cur.left != edge || cur.top != editY || curW != editW || curH != editH) {
-            MoveWindow(st->edit, edge, editY, editW, editH, TRUE);
+        if (cur.left != editX || cur.top != editY || curW != editW || curH != editH) {
+            MoveWindow(st->edit, editX, editY, editW, editH, TRUE);
         }
         // The cue sits on the edit's left edge. Give it a little air inside the field.
         int textLeft = DpiScale(st->hwnd, 8);
@@ -921,7 +928,7 @@ static void ToolbarFindLayoutInner(ToolbarFindState* st) {
             ellipse = fieldH - 2;
         }
         HRGN rgn =
-            CreateRoundRectRgn(-edge, -editY, fieldRc.right - edge + 1, fieldRc.bottom - editY + 1, ellipse, ellipse);
+            CreateRoundRectRgn(-editX, -editY, fieldRc.right - editX + 1, fieldRc.bottom - editY + 1, ellipse, ellipse);
         if (rgn && !SetWindowRgn(st->edit, rgn, FALSE)) {
             DeleteObject(rgn);
         }
@@ -1066,6 +1073,52 @@ static bool ToolbarFindEditClientRect(ToolbarFindState* st, RECT* rc) {
     return rc->right > rc->left && rc->bottom > rc->top;
 }
 
+// The stroke sits two pixels in from the left and right. A pen on the window
+// edge loses its outer half, and the toolbar's buffered blit then paints
+// chrome over that column, so the light left border stays missing until a
+// later repaint (a click, or the sidebar toggle) draws a darker one on top.
+static Rect ToolbarFindBorderRect(const RECT& rc, int* arc) {
+    Rect box(rc.left + 2, rc.top + 1, rc.right - rc.left - 4, rc.bottom - rc.top - 2);
+    if (box.dx < 4) {
+        box.dx = 4;
+    }
+    if (box.dy < 4) {
+        box.dy = 4;
+    }
+    if (arc) {
+        if (*arc > box.dy - 2) {
+            *arc = box.dy - 2;
+        }
+        if (*arc > box.dx - 2) {
+            *arc = box.dx - 2;
+        }
+        if (*arc < 2) {
+            *arc = 2;
+        }
+    }
+    return box;
+}
+
+static void ToolbarFindStrokeBorder(ToolbarFindState* st, HDC hdc) {
+    if (!st || !hdc) {
+        return;
+    }
+    RECT rc{};
+    GetClientRect(st->hwnd, &rc);
+    if (rc.right <= rc.left || rc.bottom <= rc.top) {
+        return;
+    }
+    COLORREF chrome = ThemeChromeBackgroundColor();
+    COLORREF border = AccentColor(chrome, st->focused ? 72 : 36);
+    int arc = DpiScale(st->hwnd, 8);
+    int fieldH = rc.bottom - rc.top;
+    if (fieldH > 4 && arc > fieldH - 2) {
+        arc = fieldH - 2;
+    }
+    Rect box = ToolbarFindBorderRect(rc, &arc);
+    StrokeFloatingPopupRoundedRect(hdc, box, arc, border);
+}
+
 static void ToolbarFindPaint(ToolbarFindState* st, HDC hdc) {
     RECT rc{};
     GetClientRect(st->hwnd, &rc);
@@ -1080,15 +1133,13 @@ static void ToolbarFindPaint(ToolbarFindState* st, HDC hdc) {
     HBRUSH chromeBr = CreateSolidBrush(chrome);
     FillRect(hdc, &rc, chromeBr);
     DeleteObject(chromeBr);
-    COLORREF border = AccentColor(chrome, st->focused ? 72 : 36);
     int arc = DpiScale(st->hwnd, 8);
     int fieldH = rc.bottom - rc.top;
     if (fieldH > 4 && arc > fieldH - 2) {
         arc = fieldH - 2;
     }
-    Rect box(rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+    Rect box = ToolbarFindBorderRect(rc, &arc);
     FillFloatingPopupRoundedRect(hdc, box, arc, st->fill);
-    StrokeFloatingPopupRoundedRect(hdc, box, arc, border);
 
     auto hover = [&](const Rect& hit, ToolbarFindPart part) {
         if (hit.IsEmpty() || (st->hot != part && st->pressed != part)) {
@@ -1158,7 +1209,12 @@ static void ToolbarFindActivate(ToolbarFindState* st, ToolbarFindPart part) {
             keepEditFocus();
             break;
         case ToolbarFindPart::Detail:
-            ShowDetailedSearchWindow(win);
+            // The same "..." both opens Detailed Search and closes it.
+            if (IsFindWindowVisible(win) && !IsFindWindowDocked(win)) {
+                ToolbarFindCloseDetailed(win, true);
+            } else {
+                ShowDetailedSearchWindow(win);
+            }
             break;
         case ToolbarFindPart::Clear:
             if (st->edit) {
@@ -1216,6 +1272,13 @@ static LRESULT CALLBACK ToolbarFindWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
                 st->repairingEdit = true;
                 RedrawWindow(st->edit, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
                 st->repairingEdit = false;
+            }
+            // The edit is CS_PARENTDC, so its erase runs in this window and
+            // covers the left stroke. Draw the border after that erase.
+            HDC borderDc = GetDC(hwnd);
+            if (borderDc) {
+                ToolbarFindStrokeBorder(st, borderDc);
+                ReleaseDC(hwnd, borderDc);
             }
             return 0;
         }
@@ -1376,62 +1439,78 @@ void CreateToolbarFind(MainWindow* win) {
     ToolbarFindLayout(win);
 }
 
+// Canvas window's right edge, in toolbar client pixels.
+static int ToolbarFindCanvasRight(HWND toolbar, HWND canvas) {
+    RECT canvasWnd{};
+    if (!toolbar || !canvas || !GetWindowRect(canvas, &canvasWnd) || canvasWnd.right <= canvasWnd.left) {
+        return -1;
+    }
+    POINT pt{canvasWnd.right, canvasWnd.top};
+    if (!ScreenToClient(toolbar, &pt)) {
+        return -1;
+    }
+    return pt.x;
+}
+
 // Right edge of the search field, in toolbar client pixels. When a vertical
 // scrollbar takes a column, that edge is the bar's inner side. Otherwise keep
 // a small gap off the window edge.
+//
+// Sidebar toggle lays this out while RelayoutFrame has WM_SETREDRAW off.
+// IsWindowVisible is false then, so the old path used the fallback, which
+// sits 6px to the right of the real scrollbar. The pass after redraw snapped
+// the field left by that 6px. Do not treat the canvas as missing, and never
+// inset by more than one scrollbar: a bad rect must not walk the field left
+// on every click.
 static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int margin) {
     int fallback = tbW - margin - DpiScale(toolbar, 12);
     if (fallback < 1) {
         fallback = tbW;
     }
-    if (!win || !toolbar || tbW <= 0 || !win->hwndCanvas || !IsWindowVisible(win->hwndCanvas)) {
+    if (!win || !toolbar || tbW <= 0 || !win->hwndCanvas) {
         return fallback;
     }
-    int limit = -1;
+    int canvasRight = ToolbarFindCanvasRight(toolbar, win->hwndCanvas);
+    if (canvasRight <= 0) {
+        return fallback;
+    }
+    int sysScroll = GetSystemMetrics(SM_CXVSCROLL);
+    if (sysScroll < 1) {
+        sysScroll = DpiScale(toolbar, 16);
+    }
+    int inset = 0;
     if (!ScrollbarsAreHidden() && !ScrollbarsUseOverlay()) {
-        SCROLLBARINFO sbi{};
-        sbi.cbSize = sizeof(sbi);
-        if (GetScrollBarInfo(win->hwndCanvas, OBJID_VSCROLL, &sbi) && (sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE) == 0 &&
-            sbi.rcScrollBar.right > sbi.rcScrollBar.left) {
-            RECT canvasWnd{};
-            GetWindowRect(win->hwndCanvas, &canvasWnd);
-            int mid = (canvasWnd.left + canvasWnd.right) / 2;
-            // The bar sits on the right. Its inner edge is the left side.
-            if (sbi.rcScrollBar.left >= mid) {
-                POINT pt{sbi.rcScrollBar.left, sbi.rcScrollBar.top};
-                ScreenToClient(toolbar, &pt);
-                limit = pt.x;
-            }
-        }
-    } else if (ScrollbarsUseOverlay() && win->overlayScrollV && win->overlayScrollV->hwnd &&
-               IsWindowVisible(win->overlayScrollV->hwnd)) {
-        RECT sbRc{};
-        if (GetWindowRect(win->overlayScrollV->hwnd, &sbRc) && sbRc.right > sbRc.left) {
-            RECT canvasWnd{};
-            GetWindowRect(win->hwndCanvas, &canvasWnd);
-            int mid = (canvasWnd.left + canvasWnd.right) / 2;
-            if (sbRc.left >= mid) {
-                POINT pt{sbRc.left, sbRc.top};
-                ScreenToClient(toolbar, &pt);
-                limit = pt.x;
-            }
-        }
-    }
-    if (limit > 0 && limit < tbW) {
-        // Two device pixels short of the scrollbar's inner edge.
-        limit -= 2;
-        return limit > 0 ? limit : 1;
-    }
-    // Native bar not reported yet, but the canvas client already stops at it.
-    if (!ScrollbarsUseOverlay() && !ScrollbarsAreHidden()) {
+        // The client already stops at the native bar. Measure that column
+        // from the window, not from GetScrollBarInfo, which is a few pixels
+        // off while the canvas is moving.
         RECT page{};
         if (GetClientRect(win->hwndCanvas, &page) && page.right > page.left) {
             MapWindowPoints(win->hwndCanvas, toolbar, (LPPOINT)&page, 2);
-            if (page.right > 0 && page.right < tbW) {
-                int right = page.right - 2;
-                return right > 0 ? right : 1;
+            if (page.right > 0 && page.right < canvasRight) {
+                inset = canvasRight - page.right;
             }
         }
+    } else if (ScrollbarsUseOverlay() && IsOverlayScrollbarVisible(win->overlayScrollV)) {
+        OverlayScrollbar* sb = win->overlayScrollV;
+        bool thick =
+            sb->state == OverlayScrollbar::State::SmartThick || sb->state == OverlayScrollbar::State::AlwaysThick;
+        inset = thick ? sb->thickWidth : sb->thinWidth;
+    }
+    // A bad rect must not walk the field left on every sidebar click.
+    int maxInset = sysScroll + DpiScale(toolbar, 4);
+    if (inset > maxInset) {
+        inset = maxInset;
+    }
+    if (inset < 0) {
+        inset = 0;
+    }
+    int limit = canvasRight - inset - 2;
+    int minLimit = tbW - maxInset - 2;
+    if (limit < minLimit) {
+        limit = minLimit;
+    }
+    if (limit > 0 && limit <= tbW) {
+        return limit;
     }
     return fallback;
 }

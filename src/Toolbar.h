@@ -6,7 +6,7 @@ enum class TbIcon;
 
 void CreateToolbar(MainWindow*);
 void ReCreateToolbar(MainWindow* win);
-void ToolbarUpdateStateForWindow(MainWindow*, bool setButtonsVisibility);
+void ToolbarUpdateStateForWindow(MainWindow*, bool setButtonsVisibility, bool pageChangeOnly = false);
 void UpdateToolbarButtonsToolTipsForWindow(MainWindow*);
 void UpdateToolbarFindText(MainWindow*);
 void UpdateToolbarPageText(MainWindow*, int pageCount, bool updateOnly = false);

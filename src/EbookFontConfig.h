@@ -52,19 +52,19 @@ constexpr float kEbookFontSizeMaxPt = 26.f;
 constexpr float kEbookFontSizeBuiltinPt = 11.f;
 constexpr float kEbookFontSizeStepPt = 2.f;
 
-float GetEbookReaderFontSizePt();
-float GetEffectiveEbookFontSizePt();
-bool UsesNonDefaultEbookFontSize();
-bool CanIncreaseEbookFontSize();
-bool CanDecreaseEbookFontSize();
+float GetEbookReaderFontSizePt(const char* filePath = nullptr);
+float GetEffectiveEbookFontSizePt(const char* filePath = nullptr);
+bool UsesNonDefaultEbookFontSize(const char* filePath = nullptr);
+bool CanIncreaseEbookFontSize(const char* filePath = nullptr);
+bool CanDecreaseEbookFontSize(const char* filePath = nullptr);
 // direction: +1 larger, -1 smaller. Returns false if already at limit.
-bool AdjustEbookFontSize(int direction);
-// Restores EBookUI.FontSize=0 (the built-in document-aware default).
-bool ResetEbookFontSize();
+bool AdjustEbookFontSize(int direction, const char* filePath);
+// Clears the book override and restores the reading options default.
+bool ResetEbookFontSize(const char* filePath = nullptr);
 
 // CSS fragments for MuPDF user stylesheet.
 TempStr BuildEbookReaderFontCss(EbookTypographyKind typographyKind);
 TempStr BuildEbookFallbackFontCss();
 TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind);
 // displayDpi: same DPI used for fz_layout_document page size (EngineMupdf::displayDPI).
-TempStr BuildEbookForceFontSizeCss(int displayDpi);
+TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath = nullptr);

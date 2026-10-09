@@ -19,6 +19,7 @@ enum class EditAnnotFocus {
 void ShowEditAnnotationsWindow(WindowTab*, Annotation*, EditAnnotFocus focus = EditAnnotFocus::Default,
                                bool revealInSidebar = true);
 HWND EditAnnotationsSidebarHwnd(WindowTab* tab);
+bool AnnotationsSidebarIsShowing(WindowTab* tab);
 void SyncEditAnnotationsSidebar(MainWindow* win, bool show);
 bool CloseAndDeleteEditAnnotationsWindow(WindowTab*);
 void DeleteAnnotationAndUpdateUI(WindowTab*, Annotation*);
@@ -46,3 +47,15 @@ PdfColor PdfAnnotationColorFromColorRef(COLORREF c);
 void FillAnnotationColorDropDown(DropDown* w, COLORREF col, StrBuilder& customColor);
 COLORREF GetAnnotationColorFromDropDown(const char* item);
 COLORREF GetDefaultAnnotationColor(AnnotationType type);
+
+bool StartFreeTextInPlaceEdit(MainWindow*, Annotation*);
+bool StartFreeTextInPlaceEditAt(MainWindow*, Point);
+bool IsEditingFreeTextInPlace(MainWindow* win = nullptr);
+bool IsFreeTextInPlaceEditFocused(HWND hwnd = nullptr);
+void EndFreeTextInPlaceEdit(bool accept);
+void EndFreeTextInPlaceEditForTab(WindowTab*, bool accept);
+void RepositionFreeTextInPlaceEdit(MainWindow*);
+HBRUSH FreeTextInPlaceEditCtlColor(HWND, HDC);
+
+struct EbookAnnotation;
+bool StartEbookFreeTextInPlaceEdit(MainWindow*, EbookAnnotation*);

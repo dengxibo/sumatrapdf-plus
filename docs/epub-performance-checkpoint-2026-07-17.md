@@ -128,3 +128,41 @@ Debug 下，从 14 pt 起依次切换 22、14、20 pt，书籍中部恢复并渲
 - 每次分别在文字恢复后及后台分页完全结束后核对锚点字形的实际视口坐标、文字缓存、缩放和显示模式。连续模式检查原文字位于顶部；单页适应检查完整页面中仍能看到原文字。原始指标：`out/perf/epub-30231500.jsonl`；表格：`out/epub-font-position-test/positions.csv`。
 - 现有 Release 单元测试全部通过（102694 项）：`out/bookworm19-final-unit-tests.log`。
 - 最终回归直接运行真实引擎、DisplayModel 和生产文字恢复函数，不创建阅读窗口。测试中 Windows 自动锁屏，因此最终版本没有进行解锁后的鼠标／键盘界面复测；不能把这些模型检查描述为最终 GUI 自动化通过。后台标签页及旋转组合仍未做最终界面回归。
+
+## 字号调整进度条与视口绘制同步（2026-10-08）
+
+原通知只覆盖文件解压／创建引擎，在 `EarlyEngineDisplayUI` 或 `LoadDocumentAsyncFinish` 中立即到 100% 并移除；对于大合集，之后仍要等待目标章节分页、恢复文字锚点及渲染，因而用户看到进度条已经结束但字号尚未改变。
+
+- 字体异步重载通知的生命周期移交给目标标签页；引擎交付和加载线程退出不再提前移除它。
+- 解压映射到 10%–15%；按已完成章节与原阅读章节的比例推进至 85%，使用原子章节计数，不锁住引擎获取进度。
+- 文字锚点恢复至 90%；等待渲染时为 95%；进度只增不退，同一数值不重复重绘通知。
+- Canvas 只有在可见页面的缓存绘制全部完成、无旧图替代及渲染错误，且完整视口已刷新后，才把该次字体调整推进至 100% 并移除通知。局部绘制会补一次完整重绘。
+- 加载失败、渲染失败、换书及关闭标签页均清理相应通知；新一轮字体调整替换通知时不会误删其它标签页的进度。
+
+验证：最终独立 x64 Release 构建零警告、零错误（`out/epub-font-progress-release-build-final.log`）。使用 Windows computer-use 在独立设置目录中打开 137 册书虫合集，定位 14 pt 第 9000 页（Lucy Steele's secret），执行字号 14→16→14 两次真实界面操作。第一次等待约 13／27 秒的截图仍显示原画面和推进中的通知；之后新字号与同一章节正文显示，通知消失。第二次等待约 21 秒仍显示进度，结束后返回原第 9000 页及相同文字。
+
+两次进度日志各有 48 个递增更新，均通过单调性、分页 85%、文字定位 90%、视口绘制 100% 的检查，无持有旧画面时提前达到 100%。原始日志：`out/font-progress-ui-test/run.log`；进度表：`out/font-progress-ui-test/progress.csv`。测试窗口已经关闭，用户原有窗口未改动。
+
+测试文件已复制至正常输出 `out/rel64/SumatraPDF-Plus.exe`；本地文件版本仍为 3.7.40，SHA-256 `2B732177F35FE144FD95C182B0DB683625F138AA792E5B3E2F077D15209C48D2`。按用户要求，此进度条修订已于 2026-10-08 覆盖 GitHub 3.7.40 的 SumatraPDF-Plus.exe；线上 SHA-256 与本地一致，公开下载返回 HTTP 200。
+
+## 大合集首次主题切换停顿（2026-10-08）
+
+纯颜色切换保留 DisplayModel 布局、引擎页码映射及 MuPDF accelerator 的章节页数。否则初次换色后的链接解析可能同步重算前面所有章节。UpdateCanvasSize 比较完整视口尺寸，避免把扣除滚动条后的内部尺寸误判为窗口变化。字体、尺寸和其它影响分页的变更继续走完整布局流程。
+
+CSS 更新使用章节样式世代：首次访问时替换旧 HTML，避免 UI 线程销毁整本文档缓存；单章缓存删除使用已有 hash key，避免扫描共享 store。增加 SUMATRA_EPUB_THEME_BENCH 引擎回归入口和 ThemeChange 整体 UI 耗时日志。
+
+验证：最终构建零警告、零错误（out/toc-regression/epub-theme-final-build.log）。独立设置打开 137 册书虫，等待 19,355 页全部加载，跳到第 1564 页，首次点击月亮后正文及界面均正常显示暗色，页码、侧栏保持；首次 ThemeChange 152.21 ms，切回浅色 132.03 ms。渲染日志中相邻页最高 147.47 ms，没有出现中间版本曾记录的 27 秒渲染等待。原始 GUI 日志：out/theme-bench/gui-final.log。该计时是同步 UI 处理时间，不包含截图工具耗时，也不等同于完整渲染耗时；此次没有复现用户原版本精确的十余秒基线。
+
+测试程序：out/toc-fix/SumatraPDF-Plus-epub-theme-final.exe。此前测试工具 102,578 项通过，git diff --check 通过。
+
+## 保留章节排版的颜色更新试验（2026-10-08）
+
+在上一轮基础上，EPUB 主题切换保留已有 HTML 排版树。临时解析新样式树，先校验盒树结构和全部非颜色样式一致，再只复制文字、背景、文字填充/描边和四边框颜色；原来的字形坐标、页运行区间、布局尺寸和页边距保持。每个盒的可写样式只分配一次，避免反复切换累积分配。非颜色样式不同或发生字体/尺寸变更时退回旧的完整排版路径。当前仍有临时 HTML/CSS 解析开销，不能称为完全在绘制层换色。
+
+进一步确认 fz_style_document 仅标记待更新，不立即执行 epub_style。palette 保留 API 现在先执行待应用的样式回调，再同步 accelerator checksum 和布局状态，避免下一次访问页面才使分页缓存失效。移除了 EPUB 暗色 CSS 残留的 text-decoration:none，主题严格不改变链接下划线。
+
+真正的匹配主题配置回归：out/theme-bench/palette-retain.log。19,355 页第 1564 页，四次 Dark-Black/Light-Warm 切换全部 same_layout=true、passed=true；逐字文字内容和字形矩形完全一致，日志为 retained chapter 347 layout（同一警告重复四次），无 rebuilt chapter。颜色更新 0.42–0.63 ms，单页引擎渲染 11.10–16.31 ms；这些是引擎测试数据，不是完整窗口计时。早期 baseline-settings 被发现使用 original 颜色模式，因此该设置目录的测试不能作为 CSS 换色性能证据。
+
+使用 computer-use 在真实窗口复测：等待完整 19,355 页后定位第 1564 页，暗→亮→暗，正文、链接、背景实际变色，下划线保留，页码及侧栏不变；UI ThemeChange 分别 142.52 / 141.66 ms。日志 out/theme-bench/gui-palette-retain.log。测试窗口已关闭。
+
+程序 out/toc-fix/SumatraPDF-Plus-palette-retain.exe，C++ 编译和链接零警告零错误（out/toc-regression/epub-palette-deferred-build.log）；build.ts 最后的 OCR DLL 复制被正在使用该输出目录的程序锁住，未替换其 DLL，已生成的 EXE 可正常运行并完成上述验证。未提交。

@@ -788,6 +788,9 @@ FileStates [
     ; width of the left sidebar panel containing the table of contents
     SidebarDx = 0
 
+    ; ebook font size for this file; 0 inherits the reading options default
+    EbookFontSize = 0
+
     ; if true, the document is displayed right-to-left in facing and book view
     ; modes (only used for comic book documents)
     DisplayR2L = false

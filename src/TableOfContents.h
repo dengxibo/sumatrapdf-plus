@@ -23,7 +23,7 @@ void ReCreateTocFilterEdit(MainWindow*, HFONT font);
 void UpdateTocFilterForDocumentLoading(MainWindow* win);
 void RelayoutTocContainer(MainWindow* win);
 void ReCreateTocTreeView(MainWindow*, HFONT font, int dpi);
-void ClearTocBox(MainWindow*);
+void ClearTocBox(MainWindow*, bool preserveFilter = false);
 void ClearTocBoxForTabSwitch(MainWindow*);
 void RestoreTocTreeForTab(MainWindow*);
 void ToggleTocBox(MainWindow*);

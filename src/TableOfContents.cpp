@@ -678,7 +678,7 @@ static void ClearTocMultiSelect(MainWindow* win);
 static void TocCancelDrag(MainWindow* win);
 static void UpdateTocCalibrateHeader(MainWindow* win);
 
-void ClearTocBox(MainWindow* win) {
+void ClearTocBox(MainWindow* win, bool preserveFilter) {
     if (!win->tocLoaded) {
         return;
     }
@@ -703,7 +703,7 @@ void ClearTocBox(MainWindow* win) {
     // clear filter state
     delete win->tocFilteredTree;
     win->tocFilteredTree = nullptr;
-    if (win->tocFilterEdit) {
+    if (win->tocFilterEdit && !preserveFilter && !(tab && tab->reloadForEbookFontChange)) {
         win->tocFilterEdit->SetText("");
     }
 
@@ -928,7 +928,14 @@ void UpdateTocSelection(MainWindow* win, int currPageNo) {
     // only select the items that are visible i.e. are top nodes or
     // children of expanded node
     TreeItem toSelect = (TreeItem)FindVisibleParentTreeItem(treeView, item);
-    treeView->SelectItem(toSelect);
+    if (treeView->GetSelection() != toSelect) {
+        // Native selection can paint/scroll the tree synchronously. During
+        // document scrolling let the normal paint pass update the sidebar,
+        // rather than delaying the document frame at each page boundary.
+        SendMessageW(treeView->hwnd, WM_SETREDRAW, FALSE, 0);
+        treeView->SelectItem(toSelect);
+        SendMessageW(treeView->hwnd, WM_SETREDRAW, TRUE, 0);
+    }
     if (toSelect != TreeModel::kNullItem) {
         TocItem* tocItem = (TocItem*)toSelect;
         win->tocSelectedIds.Reset();
@@ -2450,9 +2457,6 @@ void LoadTocTree(MainWindow* win) {
         win->tocFilteredTree = nullptr;
     }
     tab->currToc = nullptr;
-    if (win->tocFilterEdit) {
-        win->tocFilterEdit->SetText("");
-    }
 
     auto* tocTree = tab->ctrl->GetToc();
     if (!tocTree || !tocTree->root) {
@@ -2494,6 +2498,7 @@ void LoadTocTree(MainWindow* win) {
     }
     tab->tocWrapHeightsReady = true;
     InvalidateTocTree(win);
+    TocFilterChanged(win);
     UpdateTocFilterForDocumentLoading(win);
     UpdateTocCalibrateHeader(win);
     RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
@@ -4176,21 +4181,54 @@ static void LayoutTocContainer(MainWindow* win) {
     place(l->hwnd, 0, y, rc.dx, labelSize.dy);
     dy -= labelSize.dy;
     y += labelSize.dy;
-    int editStyleVis = 0;
     int rowDy = 0;
-    bool bookmarksOn = win->tocVisible && CurrentSidebarView(win) == SidebarView::Bookmarks;
-    if (edit && edit->hwnd) {
-        editStyleVis = (GetWindowLongW(edit->hwnd, GWL_STYLE) & WS_VISIBLE) ? 1 : 0;
+    // One column, one page. A newly created tree is WS_VISIBLE, and a later
+    // layout used to place it on top of the annotation editor whenever both
+    // style bits were set. The sidebar view is the only authority.
+    SidebarView view = CurrentSidebarView(win);
+    bool bookmarksOn = win->tocVisible && view == SidebarView::Bookmarks;
+    bool thumbsOn = win->tocVisible && view == SidebarView::Thumbnails;
+    bool favsOn = win->tocVisible && view == SidebarView::Favorites && win->favTreeView && win->favTreeView->hwnd &&
+                  GetParent(win->favTreeView->hwnd) == hwndContainer;
+    bool aiOn = win->tocVisible && view == SidebarView::Ai;
+    bool annotOn = win->tocVisible && view == SidebarView::Annotations;
+    WindowTab* annotTab = win->CurrentTab();
+    HWND annotHwnd = EditAnnotationsSidebarHwnd(annotTab);
+    if (!annotHwnd) {
+        annotHwnd = EbookAnnotationsSidebarHwnd(annotTab);
+    }
+    auto setShown = [](HWND hwnd, bool on) {
+        if (!hwnd) {
+            return;
+        }
+        bool vis = (GetWindowLongW(hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
+        if (vis == on) {
+            return;
+        }
+        ShowWindow(hwnd, on ? SW_SHOWNA : SW_HIDE);
+    };
+    if (treeView && treeView->hwnd) {
+        LONG style = GetWindowLongW(treeView->hwnd, GWL_STYLE);
+        if ((style & WS_CLIPSIBLINGS) == 0) {
+            SetWindowLongW(treeView->hwnd, GWL_STYLE, style | WS_CLIPSIBLINGS);
+        }
+    }
+    setShown(treeView ? treeView->hwnd : nullptr, bookmarksOn);
+    setShown(win->hwndSidebarThumbs, thumbsOn);
+    setShown(win->favTreeView ? win->favTreeView->hwnd : nullptr, favsOn);
+    setShown(win->hwndAiSidebar, aiOn);
+    setShown(annotHwnd, annotOn);
+    bool filterOn = bookmarksOn || thumbsOn || favsOn;
+    setShown(edit ? edit->hwnd : nullptr, filterOn);
+    if (edit && edit->hwnd && filterOn) {
         Size editSize = edit->GetIdealSize();
         // IsWindowVisible is false while RelayoutFrame has WM_SETREDRAW off on the
         // frame, even though the edit still has WS_VISIBLE. Using it here slides the
         // tree over the search row (first item vs. filter competing during splitter drag).
-        if (editStyleVis) {
-            rowDy = editSize.dy;
-            place(edit->hwnd, 0, y, rc.dx, rowDy);
-            dy -= rowDy;
-            y += rowDy;
-        }
+        rowDy = editSize.dy;
+        place(edit->hwnd, 0, y, rc.dx, rowDy);
+        dy -= rowDy;
+        y += rowDy;
     }
     int barDy = 0;
     // Reserve the footer only while it is on screen. During bookmark
@@ -4206,39 +4244,26 @@ static void LayoutTocContainer(MainWindow* win) {
         }
         dy -= barDy;
     }
-    auto styleVisible = [](HWND hwnd) { return hwnd && (GetWindowLongW(hwnd, GWL_STYLE) & WS_VISIBLE) != 0; };
-    bool thumbsOn = styleVisible(win->hwndSidebarThumbs);
-    bool favsOn = win->favTreeView && win->favTreeView->hwnd && GetParent(win->favTreeView->hwnd) == hwndContainer &&
-                  styleVisible(win->favTreeView->hwnd);
-    // Bookmarks, thumbnails, and favorites share this rectangle. Advancing y
-    // after the tree pushes the other two below the column.
-    if (treeView && treeView->hwnd && styleVisible(treeView->hwnd)) {
-        place(treeView->hwnd, 0, y, rc.dx, dy);
+    // Only the active page is placed. Sharing this rectangle let the bookmark
+    // tree paint through the annotation list.
+    HWND body = nullptr;
+    if (bookmarksOn && treeView) {
+        body = treeView->hwnd;
+    } else if (thumbsOn) {
+        body = win->hwndSidebarThumbs;
+    } else if (favsOn && win->favTreeView) {
+        body = win->favTreeView->hwnd;
+    } else if (aiOn) {
+        body = win->hwndAiSidebar;
+    } else if (annotOn) {
+        body = annotHwnd;
     }
-    if (barDy > 0 && !thumbsOn && !favsOn) {
+    if (body) {
+        place(body, 0, y, rc.dx, dy);
+        SetWindowPos(body, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+    if (barDy > 0 && bookmarksOn) {
         RelayoutTocCalib(win);
-    }
-    if (thumbsOn) {
-        place(win->hwndSidebarThumbs, 0, y, rc.dx, dy);
-        SetWindowPos(win->hwndSidebarThumbs, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    }
-    if (favsOn) {
-        place(win->favTreeView->hwnd, 0, y, rc.dx, dy);
-        SetWindowPos(win->favTreeView->hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    }
-    bool aiOn = styleVisible(win->hwndAiSidebar);
-    if (aiOn) {
-        place(win->hwndAiSidebar, 0, y, rc.dx, dy);
-        SetWindowPos(win->hwndAiSidebar, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    }
-    WindowTab* annotTab = win->CurrentTab();
-    HWND annotHwnd = EditAnnotationsSidebarHwnd(annotTab);
-    if (!annotHwnd) {
-        annotHwnd = EbookAnnotationsSidebarHwnd(annotTab);
-    }
-    if (styleVisible(annotHwnd)) {
-        place(annotHwnd, 0, y, rc.dx, dy);
-        SetWindowPos(annotHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 }
 
@@ -4947,6 +4972,18 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             return TRUE;
         }
     }
+    // Windows can deliver wheel input to the focused tree after the pointer
+    // has moved back to the document. A short TOC consumes it without moving,
+    // making the PDF appear stuck while its scrollbar still works.
+    if ((msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) && win->IsDocLoaded()) {
+        POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        ScreenToClient(win->hwndCanvas, &pt);
+        RECT canvasRc;
+        GetClientRect(win->hwndCanvas, &canvasRc);
+        if (PtInRect(&canvasRc, pt)) {
+            return SendMessageW(win->hwndCanvas, msg, wp, lp);
+        }
+    }
     if (TocTreeHandleMouse(win, hwnd, msg, wp, lp)) {
         return 0;
     }
@@ -5374,6 +5411,31 @@ static void OnTocFilterTextChanged(MainWindow* win) {
 
 static LRESULT CALLBACK WndProcTocFilterEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
                                              DWORD_PTR data) {
+    if (msg == WM_ERASEBKGND) {
+        return 1;
+    }
+    if (msg == WM_PAINT) {
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        HDC screen = GetDC(hwnd);
+        HDC buffer = CreateCompatibleDC(screen);
+        HBITMAP bitmap = CreateCompatibleBitmap(screen, rc.right, rc.bottom);
+        ReleaseDC(hwnd, screen);
+        if (buffer && bitmap) {
+            HGDIOBJ oldBitmap = SelectObject(buffer, bitmap);
+            DefSubclassProc(hwnd, WM_PRINTCLIENT, (WPARAM)buffer, PRF_CLIENT | PRF_ERASEBKGND);
+            PAINTSTRUCT ps{};
+            HDC hdc = BeginPaint(hwnd, &ps);
+            BitBlt(hdc, 0, 0, rc.right, rc.bottom, buffer, 0, 0, SRCCOPY);
+            EndPaint(hwnd, &ps);
+            SelectObject(buffer, oldBitmap);
+            DeleteObject(bitmap);
+            DeleteDC(buffer);
+            return 0;
+        }
+        if (bitmap) DeleteObject(bitmap);
+        if (buffer) DeleteDC(buffer);
+    }
     if (msg == WM_KEYDOWN && wp == VK_ESCAPE) {
         MainWindow* win = (MainWindow*)data;
         Edit* edit = win->tocFilterEdit;
@@ -5408,8 +5470,8 @@ void UpdateTocFilterForDocumentLoading(MainWindow* win) {
         return;
     }
     SidebarView view = CurrentSidebarView(win);
-    bool show = win->tocVisible && view != SidebarView::Ai && view != SidebarView::Annotations &&
-                (view != SidebarView::Bookmarks || TocSidebarHasBookmarkItems(win));
+    // Reserve the search row even while a same-book outline is being rebuilt.
+    bool show = win->tocVisible && view != SidebarView::Ai && view != SidebarView::Annotations;
     HwndSetVisibility(win->tocFilterEdit->hwnd, show);
     RelayoutTocContainer(win);
 }

@@ -12,6 +12,7 @@ struct TocCalibSession;
 struct StrBuilder;
 struct ReadAloudHighlightMap;
 struct PdfDeletedAnnotCover;
+struct NotificationWnd;
 
 /* Data related to a single document loaded into a tab/window */
 /* (none of these depend on MainWindow, so that a WindowTab could
@@ -30,6 +31,8 @@ struct WindowTab {
     const char* frameTitle = nullptr;
     // state of the table of contents
     bool showToc = false;
+    // Keep page-count width stable across reflow reloads of this book.
+    int toolbarPageDigits = 0;
     bool showTocPresentation = false;
     // SidebarView: 0 bookmarks, 1 thumbnails, 2 favorites, 3 AI
     int sidebarView = 0;
@@ -71,6 +74,9 @@ struct WindowTab {
     DisplayMode lastFontReloadDisplayMode = DisplayMode::Automatic;
     // Keep the previous frame on screen until that line is in place.
     bool holdPaintForFontReload = false;
+    bool fontReloadProgressPending = false;
+    int fontReloadProgress = 0;
+    NotificationWnd* fontReloadProgressNotif = nullptr;
     u32 lastDarkModeEpoch = 0;
     // CSS/theme generation last applied to this reflowable document.
     u32 reflowThemeEpoch = 0;

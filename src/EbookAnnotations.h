@@ -56,6 +56,8 @@ int EbookAnnotationGetFreeTextAlignment(EbookAnnotation* annotation);
 const char* EbookAnnotationGetFreeTextFont(EbookAnnotation* annotation);
 int EbookAnnotationGetFreeTextSize(EbookAnnotation* annotation);
 int EbookAnnotationGetFreeTextBorderWidth(EbookAnnotation* annotation);
+COLORREF EbookAnnotationGetFreeTextBorderColor(EbookAnnotation* annotation);
+bool EbookAnnotationSetFreeTextBorderColor(WindowTab* tab, EbookAnnotation* annotation, COLORREF color);
 bool EbookAnnotationGetFreeTextBackground(EbookAnnotation* annotation, COLORREF* colorOut);
 bool EbookAnnotationSetFreeTextAlignment(WindowTab* tab, EbookAnnotation* annotation, int alignment);
 bool EbookAnnotationSetFreeTextFont(WindowTab* tab, EbookAnnotation* annotation, const char* font);
@@ -71,6 +73,8 @@ bool EbookAnnotationSetBorderWidth(WindowTab* tab, EbookAnnotation* annotation, 
 bool EbookAnnotationSetLineEnds(WindowTab* tab, EbookAnnotation* annotation, int start, int end);
 bool EbookAnnotationSetInteriorColor(WindowTab* tab, EbookAnnotation* annotation, bool transparent, COLORREF color);
 int EbookAnnotationGetPageNo(WindowTab* tab, EbookAnnotation* annotation);
+void RememberEbookDrawStyle(EbookAnnotation* annotation);
+void AdoptEbookDrawStyle(EbookAnnotation* annotation);
 bool EbookAnnotationsExportNotes(WindowTab* tab, HWND hwndParent);
 void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORREF color, Vec<Rect>& screenRects,

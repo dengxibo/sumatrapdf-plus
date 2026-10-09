@@ -68,6 +68,8 @@ enum class TbIcon {
     AnnotSignature,
     SidebarAi,
     SidebarAnnotations,
+    AnnotFreeText,
+    ResetAppearance,
     kMax
 };
 

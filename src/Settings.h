@@ -183,6 +183,15 @@ struct Annotations {
     int freeTextSize;
     // width of free text annotation border
     int freeTextBorderWidth;
+    // PDF font for new free text: Helv, Cour, or TiRo
+    char* freeTextFont;
+    // remembered free-text box in PDF points; 0 keeps the engine default
+    int freeTextWidth;
+    int freeTextHeight;
+    // up to three recently chosen free text fonts, newest first, separated by |
+    char* freeTextRecentFonts;
+    // last drawn style of each annotation type, used the next time that type is drawn
+    char* lastDrawStyle;
     // text icon annotation color
     char* textIconColor;
     ParsedColor textIconColorParsed;
@@ -378,6 +387,9 @@ struct FileState {
     char* sidebarView;
     // width of the left sidebar panel containing the table of contents
     int sidebarDx;
+    // ebook font size for this file; 0 inherits the reading options
+    // default
+    float ebookFontSize;
     // if true, the document is displayed right-to-left in facing and book
     // view modes (only used for comic book documents)
     bool displayR2L;
@@ -898,11 +910,17 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, textIconType), SettingType::String, (intptr_t)"", "批注图标类型"},
     {offsetof(Annotations, defaultAuthor), SettingType::String, (intptr_t)"", "新建注释默认作者"},
     {offsetof(Annotations, selectionToolbar), SettingType::Bool, true, "选中文字后显示划词工具栏"},
+    {offsetof(Annotations, freeTextFont), SettingType::String, (intptr_t)"Helv", "文本批注字体"},
+    {offsetof(Annotations, freeTextWidth), SettingType::Int, 0, "文本批注框宽"},
+    {offsetof(Annotations, freeTextHeight), SettingType::Int, 0, "文本批注框高"},
+    {offsetof(Annotations, freeTextRecentFonts), SettingType::String, (intptr_t)"", "最近使用的文本批注字体"},
+    {offsetof(Annotations, lastDrawStyle), SettingType::String, (intptr_t)"", "按类型记住最近绘制的标注参数"},
 };
 static const StructInfo gAnnotationsInfo = {
-    sizeof(Annotations), 13, gAnnotationsFields,
+    sizeof(Annotations), 18, gAnnotationsFields,
     "HighlightColor\0UnderlineColor\0SquigglyColor\0StrikeOutColor\0FreeTextColor\0FreeTextBackgroundColor\0FreeTextOpa"
-    "city\0FreeTextSize\0FreeTextBorderWidth\0TextIconColor\0TextIconType\0DefaultAuthor\0SelectionToolbar"};
+    "city\0FreeTextSize\0FreeTextBorderWidth\0TextIconColor\0TextIconType\0DefaultAuthor\0SelectionToolbar\0FreeTextFon"
+    "t\0FreeTextWidth\0FreeTextHeight\0FreeTextRecentFonts\0LastDrawStyle"};
 
 static const FieldInfo gExternalViewerFields[] = {
     {offsetof(ExternalViewer, commandLine), SettingType::String, 0, "外部程序命令行"},
@@ -1029,6 +1047,7 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, showToc), SettingType::Bool, true, nullptr},
     {offsetof(FileState, sidebarView), SettingType::String, (intptr_t)"bookmarks", nullptr},
     {offsetof(FileState, sidebarDx), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, ebookFontSize), SettingType::Float, (intptr_t)"0", nullptr},
     {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
     {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)"", nullptr},
     {offsetof(FileState, tabCol), SettingType::Color, (intptr_t)"", nullptr},
@@ -1042,10 +1061,11 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
-    sizeof(FileState), 27, gFileStateFields,
+    sizeof(FileState), 28, gFileStateFields,
     "FilePath\0Favorites\0IsPinned\0IsMissing\0OpenCount\0DecryptionKey\0UseDefaultState\0DisplayMode\0ScrollPos\0PageN"
-    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarDx\0DisplayR2L\0BgCol\0TabCol\0DisplayFilt"
-    "erBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseIdx\0TocState"};
+    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarDx\0EbookFontSize\0DisplayR2L\0BgCol\0TabC"
+    "ol\0DisplayFilterBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseI"
+    "dx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1104,8 +1124,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-39.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-39.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-40.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-40.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},

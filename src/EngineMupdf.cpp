@@ -9,6 +9,7 @@ extern "C" {
 void fz_purge_stored_html(fz_context* ctx, void* doc);
 void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
 void fz_reset_epub_html_font_set(fz_context* ctx, fz_document* doc);
+void fz_epub_preserve_palette_page_counts(fz_context* ctx, fz_document* doc);
 int fz_epub_find_reflow_anchor(fz_context* ctx, fz_document* doc, int chapter, const char* text, int* page,
                                fz_rect* rect);
 void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, float w, float h, float em);
@@ -218,7 +219,6 @@ a, a:link, a:visited, a:hover, a:active,
 .sgc-toc-level a, .sgc-toc-level a span,
 p a, sup a, li a {
   color: %s !important;
-  text-decoration: none !important;
 }
 figcaption, caption, p.caption, div.caption, span.caption,
 .figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
@@ -5575,8 +5575,8 @@ li, blockquote {
             ebookCss = str::JoinTemp(fontCss, "\n", kEpubReaderBaseCss);
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
-        if (UsesNonDefaultEbookFontSize() && !isOffice) {
-            TempStr sizeCss = BuildEbookForceFontSizeCss(displayDpi);
+        if (GetEbookReaderFontSizePt(filePath) > 0.f && !isOffice) {
+            TempStr sizeCss = BuildEbookForceFontSizeCss(displayDpi, filePath);
             if (sizeCss) {
                 ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", sizeCss) : sizeCss;
             }
@@ -6410,7 +6410,11 @@ static void RefreshReflowChapterForTheme(fz_context* ctx, EngineMupdf* e, int ch
     // every cached page from that chapter to the same CSS epoch. Otherwise
     // each visible page can purge and lay out the same (potentially enormous)
     // anthology chapter again during one theme switch.
-    fz_purge_stored_html_chapter(ctx, e->_doc, chapter);
+    // EPUB refreshes cached chapter colors lazily while preserving its layout.
+    // Non-EPUB reflow documents still use the existing HTML invalidation path.
+    if (!IsEpubReflowNameHint(e->FilePath())) {
+        fz_purge_stored_html_chapter(ctx, e->_doc, chapter);
+    }
 
     DropReflowChapterPageCaches(e, ctx, chapter, true);
 }
@@ -6782,6 +6786,9 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
             } else {
                 MaybeReportRelayoutProgress(20);
                 ApplyMupdfThemeCssOnly(ctx, e->_doc, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
+                if (paletteOnly) {
+                    fz_epub_preserve_palette_page_counts(ctx, e->_doc);
+                }
                 if (geometryChange) {
                     MaybeReportRelayoutProgress(40);
                     float dx, dy;
@@ -6795,7 +6802,12 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
                 // have obtained its clone and be waiting for docLock.
                 e->reflowThemeCssEpoch++;
                 MaybeReportRelayoutProgress(75);
-                InvalidateReflowPageCachesForThemeCssLocked(e, ctx);
+                // Palette changes keep geometry. The epoch makes GetFzPageInfo
+                // refresh only requested chapters; do not drop the entire book's
+                // retained pages and HTML synchronously on the UI thread.
+                if (geometryChange) {
+                    InvalidateReflowPageCachesForThemeCssLocked(e, ctx);
+                }
                 ok = true;
                 needChapterResync = geometryChange;
             }
@@ -11793,11 +11805,11 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     // per page, making scrolling crawl in large chapters. Text selection and
     // search do a full load on demand.
     bool loadQuick = true;
-    // Skip link extraction too: fz_load_html_links walks every flow node of
-    // the whole chapter with no per-page pruning - O(chapter words) per page,
-    // seconds for anthology chapters. GetElementAtPos loads links on demand
-    // when the mouse actually interacts with the page.
-    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, loadQuick, fzcookie, /*loadLinks*/ false);
+    // PDF links are inexpensive and needed by cached-only cursor hit testing.
+    // Prepare them here on the render worker, without extracting images/text.
+    // EPUB keeps lazy links because fz_load_html_links walks every flow node
+    // of the entire chapter, taking seconds in large anthologies.
+    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, loadQuick, fzcookie, /*loadLinks*/ pdfdoc != nullptr);
     if (!pageInfo || !pageInfo->page) {
         return nullptr;
     }
@@ -11851,6 +11863,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     const DarkModeProfile* darkProfileForPath = args.darkProfile;
     bool followDirectPath = DarkModeProfileUsesFollowThemeDirect(darkProfileForPath);
     bool followV2Path = DarkModeProfileUsesFollowThemeV2(darkProfileForPath);
+    // Those display lists include annotations. A capture that asked to hide
+    // them (the free-text editor backdrop) must take the contents-only path
+    // below, or the old glyphs stay under the caret and smear on edit.
     bool followThemeBitmapDoc =
         pdfdoc && followThemeDocBitmapRecolor == 1 && !InterlockedCompareExchange(&pdfFollowThemeProbePending, 0, 0);
     bool useBitmapTexList = false;
@@ -11890,7 +11905,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         if (useSmartDarkList) {
             pageRenderPerf.path = "smart-list";
             keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
-        } else if ((followDirectPath || followV2Path) && args.darkProfile) {
+        } else if (!hideAnnotations && (followDirectPath || followV2Path) && args.darkProfile) {
             pageRenderPerf.path = "follow-direct";
             bool bitmapRecolor = FollowThemePageShouldRasterizeThenRecolor(this, ctx, pageInfo, page);
             if (bitmapRecolor) {
@@ -13567,6 +13582,11 @@ bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine) {
         return false;
     }
     return InterlockedCompareExchange(&epdf->reflowableLoadingInProgress, 0, 0) != 0;
+}
+
+int EngineMupdfGetReflowChaptersCounted(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    return e ? (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0) : 0;
 }
 
 int EngineGetProgressivePageCount(EngineBase* engine) {
@@ -16679,6 +16699,26 @@ static bool PdfPageHasAnnotations(EngineMupdf* e, int pageNo) {
     return has;
 }
 
+int EngineMupdfAnnotationId(Annotation* annot) {
+    if (!annot || !annot->pdfannot || !annot->engine) return 0;
+    auto e = annot->engine;
+    ScopedCritSec cs(&e->docLock);
+    return pdf_to_num(e->_ctx, pdf_annot_obj(e->_ctx, annot->pdfannot));
+}
+
+Annotation* EngineMupdfFindAnnotation(EngineBase* engine, int pageNo, int objectId) {
+    if (!engine || objectId <= 0) return nullptr;
+    auto e = AsEngineMupdf(engine);
+    if (!e->pdfdoc || pageNo < 1 || pageNo > e->pageCount) return nullptr;
+    auto pi = e->GetFzPageInfo(pageNo, true, nullptr, false);
+    if (!pi) return nullptr;
+    ScopedCritSec cs(&e->docLock);
+    for (auto annot : pi->annotations) {
+        if (pdf_to_num(e->_ctx, pdf_annot_obj(e->_ctx, annot->pdfannot)) == objectId) return annot;
+    }
+    return nullptr;
+}
+
 void EngineMupdfGetAnnotations(EngineBase* engine, Vec<Annotation*>& annotsOut) {
     annotsOut.Clear();
 
@@ -16825,12 +16865,24 @@ static Annotation* PickAnnotationAtPos(FzPageInfo* pi, PointF pos, Annotation* p
     return best;
 }
 
-Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* preferredAnnot) {
+Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* preferredAnnot,
+                                          bool load) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     if (!epdf->pdfdoc) {
         return nullptr;
     }
     FzPageInfo* pi = epdf->GetFzPageInfoCanFail(pageNo);
+    if (!load) {
+        // Mouse hover must never wait behind page rendering or OCR. Clicks
+        // retain the loading path below so editing/media playback stay exact.
+        if (!pi || !pi->page || !TryEnterCriticalSection(&epdf->docLock)) {
+            return nullptr;
+        }
+        defer {
+            LeaveCriticalSection(&epdf->docLock);
+        };
+        return PickAnnotationAtPos(pi, pos, preferredAnnot);
+    }
     if (pi) {
         ScopedCritSec cs(&epdf->docLock);
         Annotation* hit = PickAnnotationAtPos(pi, pos, preferredAnnot);

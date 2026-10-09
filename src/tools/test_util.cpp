@@ -17,6 +17,7 @@ extern void BaseUtilTest();
 extern void ByteOrderTests();
 extern void CryptoUtilTest();
 extern void CssParser_UnitTests();
+extern void FreeTextMru_UnitTests();
 extern void DictTest();
 extern void FileUtilTest();
 extern void HtmlPrettyPrintTest();
@@ -120,6 +121,7 @@ int main(int argc, char** argv) {
     ByteOrderTests();
     CryptoUtilTest();
     CssParser_UnitTests();
+    FreeTextMru_UnitTests();
     DictTest();
     FileUtilTest();
     HtmlPrettyPrintTest();
