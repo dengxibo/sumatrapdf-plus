@@ -9,6 +9,9 @@
 - 设置窗口支持固定分类栏和底部按钮、右侧内容滚动及横向扩展，减少分组空白并收起隐藏区块。
 - 阅读设置新增垂直滚轮行数：0 跟随 Windows，1–100 自定义。放大单页与连续阅读按相同行高计算滚动距离，整页翻页和横向滚动保持原有规则。
 
+- 文本标注在列表中有笔记时显示笔记，没有笔记时才显示图标旁边的原文。
+  A text annotation lists its note when one is written, and the words beside the icon only when the note is empty.
+
 ## 3.7.41 (2026-10-09)
 
 - 显示增强也可用于 EPUB 等原生文字图书，避免按钮置灰后看起来像图标变细。

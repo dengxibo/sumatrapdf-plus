@@ -1393,9 +1393,41 @@ void ReopenEditAnnotationsWindowsAfterDpiMove(MainWindow* win) {
     }
 }
 
+// A text note's icon is a small mark. Widen it so an empty note can still
+// show the words it sits on.
+static TempStr TextAnnotationObjectExcerptTemp(DisplayModel* dm, Annotation* annot) {
+    if (!dm || !annot || dm->GetEngine() != annot->engine) {
+        return nullptr;
+    }
+    RectF region = GetRect(annot);
+    if (region.IsEmpty()) {
+        return nullptr;
+    }
+    if (region.dx < 48.f && region.dy < 48.f) {
+        region.x -= 12.f;
+        region.y -= 4.f;
+        region.dx += 120.f;
+        region.dy += 20.f;
+    }
+    char* regionText = dm->GetTextInRegion(annot->pageNo, region, true);
+    TempStr excerpt = str::DupTemp(regionText);
+    str::Free(regionText);
+    if (str::IsEmptyOrWhiteSpace(excerpt)) {
+        return nullptr;
+    }
+    return excerpt;
+}
+
 static TempStr PdfAnnotationExcerptTemp(DisplayModel* dm, Annotation* annot) {
     if (annot->type == AnnotationType::FreeText) {
         return str::DupTemp(Contents(annot));
+    }
+    if (annot->type == AnnotationType::Text) {
+        TempStr note = str::DupTemp(Contents(annot));
+        if (!str::IsEmptyOrWhiteSpace(note)) {
+            return note;
+        }
+        return TextAnnotationObjectExcerptTemp(dm, annot);
     }
     TempStr excerpt = MarkupTextTemp(annot);
     if ((annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle) && dm &&
@@ -2800,7 +2832,15 @@ static void ContentsChanged(EditAnnotationsWindow* ew) {
     SetContents(a, txt);
     SyncSidebarNoteToInPlace(a, txt);
     EnableSaveIfAnnotationsChanged(ew);
-    if (a->type == AnnotationType::FreeText) {
+    if (a->type == AnnotationType::FreeText || a->type == AnnotationType::Text) {
+        int idx = ew->annotations.Find(a);
+        if (idx >= 0 && idx < ew->annotationExcerpts.Size()) {
+            TempStr excerpt = PdfAnnotationExcerptTemp(ew->tab->AsFixed(), a);
+            if (excerpt) {
+                str::NormalizeWSInPlace(excerpt);
+            }
+            ew->annotationExcerpts.SetAt(idx, excerpt ? excerpt : "");
+        }
         InvalidateRect(ew->listBox->hwnd, nullptr, FALSE);
     }
 
@@ -2859,10 +2899,14 @@ static void DrawAnnotListItem(EditAnnotationsWindow* ew, ListBox::DrawItemEvent*
         hasColor = true;
     }
     const char* excerpt = ev->itemIndex < ew->annotationExcerpts.Size() ? ew->annotationExcerpts.At(ev->itemIndex) : "";
-    if (annot->type == AnnotationType::FreeText) {
+    if (annot->type == AnnotationType::FreeText || annot->type == AnnotationType::Text) {
         TempStr text = str::DupTemp(Contents(annot));
-        if (text) str::NormalizeWSInPlace(text);
-        excerpt = text ? text : "";
+        if (text) {
+            str::NormalizeWSInPlace(text);
+        }
+        if (annot->type == AnnotationType::FreeText || !str::IsEmptyOrWhiteSpace(text)) {
+            excerpt = text ? text : "";
+        }
     }
     DrawAnnotationSidebarRow(ew->hwnd, ew->listBox->hwnd, ev, ev->selected || annot == ew->tab->selectedAnnotation,
                              hasColor, ColorRefFromPdfColor(color), str::FormatTemp("%d", annot->pageNo),

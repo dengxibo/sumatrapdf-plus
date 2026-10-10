@@ -826,6 +826,18 @@ static void ContentsChanged(EbookAnnotationsWindow* window) {
     TempStr note = window->editContents->GetTextTemp();
     note = str::ReplaceTemp(note, "\r\n", "\n");
     RecordEbookMutation(window, EbookAnnotationSetNote(window->tab, window->selected, note));
+    AnnotationType type = EbookAnnotationGetType(window->selected);
+    if (type == AnnotationType::Text || type == AnnotationType::FreeText) {
+        int idx = window->annotations.Find(window->selected);
+        if (idx >= 0 && idx < window->annotationExcerpts.Size()) {
+            TempStr excerpt = EbookAnnotationExcerptTemp(window->tab, window->selected);
+            if (excerpt) {
+                str::NormalizeWSInPlace(excerpt);
+            }
+            window->annotationExcerpts.SetAt(idx, excerpt ? excerpt : "");
+        }
+        InvalidateRect(window->listBox->hwnd, nullptr, FALSE);
+    }
 }
 
 static void ColorSelectionChanged(EbookAnnotationsWindow* window) {

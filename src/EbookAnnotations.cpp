@@ -1692,6 +1692,11 @@ TempStr EbookAnnotationExcerptTemp(WindowTab* tab, EbookAnnotation* annotation) 
     TempStr excerpt = str::DupTemp(EbookAnnotationGetText(annotation));
     if (type == AnnotationType::FreeText) {
         excerpt = str::DupTemp(EbookAnnotationGetNote(annotation));
+    } else if (type == AnnotationType::Text) {
+        TempStr note = str::DupTemp(EbookAnnotationGetNote(annotation));
+        if (!str::IsEmptyOrWhiteSpace(note)) {
+            excerpt = note;
+        }
     }
     if (type == AnnotationType::Square || type == AnnotationType::Circle || type == AnnotationType::Line ||
         type == AnnotationType::Ink) {
