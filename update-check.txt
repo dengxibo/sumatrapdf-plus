@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.41
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.41/SumatraPDF-Plus.exe
-Notes: On-page PDF free-text editing; Enhance Display on EPUB; fix continuous-view scroll jump at the top; Recognize All no longer rotates or deskews the page.
-NotesZh: 页面内编辑 PDF 自由文本；显示增强可用于 EPUB；修复连续阅读滚到顶部跳动；全文识别不再自动旋转或倾斜校正页面。
+Latest: 3.7.42
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.42/SumatraPDF-Plus.exe
+Notes: Improved page rendering and wheel navigation; resizable Options with fixed navigation; simpler save dialogs; free-text summaries and UI fixes.
+NotesZh: 改善跨页渲染与滚轮导航；选项窗口支持调整大小和固定导航；简化保存提示；自由文本摘要与界面修复。
