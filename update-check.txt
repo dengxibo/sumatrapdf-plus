@@ -1,5 +1,5 @@
 [SumatraPDF]
 Latest: 3.7.42
 PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.42/SumatraPDF-Plus.exe
-Notes: Improved page rendering and wheel navigation; resizable Options with fixed navigation; simpler save dialogs; free-text summaries and UI fixes.
-NotesZh: 改善跨页渲染与滚轮导航；选项窗口支持调整大小和固定导航；简化保存提示；自由文本摘要与界面修复。
+Notes: Improved page rendering and wheel navigation; resizable Options; text notes list their own note, then nearby words if empty.
+NotesZh: 改善跨页渲染与滚轮导航；选项窗口可调整大小；文本标注优先显示笔记，没有笔记才显示旁边原文。
