@@ -336,8 +336,7 @@ static void PaintPdfFreeTextOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annot
             BITMAP bm{};
             GetObject(gFreeTextOverlayCover.bmp, sizeof(bm), &bm);
             if (bm.bmWidth > 0 && bm.bmHeight > 0) {
-                StretchBlt(hdc, screen.x, screen.y, screen.dx, screen.dy, mem, 0, 0, bm.bmWidth, bm.bmHeight,
-                           SRCCOPY);
+                StretchBlt(hdc, screen.x, screen.y, screen.dx, screen.dy, mem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
             }
             SelectObject(mem, old);
             DeleteDC(mem);
@@ -1395,6 +1394,9 @@ void ReopenEditAnnotationsWindowsAfterDpiMove(MainWindow* win) {
 }
 
 static TempStr PdfAnnotationExcerptTemp(DisplayModel* dm, Annotation* annot) {
+    if (annot->type == AnnotationType::FreeText) {
+        return str::DupTemp(Contents(annot));
+    }
     TempStr excerpt = MarkupTextTemp(annot);
     if ((annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle) && dm &&
         dm->GetEngine() == annot->engine) {
@@ -2798,6 +2800,9 @@ static void ContentsChanged(EditAnnotationsWindow* ew) {
     SetContents(a, txt);
     SyncSidebarNoteToInPlace(a, txt);
     EnableSaveIfAnnotationsChanged(ew);
+    if (a->type == AnnotationType::FreeText) {
+        InvalidateRect(ew->listBox->hwnd, nullptr, FALSE);
+    }
 
     MainWindow* win = ew->tab->win;
     // Free text is drawn on the page bitmap, so waiting for a full re-render made
@@ -2854,6 +2859,11 @@ static void DrawAnnotListItem(EditAnnotationsWindow* ew, ListBox::DrawItemEvent*
         hasColor = true;
     }
     const char* excerpt = ev->itemIndex < ew->annotationExcerpts.Size() ? ew->annotationExcerpts.At(ev->itemIndex) : "";
+    if (annot->type == AnnotationType::FreeText) {
+        TempStr text = str::DupTemp(Contents(annot));
+        if (text) str::NormalizeWSInPlace(text);
+        excerpt = text ? text : "";
+    }
     DrawAnnotationSidebarRow(ew->hwnd, ew->listBox->hwnd, ev, ev->selected || annot == ew->tab->selectedAnnotation,
                              hasColor, ColorRefFromPdfColor(color), str::FormatTemp("%d", annot->pageNo),
                              trans::GetTranslation(AnnotationReadableNameTemp(annot->type)), excerpt,
@@ -4129,7 +4139,8 @@ static bool StartFreeTextEdit(MainWindow* win, Annotation* annot, EbookAnnotatio
     if (textSize <= 0) {
         textSize = 12;
     }
-    float borderWidth = annot ? BorderWidthF(annot) : (float)std::max(EbookAnnotationGetFreeTextBorderWidth(ebookAnnot), 0);
+    float borderWidth =
+        annot ? BorderWidthF(annot) : (float)std::max(EbookAnnotationGetFreeTextBorderWidth(ebookAnnot), 0);
     int fontPx = std::max(6, (int)(((float)textSize * scale) + 0.5f));
     const char* fontPdf = (annot ? DefaultAppearanceTextFont(annot) : EbookAnnotationGetFreeTextFont(ebookAnnot));
     const WCHAR* face = FreeTextFaceFromPdf(fontPdf);
@@ -4460,9 +4471,9 @@ struct FreeTextPropertyToolbar : Wnd {
         } else if (idx == 2 || idx == 3 || idx == 4) {
             PdfColor color = kColorUnset;
             if (pdf) {
-                color = idx == 2 ? DefaultAppearanceTextColor(pdf)
-                                 : idx == 3 ? GetColor(pdf)
-                                            : FreeTextBorderColor(pdf);
+                color = idx == 2   ? DefaultAppearanceTextColor(pdf)
+                        : idx == 3 ? GetColor(pdf)
+                                   : FreeTextBorderColor(pdf);
             }
             COLORREF value = ColorRefFromPdfAnnotationColor(color);
             bool transparent = pdf && idx == 3 && color == 0;
@@ -4685,9 +4696,9 @@ struct FreeTextPropertyToolbar : Wnd {
             if (hot != idx) {
                 hot = idx;
                 if (!tip && hwnd) {
-                    tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASS, nullptr,
-                                          WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP, CW_USEDEFAULT, CW_USEDEFAULT,
-                                          CW_USEDEFAULT, CW_USEDEFAULT, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+                    tip = CreateWindowExW(
+                        WS_EX_TOPMOST, TOOLTIPS_CLASS, nullptr, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP, CW_USEDEFAULT,
+                        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
                     if (tip) {
                         TOOLINFOW info{};
                         info.cbSize = sizeof(info);
@@ -4704,7 +4715,7 @@ struct FreeTextPropertyToolbar : Wnd {
                     EbookAnnotation* tipEbook = nullptr;
                     const char* text = "";
                     if (idx >= 0 && Live(&tipTab, &tipPdf, &tipEbook)) {
-                        const char* tips[] = {_TRA("Text Font:"), _TRA("Text Size:"), _TRA("Text Color:"),
+                        const char* tips[] = {_TRA("Text Font:"),        _TRA("Text Size:"),    _TRA("Text Color:"),
                                               _TRA("Background Color:"), _TRA("Border Color:"), _TRA("Border:"),
                                               _TRA("Text Alignment:")};
                         if (idx == 0) {
@@ -4775,8 +4786,7 @@ static void UpdateFreeTextPropertyToolbar(MainWindow* win) {
     int margin = DpiScale(tb->hwnd, 4);
     int h = DpiScale(tb->hwnd, 28);
     HFONT chipFont = GetAppFontForDpi(DpiGet(tb->hwnd));
-    const char* face =
-        FreeTextFontLabel(pdf ? DefaultAppearanceTextFont(pdf) : EbookAnnotationGetFreeTextFont(ebook));
+    const char* face = FreeTextFontLabel(pdf ? DefaultAppearanceTextFont(pdf) : EbookAnnotationGetFreeTextFont(ebook));
     const char* sizeLabel =
         str::FormatTemp("%d", pdf ? DefaultAppearanceTextSize(pdf) : EbookAnnotationGetFreeTextSize(ebook));
     int fontW = HwndMeasureText(tb->hwnd, face, chipFont).dx + DpiScale(tb->hwnd, 12);

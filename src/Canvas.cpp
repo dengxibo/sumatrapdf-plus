@@ -103,7 +103,7 @@ static TempStr AnnotationMetaTipTemp(const char* note, const char* author, time_
         s.AppendFmt("%s %s", _TRA("Author:"), author);
     }
     if (date > 0) {
-        struct tm tm {};
+        struct tm tm{};
         gmtime_s(&tm, &date);
         char buf[64];
         if (strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M UTC", &tm) > 0) {
@@ -483,7 +483,7 @@ void UpdateDeltaPerLine() {
     if (ulScrollLines == (ULONG)-1) {
         gDeltaPerLine = -1;
     } else if (ulScrollLines != 0) {
-        gDeltaPerLine = WHEEL_DELTA / ulScrollLines;
+        gDeltaPerLine = std::max(1, (int)(WHEEL_DELTA / ulScrollLines));
     }
     // logf("SPI_GETWHEELSCROLLLINES: ulScrollLines=%d, gDeltaPerLine=%d\n", (int)ulScrollLines, gDeltaPerLine);
 }
@@ -4177,6 +4177,11 @@ static void WheelFlipPage(MainWindow* win, short delta) {
 }
 
 static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM lp) {
+    int wheelLines = ValidWheelScrollLines(gGlobalPrefs->wheelScrollLines);
+    if (win->wheelScrollLinesSetting != wheelLines) {
+        win->wheelScrollLinesSetting = wheelLines;
+        win->wheelAccumDelta = win->wheelPixelRemainder = 0;
+    }
     // Scroll the ToC sidebar, if it's visible and the cursor is in it
     if (win->tocVisible && IsCursorOverWindow(win->tocTreeView->hwnd) && !gWheelMsgRedirect) {
         // Note: hwndTocTree's window procedure doesn't always handle
@@ -4203,6 +4208,8 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
 
     bool hScroll = (LOWORD(wp) & MK_SHIFT) || IsShiftPressed();
     bool vScroll = !hScroll;
+    int deltaPerLine = vScroll && wheelLines ? WHEEL_DELTA : gDeltaPerLine;
+    int lineMultiplier = vScroll && wheelLines ? wheelLines : 1;
     bool isCont = IsContinuous(win->ctrl->GetDisplayMode());
 
     // logf("delta: %d, accumDelta: %d, hscroll: %d, continuous: %d, gDeltaPerLine: %d\n", (int)delta,
@@ -4289,18 +4296,19 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         }
     }
 
-    if (gDeltaPerLine == 0) {
+    if (deltaPerLine == 0) {
         return 0;
     }
 
     // For SinglePage mode with zoomed content, use continuous scrolling with page transitions
-    if (isSinglePageMode && vScroll && dm) {
+    if (!isCont && IsSingle(win->ctrl->GetDisplayMode()) && vScroll && dm) {
         if (dm->NeedVScroll()) {
             // Use continuous scrolling that handles page transitions at boundaries
             // The page scrollbar stores nPage as 1 (one page), not pixels.
             // MulDiv against that rounds every notch to 0, so the wheel did nothing.
-            int viewDy = dm->GetViewPort().dy;
-            int scrollBy = -MulDiv(viewDy > 0 ? viewDy : 1, delta, WHEEL_DELTA * 3);
+            int scrollBy = deltaPerLine < 0 ? -MulDiv(std::max(1, dm->GetViewPort().dy), delta, WHEEL_DELTA)
+                                            : WheelScrollPixels(delta, DpiScale(win->hwndCanvas, 16), deltaPerLine,
+                                                                win->wheelPixelRemainder, lineMultiplier);
             // on sensitive touchpads delta can be very small
             if (scrollBy == 0) return 0;
             if (hScroll) {
@@ -4313,7 +4321,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         }
     }
 
-    if (gDeltaPerLine < 0 && dm) {
+    if (deltaPerLine < 0 && dm) {
         // scroll by (fraction of a) page
         SCROLLINFO si{};
         si.cbSize = sizeof(si);
@@ -4364,8 +4372,8 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
             PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE);
             combinedDelta += GET_WHEEL_DELTA_WPARAM(queued.wParam);
         }
-        int pixels =
-            WheelScrollPixels(combinedDelta, DpiScale(win->hwndCanvas, 16), gDeltaPerLine, win->wheelPixelRemainder);
+        int pixels = WheelScrollPixels(combinedDelta, DpiScale(win->hwndCanvas, 16), deltaPerLine,
+                                       win->wheelPixelRemainder, lineMultiplier);
         KillTimer(win->hwndCanvas, kSmoothScrollTimerID);
         win->readAloudScrollFromCode = false;
         if (pixels != 0) {
@@ -4375,24 +4383,24 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         return 0;
     }
 
-    win->wheelAccumDelta += delta;
+    win->wheelAccumDelta += delta * lineMultiplier;
     int prevScrollPos = GetScrollPos(win->hwndCanvas, SB_VERT);
 
     UINT scrollMsg = hScroll ? WM_HSCROLL : WM_VSCROLL;
     bool didScrollByLine = false;
     if (win->wheelAccumDelta < 0) {
         WPARAM scrollWp = hScroll ? SB_LINERIGHT : SB_LINEDOWN;
-        while (win->wheelAccumDelta <= -gDeltaPerLine) {
+        while (win->wheelAccumDelta <= -deltaPerLine) {
             SendMessageW(win->hwndCanvas, scrollMsg, scrollWp, 0);
-            win->wheelAccumDelta += gDeltaPerLine;
+            win->wheelAccumDelta += deltaPerLine;
             // logf("  line down\n");
             didScrollByLine = true;
         }
     } else {
         WPARAM scrollWp = hScroll ? SB_LINELEFT : SB_LINEUP;
-        while (win->wheelAccumDelta >= gDeltaPerLine) {
+        while (win->wheelAccumDelta >= deltaPerLine) {
             SendMessageW(win->hwndCanvas, scrollMsg, scrollWp, 0);
-            win->wheelAccumDelta -= gDeltaPerLine;
+            win->wheelAccumDelta -= deltaPerLine;
             // logf("  line up\n");
             didScrollByLine = true;
         }

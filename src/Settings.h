@@ -183,15 +183,6 @@ struct Annotations {
     int freeTextSize;
     // width of free text annotation border
     int freeTextBorderWidth;
-    // PDF font for new free text: Helv, Cour, or TiRo
-    char* freeTextFont;
-    // remembered free-text box in PDF points; 0 keeps the engine default
-    int freeTextWidth;
-    int freeTextHeight;
-    // up to three recently chosen free text fonts, newest first, separated by |
-    char* freeTextRecentFonts;
-    // last drawn style of each annotation type, used the next time that type is drawn
-    char* lastDrawStyle;
     // text icon annotation color
     char* textIconColor;
     ParsedColor textIconColorParsed;
@@ -205,6 +196,20 @@ struct Annotations {
     // underline etc.) and Ask AI pops up after selecting text in PDF
     // documents that support annotations. Set to false to disable it
     bool selectionToolbar;
+    // PDF font for new free text: Helv, Cour, or TiRo
+    char* freeTextFont;
+    // remembered free-text box width in PDF points; 0 keeps the engine
+    // default
+    int freeTextWidth;
+    // remembered free-text box height in PDF points; 0 keeps the engine
+    // default
+    int freeTextHeight;
+    // up to three recently chosen free text fonts, newest first, separated
+    // by |
+    char* freeTextRecentFonts;
+    // last drawn style of each annotation type, used the next time that
+    // type is drawn
+    char* lastDrawStyle;
 };
 
 // list of additional external viewers for various file types. See [docs
@@ -629,6 +634,9 @@ struct GlobalPrefs {
     bool scrollbarInSinglePage;
     // if true, implements smooth scrolling
     bool smoothScroll;
+    // vertical lines per mouse wheel notch: 0 follows Windows, 1-100
+    // overrides it; invalid values follow Windows
+    int wheelScrollLines;
     // if true, mouse wheel scrolling is faster when mouse is over a
     // scrollbar
     bool fastScrollOverScrollbar;
@@ -1124,8 +1132,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-40.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-40.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-41.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-41.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1193,6 +1201,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "滚动条 windows/smart/overlay/hidden"},
     {offsetof(GlobalPrefs, scrollbarInSinglePage), SettingType::Bool, true, "单页模式显示滚动条"},
     {offsetof(GlobalPrefs, smoothScroll), SettingType::Bool, false, "平滑滚动"},
+    {offsetof(GlobalPrefs, wheelScrollLines), SettingType::Int, 0,
+     "垂直滚轮每格滚动行数：0=跟随 Windows，1-100=自定义，非法值跟随 Windows"},
     {offsetof(GlobalPrefs, fastScrollOverScrollbar), SettingType::Bool, false, "滚轮在滚动条区域时半页滚动"},
     {offsetof(GlobalPrefs, preventSleepInFullscreen), SettingType::Bool, true, "全屏/演示时阻止休眠"},
     {offsetof(GlobalPrefs, tabWidth), SettingType::Int, 300, "单个标签最大宽度"},
@@ -1285,7 +1295,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 139, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 140, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
@@ -1294,17 +1304,17 @@ static const StructInfo gGlobalPrefsInfo = {
     "OcrFullDocumentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiTocApiBaseUrl\0AiTocApiKey\0AiTocApiModel"
     "\0AiTocApiProfiles\0AiTocApiConcurrency\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0EnableInlineTranslate\0Tra"
     "nslateVolcAccessKey\0TranslateVolcSecretKey\0TranslateTargetMode\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage"
-    "\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0T"
-    "abWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0DocumentImageDarkStra"
-    "tegy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDra"
-    "wingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0"
-    "\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0Selectio"
-    "nHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh"
-    "\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSma"
-    "rtOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0NarrationUseBookAudio\0"
-    "NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0Wind"
-    "owPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0Ope"
-    "nCountWeek\0PropWinPos\0\0"};
+    "\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0WheelScrollLines\0FastScrollOverScrollbar\0PreventSl"
+    "eepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0Doc"
+    "umentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAli"
+    "as\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI"
+    "\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fulls"
+    "creen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAlo"
+    "udSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoice"
+    "Zh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0Narrati"
+    "onUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0W"
+    "indowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdate"
+    "CheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

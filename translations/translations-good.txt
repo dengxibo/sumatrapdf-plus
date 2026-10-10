@@ -4074,7 +4074,7 @@ bs:Advanced
 by:Advanced
 ca:Advanced
 ca-xv:Advanced
-cn:详细设置
+cn:高级
 co:Espertu
 cy:Advanced
 cz:Advanced
@@ -34807,7 +34807,7 @@ vn:Lưu Chú Thích và thoát PDF
 :Save annotations?
 am:Պահե՞լ մեկնաբանությունը?
 br:Salvar anotações?
-cn:是否保存标注
+cn:是否保存标注？
 co:Arregistrà l’annutazioni ?
 de:Anmerkungen speichern?
 el:Αποθήκευση σχολιασμών?
@@ -47311,3 +47311,18 @@ it:Zoom: Riduci per adattare
 nl:Zoom: Verklein Tot passend
 pl:Powiększenie: zmniejsz, aby dopasować
 sk:Zväčšenie: Prispôsobiť veľkosť
+
+:Save this book's annotations before closing?
+cn:关闭前是否保存此书中的标注？
+tw:關閉前是否儲存此書中的註解？
+:Save changes to this file before closing?
+cn:关闭前是否保存对此文件的更改？
+tw:關閉前是否儲存對此檔案的變更？
+
+:Wheel lines (0 = Windows, 1-100):
+cn:滚轮行数（0=系统，1-100）：
+tw:滾輪行數（0=系統，1-100）：
+
+:Wheel scroll lines must be between 0 and 100 (0 follows Windows).
+cn:滚轮行数必须为 0 到 100（0 表示跟随 Windows）。
+tw:滾輪行數必須為 0 到 100（0 表示跟隨 Windows）。

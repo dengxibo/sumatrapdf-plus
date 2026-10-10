@@ -1690,6 +1690,9 @@ TempStr EbookAnnotationExcerptTemp(WindowTab* tab, EbookAnnotation* annotation) 
     if (!annotation) return nullptr;
     AnnotationType type = EbookAnnotationGetType(annotation);
     TempStr excerpt = str::DupTemp(EbookAnnotationGetText(annotation));
+    if (type == AnnotationType::FreeText) {
+        excerpt = str::DupTemp(EbookAnnotationGetNote(annotation));
+    }
     if (type == AnnotationType::Square || type == AnnotationType::Circle || type == AnnotationType::Line ||
         type == AnnotationType::Ink) {
         // Shape exact text is a reflow anchor, never the displayed excerpt.
@@ -1882,7 +1885,8 @@ bool EbookAnnotationSetColor(WindowTab* tab, EbookAnnotation* annotation, COLORR
     if (!annotations || annotations->items.Find(annotation) < 0) {
         return false;
     }
-    if (annotation->type == AnnotationType::FreeText && !annotation->borderColorExplicit && annotation->color != color) {
+    if (annotation->type == AnnotationType::FreeText && !annotation->borderColorExplicit &&
+        annotation->color != color) {
         annotation->borderColor = annotation->color == kColorUnset ? RGB(0, 0, 0) : annotation->color;
         annotation->borderColorExplicit = true;
     }

@@ -6680,7 +6680,7 @@ enum class SaveChoice {
 struct SaveAnnotationsDialogData {
     const char* filePath;
     bool ebook = false;
-    Rect infoIcon;
+    Tooltip filenameTip;
     HFONT bodyFont = nullptr; // cached application font, same as annotation sidebar
     HFONT headingFont = nullptr;
     AppDialogBrushes brushes;
@@ -6716,8 +6716,6 @@ static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* da
         data->headingFont = CreateFontIndirectW(&lf);
     }
     AppDialogApplyFontToChildren(hwnd, data->bodyFont);
-    SendMessageW(GetDlgItem(hwnd, IDC_SAVE_ANNOT_MESSAGE), WM_SETFONT,
-                 (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
     SendMessageW(GetDlgItem(hwnd, IDC_SAVE_ANNOT_EXISTING), WM_SETFONT,
                  (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
     int pad = MulDiv(20, dpi, 96), gap = MulDiv(8, dpi, 96);
@@ -6741,37 +6739,40 @@ static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* da
     HWND question = GetDlgItem(hwnd, IDC_SAVE_ANNOT_QUESTION);
     HDC dc = GetDC(message);
     HGDIOBJ oldFont = SelectObject(dc, GetWindowFont(message));
-    int iconSize = MulDiv(32, dpi, 96);
-    int iconGap = MulDiv(12, dpi, 96);
-    int textInset = iconSize + iconGap;
-    // MessageBox-style: icon + copy left-aligned. Centering a short prompt in a
-    // wide four-button dialog reads as a floating island; left flow matches the
-    // ebook "unsaved annotations" prompt and scales when the file name wraps.
-    int textW = std::max(1, contentWidth - textInset);
+    int textW = contentWidth;
     RECT textRect{0, 0, textW, 0};
     DrawTextW(dc, HwndGetTextWTemp(message), -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    TEXTMETRICW metrics{};
+    GetTextMetricsW(dc, &metrics);
+    int lineHeight = metrics.tmHeight;
     SelectObject(dc, oldFont);
     ReleaseDC(message, dc);
-    int messageHeight = std::max(RectDy(textRect), MulDiv(24, dpi, 96));
-    int questionHeight = HwndMeasureText(hwnd, HwndGetTextTemp(question), data->bodyFont).dy;
-    int textBlockH = messageHeight + gap + questionHeight;
-    // Icon sits with the first line, not floated in the middle of both lines.
-    int iconY = pad + std::max(0, (messageHeight - iconSize) / 2);
-    int buttonY = pad + textBlockH + pad;
+    int messageHeight = std::min(std::max(RectDy(textRect), lineHeight), lineHeight * 2);
+    int messageY = pad;
+    RECT questionRect{0, 0, textW, 0};
+    dc = GetDC(question);
+    oldFont = SelectObject(dc, data->bodyFont);
+    DrawTextW(dc, HwndGetTextWTemp(question), -1, &questionRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    SelectObject(dc, oldFont);
+    ReleaseDC(question, dc);
+    int questionHeight = std::max(lineHeight, RectDy(questionRect));
+    int questionY = messageY + messageHeight + gap;
+    int buttonY = questionY + questionHeight + pad;
     RECT client{}, window{};
     GetClientRect(hwnd, &client);
     GetWindowRect(hwnd, &window);
     SetWindowPos(hwnd, nullptr, 0, 0, contentWidth + pad * 2 + RectDx(window) - RectDx(client),
                  buttonY + buttonHeight + pad + RectDy(window) - RectDy(client),
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    data->infoIcon = Rect(pad, iconY, iconSize, iconSize);
-    MoveWindow(message, pad + textInset, pad, textW, messageHeight, TRUE);
-    MoveWindow(question, pad + textInset, pad + messageHeight + gap, textW, questionHeight, TRUE);
+    MoveWindow(message, pad, messageY, textW, messageHeight, TRUE);
+    MoveWindow(question, pad, questionY, textW, questionHeight, TRUE);
+    data->filenameTip.SetSingle(path::GetBaseNameTemp(data->filePath), Rect(0, 0, textW, messageHeight), true);
+    data->filenameTip.UpdateTheme();
     int buttonsWidth = buttonGap * (data->ebook ? 2 : 3);
     for (const auto& size : sizes) {
         buttonsWidth += size.dx;
     }
-    int x = pad + (contentWidth - buttonsWidth) / 2;
+    int x = pad + contentWidth - buttonsWidth;
     for (int i = 0; i < dimof(ids); i++) {
         if (data->ebook && ids[i] == IDC_SAVE_ANNOT_NEW) {
             continue;
@@ -6796,16 +6797,22 @@ static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, lp);
         HwndSetRtl(hwnd, trans::IsCurrLangRtl());
         data->brushes.Create();
-        HwndSetText(hwnd, data->ebook ? _TRA("Unsaved annotations") : _TRA("Unsaved PDF changes"));
-        TempStr message =
-            str::FormatTemp(data->ebook ? _TRA("Unsaved annotations in '%s'") : _TRA("Unsaved PDF changes in '%s'"),
-                            path::GetBaseNameTemp(data->filePath));
-        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_MESSAGE, message);
+        HwndSetText(hwnd, data->ebook ? _TRA("Save annotations?") : _TRA("Save PDF changes?"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_MESSAGE, path::GetBaseNameTemp(data->filePath));
+        HWND filename = GetDlgItem(hwnd, IDC_SAVE_ANNOT_MESSAGE);
+        SetWindowLongPtrW(filename, GWL_STYLE,
+                          GetWindowLongPtrW(filename, GWL_STYLE) | SS_ENDELLIPSIS | SS_NOPREFIX | SS_NOTIFY);
+        Tooltip::CreateArgs tipArgs;
+        tipArgs.parent = filename;
+        tipArgs.font = GetAppFontForHwnd(hwnd);
+        tipArgs.isRtl = trans::IsCurrLangRtl();
+        data->filenameTip.Create(tipArgs);
         HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_QUESTION,
-                           data->ebook ? _TRA("Save annotations?") : _TRA("Save PDF changes?"));
-        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_EXISTING, data->ebook ? _TRA("&Save") : _TRA("&Save to existing PDF"));
-        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_NEW, _TRA("Save to &new PDF"));
-        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_DISCARD, _TRA("&Discard changes"));
+                           data->ebook ? _TRA("Save this book's annotations before closing?")
+                                       : _TRA("Save changes to this file before closing?"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_EXISTING, _TRA("&Save"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_NEW, _TRA("&Save As..."));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_DISCARD, _TRA("Don't save"));
         HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("&Cancel"));
         if (data->ebook) {
             ShowWindow(GetDlgItem(hwnd, IDC_SAVE_ANNOT_NEW), SW_HIDE);
@@ -6814,7 +6821,8 @@ static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp
         RegisterAppDialogForTheme(hwnd, RefreshSaveAnnotationsDialogTheme, data);
         AppDialogApplyChrome(hwnd);
         CenterDialog(hwnd);
-        HwndSetFocus(GetDlgItem(hwnd, IDCANCEL));
+        HwndSetFocus(GetDlgItem(hwnd, IDC_SAVE_ANNOT_EXISTING));
+        SendMessageW(hwnd, WM_UPDATEUISTATE, MAKEWPARAM(UIS_SET, UISF_HIDEFOCUS), 0);
         return FALSE;
     }
     if (!data) {
@@ -6829,27 +6837,6 @@ static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp
         return (INT_PTR)panel;
     }
     switch (msg) {
-        case WM_PAINT: {
-            PAINTSTRUCT paint{};
-            HDC dc = BeginPaint(hwnd, &paint);
-            Gdiplus::Graphics graphics(dc);
-            graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-            const Rect& r = data->infoIcon;
-            float scale = (float)r.dx / 32.f;
-            graphics.TranslateTransform((float)r.x, (float)r.y);
-            graphics.ScaleTransform(scale, scale);
-            COLORREF color = ThemeWindowLinkColor();
-            Gdiplus::Color ink(255, GetRValue(color), GetGValue(color), GetBValue(color));
-            Gdiplus::Pen pen(ink, 1.55f);
-            pen.SetStartCap(Gdiplus::LineCapRound);
-            pen.SetEndCap(Gdiplus::LineCapRound);
-            graphics.DrawEllipse(&pen, 2.f, 2.f, 28.f, 28.f);
-            graphics.DrawLine(&pen, 16.f, 14.f, 16.f, 23.f);
-            Gdiplus::SolidBrush dot(ink);
-            graphics.FillEllipse(&dot, 14.8f, 8.3f, 2.4f, 2.4f);
-            EndPaint(hwnd, &paint);
-            return TRUE;
-        }
         case WM_ERASEBKGND:
             return AppDialogHandleEraseBkgnd(wp, hwnd, panel);
         case WM_DPICHANGED: {

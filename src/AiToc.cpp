@@ -356,11 +356,10 @@ static void AiTocSetMultiBatchWaitCopy(AiTocDialog* dlg) {
         which = total;
     }
     SetWindowTextW(dlg->stateTitle, _TRW("Copy this batch's JSON"));
-    SetWindowTextW(dlg->stateDesc,
-                   ToWStrTemp(str::FormatTemp(
-                       _TRA("Batch %d of %d has been sent. Copy the JSON in that reply.\r\n"
-                            "The app joins the batches in order. The AI is not asked to merge them."),
-                       which, total)));
+    SetWindowTextW(dlg->stateDesc, ToWStrTemp(str::FormatTemp(
+                                       _TRA("Batch %d of %d has been sent. Copy the JSON in that reply.\r\n"
+                                            "The app joins the batches in order. The AI is not asked to merge them."),
+                                       which, total)));
     SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp(_TRA("Waiting for batch %d of %d JSON…"), which, total)));
 }
 
@@ -3188,13 +3187,19 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
         if (showScanWidgets) {
             // Dot marquee rect: right after the status text on the same row, so
             // the timer can invalidate just this tiny area.
-            int dotD = AiTocS(dlg, 7);
-            int dotGap = AiTocS(dlg, 6);
-            int dotTop = mt.statusY + (mt.lineH - dotD) / 2;
-            int dotLeft = mt.m + tsz.cx + AiTocS(dlg, 12);
-            dlg->dotsRect = {dotLeft, dotTop, dotLeft + 3 * dotD + 2 * dotGap, dotTop + dotD + 1};
+            HDC dotsDc = GetDC(hwnd);
+            HGDIOBJ oldDotsFont = SelectObject(dotsDc, (HFONT)SendMessageW(dlg->status, WM_GETFONT, 0, 0));
+            SIZE dotsSize{};
+            GetTextExtentPoint32W(dotsDc, L"...", 3, &dotsSize);
+            SelectObject(dotsDc, oldDotsFont);
+            ReleaseDC(hwnd, dotsDc);
+            int dotLeft = mt.m + tsz.cx + AiTocS(dlg, 2);
+            dlg->dotsRect = {dotLeft, mt.statusY, dotLeft + dotsSize.cx + AiTocS(dlg, 2), mt.statusY + mt.lineH};
             // Counter sits right after the dots: "正在扫描目录页 ● ○ ○  12 / 30".
             AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, dlg->dotsRect.right + AiTocS(dlg, 10));
+            // The parent paints the dots. Keep the opaque status child out of
+            // their rectangle, otherwise WS_CLIPCHILDREN clips the animation.
+            MoveWindow(dlg->status, mt.m, mt.statusY, std::max(1, (int)tsz.cx + AiTocS(dlg, 2)), mt.lineH, TRUE);
         } else {
             AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, mt.m + tsz.cx + AiTocS(dlg, 24));
         }
@@ -3764,25 +3769,16 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             FillRect((HDC)wp, &line, brush);
             DeleteObject(brush);
         }
-        // Scanning marquee: three small dots, one highlighted per phase.
+        // Scanning marquee: one, two, then three ordinary periods.
         // Painted here so the 300 ms timer only invalidates the tiny dots
         // rect — never the whole window (no flicker, no thumbnail repaints).
         if (dlg->scanning && !dlg->review && (dlg->dotsRect.right > dlg->dotsRect.left)) {
-            int dotD = dlg->dotsRect.bottom - dlg->dotsRect.top - 1;
-            int dotGap = AiTocS(dlg, 6);
-            HBRUSH active = CreateSolidBrush(GetSelectionHighlightColor());
-            HBRUSH inactive = CreateSolidBrush(AiTocMutedTextColor());
-            HPEN pen = (HPEN)GetStockObject(NULL_PEN);
-            for (int k = 0; k < 3; k++) {
-                RECT dot{dlg->dotsRect.left + k * (dotD + dotGap), dlg->dotsRect.top,
-                         dlg->dotsRect.left + k * (dotD + dotGap) + dotD + 1, dlg->dotsRect.top + dotD + 1};
-                SelectObject((HDC)wp, k == dlg->dotPhase ? active : inactive);
-                SelectObject((HDC)wp, pen);
-                SetBkMode((HDC)wp, TRANSPARENT);
-                Ellipse((HDC)wp, dot.left, dot.top, dot.right, dot.bottom);
-            }
-            DeleteObject(active);
-            DeleteObject(inactive);
+            int savedDc = SaveDC((HDC)wp);
+            SelectObject((HDC)wp, (HFONT)SendMessageW(dlg->status, WM_GETFONT, 0, 0));
+            SetTextColor((HDC)wp, ThemeWindowTextColor());
+            SetBkMode((HDC)wp, TRANSPARENT);
+            TextOutW((HDC)wp, dlg->dotsRect.left, dlg->dotsRect.top, L"...", dlg->dotPhase + 1);
+            RestoreDC((HDC)wp, savedDc);
         }
         return 1;
     }
@@ -3886,13 +3882,23 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         return 0;
     }
     if (msg == kMsgAiTocDetectProgress && !dlg->detectWork && !dlg->manualPages && !dlg->busy && !dlg->submitted) {
+        WCHAR previous[128]{};
+        GetWindowTextW(dlg->status, previous, dimof(previous));
         SetWindowTextW(dlg->status, _TRW("Scanning for TOC pages"));
         SetWindowTextW(dlg->scanCount, ToWStrTemp(str::FormatTemp("%d / %d", (int)wp, (int)lp)));
+        if (wcscmp(previous, _TRW("Scanning for TOC pages")) != 0) {
+            AiTocLayoutControls(dlg);
+        }
         return 0;
     }
     if (msg == kMsgAiTocBodyProgress && dlg->bodyScanning) {
+        WCHAR previous[128]{};
+        GetWindowTextW(dlg->status, previous, dimof(previous));
         SetWindowTextW(dlg->status, _TRW("Scanning document structure"));
         SetWindowTextW(dlg->scanCount, ToWStrTemp(str::FormatTemp("%d / %d", (int)wp, (int)lp)));
+        if (wcscmp(previous, _TRW("Scanning document structure")) != 0) {
+            AiTocLayoutControls(dlg);
+        }
         return 0;
     }
     if (msg == kMsgAiTocBodyScanned) {
@@ -3949,6 +3955,8 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         SetWindowTextW(dlg->status,
                        ToWStrTemp(str::FormatTemp(_TRA("Scan finished: %d likely headings found. Opening the AI page…"),
                                                   candidateCount)));
+        AiTocLayoutControls(dlg);
+        InvalidateRect(hwnd, nullptr, TRUE);
         RunAsync(MkFunc0<AiTocBodySendWork>(AiTocBodySendWorker, sendWork), "AiTocBodySend");
         return 0;
     }

@@ -84,7 +84,7 @@ const fills: Record<string, LangMap> = {
     vn: "Đọc",
   },
   Advanced: {
-    cn: "详细设置",
+    cn: "高级",
     tw: "進階設定",
     ja: "詳細設定",
     kr: "고급 설정",

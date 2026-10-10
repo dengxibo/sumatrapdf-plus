@@ -405,6 +405,23 @@ static void AiTocSettingsRoundTripTest() {
 }
 
 static void WheelScrollPixelsTest() {
+    auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
+    utassert(prefs->wheelScrollLines == 0);
+    prefs->wheelScrollLines = 7;
+    str::ReplaceWithCopy(&prefs->annotations.freeTextFont, "Cour");
+    prefs->annotations.freeTextWidth = 135;
+    prefs->annotations.freeTextHeight = 42;
+    str::ReplaceWithCopy(&prefs->annotations.freeTextRecentFonts, "Cour|Helv");
+    str::ReplaceWithCopy(&prefs->annotations.lastDrawStyle, "round-trip-test");
+    AutoFree saved((char*)SerializeStruct(&gGlobalPrefsInfo, prefs).data());
+    auto* restored = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, saved.data);
+    utassert(restored->wheelScrollLines == 7);
+    utassert(str::Eq(restored->annotations.freeTextFont, "Cour"));
+    utassert(restored->annotations.freeTextWidth == 135 && restored->annotations.freeTextHeight == 42);
+    utassert(str::Eq(restored->annotations.freeTextRecentFonts, "Cour|Helv"));
+    utassert(str::Eq(restored->annotations.lastDrawStyle, "round-trip-test"));
+    FreeStruct(&gGlobalPrefsInfo, restored);
+    FreeStruct(&gGlobalPrefsInfo, prefs);
     int remainder = 0;
     int total = 0;
     for (int i = 0; i < 120; i++) {
@@ -418,6 +435,19 @@ static void WheelScrollPixelsTest() {
     utassert(WheelScrollPixels(-1, 16, 40, remainder) == 0);
     utassert(WheelScrollPixels(1, 16, 40, remainder) == 0 && remainder == 0);
     utassert(WheelScrollPixels(-120 * 4, 16, 40, remainder) == 192);
+    utassert(ValidWheelScrollLines(-1) == 0);
+    utassert(ValidWheelScrollLines(0) == 0);
+    utassert(ValidWheelScrollLines(1) == 1);
+    utassert(ValidWheelScrollLines(100) == 100);
+    utassert(ValidWheelScrollLines(101) == 0);
+    // Non-divisors of WHEEL_DELTA must retain exact per-notch distances.
+    utassert(WheelScrollPixels(-120, 16, 120, remainder, 7) == 112);
+    total = 0;
+    for (int i = 0; i < 120; i++) total += WheelScrollPixels(-1, 16, 120, remainder, 7);
+    utassert(total == 112 && remainder == 0);
+    // Coalesced input and high DPI exceed a 32-bit intermediate product.
+    utassert(WheelScrollPixels(-32760 * 64, 48, 120, remainder, 100) == 83865600);
+    utassert(remainder == 0);
 }
 
 static void PrintedTocPromptTest() {

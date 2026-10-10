@@ -231,6 +231,10 @@ ScrollbarInSinglePage = true
 ; if true, implements smooth scrolling (introduced in version 3.6)
 SmoothScroll = false
 
+; vertical lines per mouse wheel notch: 0 follows Windows, 1-100 overrides it;
+; invalid values follow Windows
+WheelScrollLines = 0
+
 ; if true, mouse wheel scrolling is faster when mouse is over a scrollbar
 ; (introduced in version 3.6)
 FastScrollOverScrollbar = false
@@ -499,6 +503,22 @@ Annotations [
     ; support annotations. Set to false to disable it (introduced in version
     ; 3.7)
     SelectionToolbar = true
+
+    ; PDF font for new free text: Helv, Cour, or TiRo
+    FreeTextFont = Helv
+
+    ; remembered free-text box width in PDF points; 0 keeps the engine default
+    FreeTextWidth = 0
+
+    ; remembered free-text box height in PDF points; 0 keeps the engine default
+    FreeTextHeight = 0
+
+    ; up to three recently chosen free text fonts, newest first, separated by |
+    FreeTextRecentFonts =
+
+    ; last drawn style of each annotation type, used the next time that type is
+    ; drawn
+    LastDrawStyle =
 ]
 
 ; list of additional external viewers for various file types. See docs for more information (https://www.sumatrapdfreader.org/docs/Customize-external-viewers)

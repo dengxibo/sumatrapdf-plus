@@ -727,10 +727,11 @@ bool RenderCache::ReduceTileSize() {
 }
 
 void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, bool prioritize) {
-    if (prioritize && dm) {
+    if (prioritize && dm && !Exists(dm, pageNo, dm->GetRotation(), dm->GetZoomSafe(pageNo))) {
         // A neighbor prefetch may already be inside RenderPage, holding the
-        // engine lock. Abort off-screen work so a bookmark jump is not stuck
-        // behind it. Keep every visible page: at a continuous-page boundary
+        // engine lock. Abort off-screen work for an uncached destination so a
+        // bookmark jump is not stuck behind it. Cached pages keep neighbor
+        // prefetches running. Keep every visible page: at a continuous-page boundary
         // RenderVisibleParts requests both, and they must not cancel each other.
         ScopedCritSec scope(&requestAccess);
         for (int i = 0; i < nRenderThreads; i++) {

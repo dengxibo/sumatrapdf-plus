@@ -2683,8 +2683,11 @@ static void DrawMenuChevron(HWND hwnd, HDC hdc, const RECT& rcItem, COLORREF col
     int midY = rcItem.top + RectDy(rcItem) / 2;
     HPEN pen = CreatePen(PS_SOLID, 1, col);
     HGDIOBJ old = SelectObject(hdc, pen);
-    MoveToEx(hdc, x - arm, midY - arm, nullptr);
-    LineTo(hdc, x, midY);
+    // LineTo excludes its endpoint. Draw both arms outwards so their outer
+    // endpoints are treated equally and the chevron stays vertically symmetric.
+    MoveToEx(hdc, x, midY, nullptr);
+    LineTo(hdc, x - arm, midY - arm);
+    MoveToEx(hdc, x, midY, nullptr);
     LineTo(hdc, x - arm, midY + arm);
     SelectObject(hdc, old);
     DeleteObject(pen);

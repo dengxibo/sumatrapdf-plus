@@ -478,15 +478,6 @@ const annotations: Field[] = [
   ),
   setVersion(mkField("FreeTextSize", Int, 21, "size of free text annotation"), "3.5"),
   setVersion(mkField("FreeTextBorderWidth", Int, 1, "width of free text annotation border"), "3.5"),
-  setVersion(
-    mkField(
-      "FreeTextRecentFonts",
-      Str,
-      "",
-      "up to three recently chosen free text fonts, newest first, separated by |",
-    ),
-    "3.7",
-  ),
   mkField("TextIconColor", Color, "", "text icon annotation color"),
   mkField(
     "TextIconType",
@@ -512,6 +503,11 @@ const annotations: Field[] = [
     ),
     "3.7",
   ),
+  mkField("FreeTextFont", Str, "Helv", "PDF font for new free text: Helv, Cour, or TiRo"),
+  mkField("FreeTextWidth", Int, 0, "remembered free-text box width in PDF points; 0 keeps the engine default"),
+  mkField("FreeTextHeight", Int, 0, "remembered free-text box height in PDF points; 0 keeps the engine default"),
+  mkField("FreeTextRecentFonts", Str, "", "up to three recently chosen free text fonts, newest first, separated by |"),
+  mkField("LastDrawStyle", Str, "", "last drawn style of each annotation type, used the next time that type is drawn"),
 ];
 
 const favorite: Field[] = [
@@ -1094,6 +1090,7 @@ const globalPrefs: Field[] = [
   ),
   setVersion(mkField("ScrollbarInSinglePage", Bool, true, "if true, we show scrollbar in single page mode"), "3.6"),
   setVersion(mkField("SmoothScroll", Bool, false, "if true, implements smooth scrolling"), "3.6"),
+  mkField("WheelScrollLines", Int, 0, "vertical lines per mouse wheel notch: 0 follows Windows, 1-100 overrides it; invalid values follow Windows"),
   setVersion(
     mkField(
       "FastScrollOverScrollbar",

@@ -2855,16 +2855,13 @@ bool DisplayModel::GoToPrevPage(int scrollY) {
     }
     if (zoomVirtual == kZoomFitContent && -pageInfo->pageOnScreen.y <= top.y) {
         scrollY = 0; // continue, even though the current page isn't fully visible
-    } else if (IsContinuous(GetDisplayMode())) {
-        // Reveal the current page's hidden top before moving to the previous page.
-        // scrollY == -1 requests the bottom of the destination page, not this page.
-        bool showedMore = false;
-        if (pageInfo->pageOnScreen.y < 0) {
-            int yBefore = viewPort.y;
-            GoToPage(currPageNo, scrollY < 0 ? 0 : scrollY);
-            showedMore = viewPort.y != yBefore;
-        }
-        if (showedMore) {
+    } else if (IsContinuous(GetDisplayMode()) && scrollY >= 0 && pageInfo->pageOnScreen.y < 0) {
+        // Ordinary previous-page navigation reveals the hidden top first.
+        // A negative offset explicitly requests the previous page's bottom;
+        // do not consume that request by navigating within the current page.
+        int yBefore = viewPort.y;
+        GoToPage(currPageNo, scrollY);
+        if (viewPort.y != yBefore) {
             cb->OnUserPageTurn(this);
             return true;
         }
