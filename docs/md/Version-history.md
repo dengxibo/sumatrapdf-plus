@@ -2,6 +2,13 @@
 
 ## next
 
+## 3.7.44 (2026-10-12)
+
+- AI 对话支持流式输出，收到回复内容后逐步显示，可以边生成边阅读，无需等待整段回复完成。
+  Stream AI replies as they arrive so reading can begin before the full answer is complete.
+- 新一轮对话从最新问题附近开始显示，回复增长及完成时保留阅读位置，长回复不再自动跳到末尾。
+  Start each turn near the latest question and preserve the reading position while the answer grows and when it finishes.
+
 ## 3.7.43 (2026-10-11)
 
 - 手动调整页面支持裁切比例锁定、批量逐页预览和本页单独调整；统一框使用 PDF 实际尺寸保存，并在应用前检查越界。

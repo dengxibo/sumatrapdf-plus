@@ -52,8 +52,10 @@ struct AiTocChatMessage {
     const char* role = nullptr;
     const char* content = nullptr;
 };
+// Optional streaming callback: accumulated UTF-8 reply, borrowed, on the worker thread.
+typedef void (*AiTocChatProgressFn)(void* ctx, const char* content);
 bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,
-                  char** errOut);
+                  char** errOut, AiTocChatProgressFn progress = nullptr, void* progressCtx = nullptr);
 
 // Queries the provider's OpenAI-compatible GET /models endpoint. Some
 // providers do not expose it; callers should keep manual model entry usable.

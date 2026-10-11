@@ -530,7 +530,8 @@ struct HttpPostResult {
 };
 
 static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method, const char* body, int timeoutMs,
-                        HttpPostResult& res, char** errOut) {
+                        HttpPostResult& res, char** errOut, void (*onRead)(void*, const char*) = nullptr,
+                        void* readCtx = nullptr) {
     *errOut = nullptr;
     HINTERNET hInet = nullptr;
     HINTERNET hConn = nullptr;
@@ -604,7 +605,17 @@ static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method,
         for (;;) {
             char buf[8192];
             DWORD n = 0;
-            if (!InternetReadFile(hReq, buf, sizeof(buf), &n)) {
+            DWORD toRead = sizeof(buf);
+            if (onRead && status >= 200 && status < 300) {
+                DWORD available = 0;
+                if (!InternetQueryDataAvailable(hReq, &available, 0, 0)) {
+                    *errOut = str::Dup("Failed reading the API response.");
+                    goto Exit;
+                }
+                if (available == 0) break;
+                toRead = available < sizeof(buf) ? available : sizeof(buf);
+            }
+            if (!InternetReadFile(hReq, buf, toRead, &n)) {
                 *errOut = str::Dup("Failed reading the API response.");
                 goto Exit;
             }
@@ -612,6 +623,9 @@ static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method,
                 break;
             }
             res.body.Append(buf, n);
+            if (onRead && status >= 200 && status < 300) {
+                onRead(readCtx, res.body.Get());
+            }
         }
         ok = true;
     }
@@ -2522,7 +2536,7 @@ bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* mo
 }
 
 static void BuildTextChatBody(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, bool disableThinking,
-                              StrBuilder& out) {
+                              StrBuilder& out, bool streaming) {
     out.Append("{\"model\": ");
     AppendJsonEscaped(out, cfg.model ? cfg.model : "");
     out.Append(", \"messages\": [");
@@ -2537,14 +2551,44 @@ static void BuildTextChatBody(const AiTocApiConfig& cfg, const AiTocChatMessage*
         out.AppendChar('}');
     }
     out.Append("], \"temperature\": 0.3");
+    if (streaming) {
+        out.Append(", \"stream\": true");
+    }
     if (disableThinking) {
         out.Append(", \"enable_thinking\": false");
     }
     out.AppendChar('}');
 }
 
+struct ChatStreamReader : json::ValueVisitor {
+    size_t consumed = 0;
+    StrBuilder content;
+    AiTocChatProgressFn progress = nullptr;
+    void* ctx = nullptr;
+    bool Visit(const char* path, const char* value, json::Type type) override {
+        if (type == json::Type::String && str::Eq(path, "/choices[0]/delta/content")) content.Append(value);
+        return true;
+    }
+    static void Read(void* ctx, const char* body) {
+        auto* self = (ChatStreamReader*)ctx;
+        const char* line = body + self->consumed;
+        size_t before = self->content.size();
+        while (const char* end = str::FindChar(line, '\n')) {
+            AutoFree text(str::Dup(line, end - line));
+            if (str::StartsWith(text, "data:")) {
+                const char* data = text.Get() + 5;
+                while (*data == ' ') data++;
+                if (!str::StartsWith(data, "[DONE]")) json::Parse(data, self);
+            }
+            self->consumed = end + 1 - body;
+            line = end + 1;
+        }
+        if (self->content.size() != before) self->progress(self->ctx, self->content.Get());
+    }
+};
+
 bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,
-                  char** errOut) {
+                  char** errOut, AiTocChatProgressFn progress, void* progressCtx) {
     *contentOut = nullptr;
     *errOut = nullptr;
     if (!AiTocApiIsConfigured(cfg)) {
@@ -2557,11 +2601,15 @@ bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int n
     }
     TempStr url = ChatCompletionsUrlTemp(cfg.baseUrl);
     bool disableThinking = !IsThinkingUnsupported(cfg);
+    ChatStreamReader stream;
+    stream.progress = progress;
+    stream.ctx = progressCtx;
     HttpPostResult res;
     for (;;) {
         StrBuilder body;
-        BuildTextChatBody(cfg, msgs, nMsgs, disableThinking, body);
-        if (!HttpJsonRaw(url, cfg.key, "POST", body.Get(), timeoutMs, res, errOut)) {
+        BuildTextChatBody(cfg, msgs, nMsgs, disableThinking, body, progress != nullptr);
+        if (!HttpJsonRaw(url, cfg.key, "POST", body.Get(), timeoutMs, res, errOut,
+                         progress ? ChatStreamReader::Read : nullptr, &stream)) {
             return false;
         }
         const char* reply = res.body.Get();
@@ -2586,6 +2634,10 @@ bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int n
             *errOut = str::Format("API HTTP %u.", (unsigned)res.status);
         }
         return false;
+    }
+    if (stream.content.size() > 0) {
+        *contentOut = str::Dup(stream.content.Get());
+        return true;
     }
     ChatResponseVisitor vis;
     if (!res.body.Get() || !json::Parse(res.body.Get(), &vis) || vis.content.size() == 0) {

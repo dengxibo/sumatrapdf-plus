@@ -688,7 +688,7 @@ struct InlineTranslatePopup {
     char* selection = nullptr;  // normalized
     int contextPage = 0;        // page the selection was taken from; 0 if unknown
     bool contextOpen = false;   // docked: the context line is expanded
-    bool chatFollowTail = true; // docked: stay at the bottom unless the user scrolled up
+    bool chatFollowTail = true; // reveal the latest question once, then preserve the reading position
     bool chatAdjustingScroll = false;
     bool chatScrollHot = false;
     bool chatScrollDrag = false;
@@ -1366,6 +1366,9 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
     for (int i = 0; i < n; i++) {
         ChatTurn& t = p->turns[i];
         bool user = str::Eq(t.role, "user");
+        if (!user && p->asking && str::IsEmptyOrWhiteSpace(t.content)) {
+            continue;
+        }
         int before = 0;
         if (doc.hasPara) {
             before = p->docked ? RtfDoc::Tw(12) : doc.GapTw() * 2;
@@ -1390,7 +1393,7 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
             RtfAppendMarkdown(doc, text);
         }
     }
-    if (stopAtTurn < 0 && p->asking) {
+    if (stopAtTurn < 0 && p->asking && (p->turns.IsEmpty() || str::IsEmptyOrWhiteSpace(p->turns.Last().content))) {
         int before = doc.hasPara ? (p->docked ? RtfDoc::Tw(12) : doc.GapTw() * 2) : 0;
         doc.Para(0, 0, before, RtfDoc::Tw(2));
         sb.AppendFmt("{\\fs%d\\cf%d ", labelFs, kRtfMuted);
@@ -1434,19 +1437,6 @@ static int MeasureRichHeight(HWND hwnd, int width) {
     return MulDiv(fr.rc.bottom, dpiY, 1440);
 }
 
-static bool ChatIsNearBottom(HWND hwnd) {
-    SCROLLINFO si{};
-    si.cbSize = sizeof(si);
-    si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
-    if (!GetScrollInfo(hwnd, SB_VERT, &si)) {
-        return true;
-    }
-    if (si.nMax <= (int)si.nPage) {
-        return true;
-    }
-    return si.nPos + (int)si.nPage >= si.nMax - 8;
-}
-
 static void RebuildChatView(InlineTranslatePopup* p) {
     if (!p || !p->hwndChat) {
         return;
@@ -1470,10 +1460,9 @@ static void RebuildChatView(InlineTranslatePopup* p) {
             lastUser = i;
         }
     }
-    // Floating popup: the latest question sits at the top of the view.
-    // Docked sidebar: follow the tail, unless the reader has scrolled up.
+    // Start at the latest question, then preserve the reading position as the reply grows.
     p->chatScrollCp = 0;
-    if (!p->docked && lastUser > 0) {
+    if (!keepPlace && lastUser > 0) {
         RtfDoc head;
         BuildChatRtf(p, head, lastUser);
         SetRichTextRtf(p->hwndChat, head.sb.Get());
@@ -1483,12 +1472,7 @@ static void RebuildChatView(InlineTranslatePopup* p) {
     BuildChatRtf(p, doc, -1);
     p->chatAdjustingScroll = true;
     SetRichTextRtf(p->hwndChat, doc.sb.Get());
-    if (p->docked && p->chatFollowTail) {
-        int len = RichTextLen(p->hwndChat);
-        SendMessageW(p->hwndChat, EM_SETSEL, (WPARAM)len, (LPARAM)len);
-        SendMessageW(p->hwndChat, EM_SCROLLCARET, 0, 0);
-        p->chatScrollPending = false;
-    } else if (keepPlace) {
+    if (keepPlace) {
         SendMessageW(p->hwndChat, EM_SETSCROLLPOS, 0, (LPARAM)&saved);
         p->chatScrollPending = false;
     } else {
@@ -3023,11 +3007,11 @@ static void PaintQuietScrollbar(HWND hwnd, COLORREF trackCol, bool hot, bool dra
     ReleaseDC(hwnd, hdc);
 }
 
-static void NoteChatUserScroll(InlineTranslatePopup* p, HWND hwnd) {
+static void NoteChatUserScroll(InlineTranslatePopup* p) {
     if (!p || !p->docked || p->chatAdjustingScroll) {
         return;
     }
-    p->chatFollowTail = ChatIsNearBottom(hwnd);
+    p->chatFollowTail = false;
 }
 
 static LRESULT CALLBACK ChatSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
@@ -3059,7 +3043,7 @@ static LRESULT CALLBACK ChatSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
     }
     LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
     if (msg == WM_VSCROLL || msg == WM_MOUSEWHEEL || (msg == WM_KEYDOWN && (wp == VK_PRIOR || wp == VK_NEXT))) {
-        NoteChatUserScroll(p, hwnd);
+        NoteChatUserScroll(p);
         if (p && p->docked) {
             PaintQuietScrollbar(hwnd, ThemeSidebarBackgroundColor(), p->chatScrollHot, p->chatScrollDrag);
         }
@@ -3344,6 +3328,7 @@ struct AskJob {
     Vec<char*> owned;
     char* result = nullptr;
     char* error = nullptr;
+    ULONGLONG lastProgress = 0;
     void FreeAll() {
         for (char* s : owned) {
             str::Free(s);
@@ -3384,6 +3369,43 @@ static void PresentChatUpdate(InlineTranslatePopup* p) {
     }
 }
 
+// Each posted update owns its text; the worker can finish before it is delivered.
+struct AskProgress {
+    WindowTab* tab;
+    int generation;
+    char* content;
+};
+
+static void SetAskReply(Vec<ChatTurn>& turns, const char* content) {
+    if (!turns.IsEmpty() && str::Eq(turns.Last().role, "assistant")) {
+        str::ReplaceWithCopy(&turns.Last().content, content);
+    }
+}
+
+static void AskProgressUi(AskProgress* update) {
+    InlineTranslatePopup* p = update->tab ? gAsk : gPopup;
+    if (p && p->boundTab == update->tab && p->generation == update->generation && p->asking &&
+        (!update->tab || IsWindowTabValid(update->tab))) {
+        SetAskReply(p->turns, update->content);
+        PresentChatUpdate(p);
+        p->chatFollowTail = false;
+    } else if (update->tab && IsWindowTabValid(update->tab)) {
+        auto* st = (AiChatState*)update->tab->askAiState;
+        if (st && st->generation == update->generation && st->asking) SetAskReply(st->turns, update->content);
+    }
+    str::Free(update->content);
+    delete update;
+}
+
+static void AskProgressWorker(void* ctx, const char* content) {
+    auto* job = (AskJob*)ctx;
+    ULONGLONG now = GetTickCount64();
+    if (job->lastProgress && now - job->lastProgress < 100) return;
+    job->lastProgress = now;
+    auto* update = new AskProgress{job->tab, job->generation, str::Dup(content)};
+    uitask::Post(MkFunc0(AskProgressUi, update), "InlineAskAiProgress");
+}
+
 static void AskJobFinished(AskJob* job) {
     defer {
         job->FreeAll();
@@ -3402,14 +3424,16 @@ static void AskJobFinished(AskJob* job) {
     // so a late reply cannot land on another document.
     if (gAsk && tab && gAsk->boundTab == tab && gAsk->generation == job->generation && IsWindowTabValid(tab)) {
         gAsk->asking = false;
-        gAsk->turns.Append(turn);
+        SetAskReply(gAsk->turns, turn.content);
+        turn.Free();
         PresentChatUpdate(gAsk);
         return;
     }
     // Legacy floating Ask AI popup. The normal path does not open it.
     if (!tab && gPopup && gPopup->mode == PopupMode::AskAi && gPopup->generation == job->generation) {
         gPopup->asking = false;
-        gPopup->turns.Append(turn);
+        SetAskReply(gPopup->turns, turn.content);
+        turn.Free();
         PresentChatUpdate(gPopup);
         return;
     }
@@ -3423,11 +3447,13 @@ static void AskJobFinished(AskJob* job) {
         return;
     }
     st->asking = false;
-    st->turns.Append(turn);
+    SetAskReply(st->turns, turn.content);
+    turn.Free();
 }
 
 static void AskJobWorker(AskJob* job) {
-    AiTocApiChat(job->cfg, job->msgs.LendData(), job->msgs.Size(), kChatTimeoutMs, &job->result, &job->error);
+    AiTocApiChat(job->cfg, job->msgs.LendData(), job->msgs.Size(), kChatTimeoutMs, &job->result, &job->error,
+                 AskProgressWorker, job);
     uitask::Post(MkFunc0(AskJobFinished, job), "InlineAskAiDone");
 }
 
@@ -3468,8 +3494,13 @@ static void StartAsk(InlineTranslatePopup* p, const char* content, const char* d
     for (auto& t : p->turns) {
         AskJobAppend(job, t.role, t.content);
     }
+    ChatTurn reply;
+    reply.role = str::Dup("assistant");
+    reply.content = str::Dup("");
+    p->turns.Append(reply);
     RunAsync(MkFunc0(AskJobWorker, job), "InlineAskAi");
     PresentChatUpdate(p);
+    p->chatFollowTail = false;
 }
 
 // Grow the docked composer with the line count, up to five, then scroll inside.

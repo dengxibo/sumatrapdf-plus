@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.43
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe
-Notes: Batch crop previews and per-page overrides; thumbnail page editing; themed dialogs and localized buttons.
-NotesZh: 批量裁切逐页预览与本页单独调整；缩略图页面编辑；统一主题提示框与按钮翻译。
+Latest: 3.7.44
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.44/SumatraPDF-Plus.exe
+Notes: Stream AI replies as they arrive; preserve the reading position instead of jumping to the end of long answers.
+NotesZh: AI 对话支持流式输出，边生成边阅读；保留阅读位置，长回复不再自动跳到末尾。

@@ -5,7 +5,7 @@ A Windows document reader based on SumatraPDF, with Chinese ebook improvements, 
 
 **非官方社区增强版 / Unofficial fork** · 与 [sumatrapdfreader.org](https://www.sumatrapdfreader.org/) 无隶属关系 / Not affiliated with the official project.
 
-**当前版本 / Current release: [3.7.43](https://github.com/dengxibo/sumatrapdf-plus/releases/tag/3.7.43)** · [下载 / Downloads](https://github.com/dengxibo/sumatrapdf-plus/releases/latest) · [更新记录 / Changelog](docs/md/Version-history.md) · [反馈 / Issues](https://github.com/dengxibo/sumatrapdf-plus/issues)
+**当前版本 / Current release: [3.7.44](https://github.com/dengxibo/sumatrapdf-plus/releases/tag/3.7.44)** · [下载 / Downloads](https://github.com/dengxibo/sumatrapdf-plus/releases/latest) · [更新记录 / Changelog](docs/md/Version-history.md) · [反馈 / Issues](https://github.com/dengxibo/sumatrapdf-plus/issues)
 
 ![Sumatra PDF Plus](docs/github-social-preview.png)
 
@@ -40,8 +40,8 @@ Supported formats include PDF, EPUB, MOBI, AZW/AZW3, FB2, CHM, CBZ/CBR, DjVu, XP
 
 - **首次使用：** 从上方 123 网盘选择所需程序包，或在[发布页](https://github.com/dengxibo/sumatrapdf-plus/releases/latest)选择完整程序包（如有提供），解压后运行 `SumatraPDF-Plus.exe`。
   **First use:** choose a complete package from the [release page](https://github.com/dengxibo/sumatrapdf-plus/releases/latest), when available, and run `SumatraPDF-Plus.exe` after extraction.
-- **已有完整目录：** 退出程序后，可用新版 [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe) 替换旧文件；保留原有配置及配套数据。独立 EXE 不包含全部可选资源。
-  **Updating an existing folder:** close the app and replace the executable with the new [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe), keeping settings and supporting data. The standalone EXE does not contain all optional resources.
+- **已有完整目录：** 退出程序后，可用新版 [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.44/SumatraPDF-Plus.exe) 替换旧文件；保留原有配置及配套数据。独立 EXE 不包含全部可选资源。
+  **Updating an existing folder:** close the app and replace the executable with the new [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.44/SumatraPDF-Plus.exe), keeping settings and supporting data. The standalone EXE does not contain all optional resources.
 
 | 同目录资源 / Folder beside the EXE | 用途 / Purpose |
 | --- | --- |
