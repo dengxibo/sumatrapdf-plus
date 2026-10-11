@@ -6,6 +6,8 @@ const root = join(import.meta.dir, "..");
 // Add only missing Chinese translations; preserve all existing language entries.
 const labels: Record<string, [string, string]> = {
   "Deskew": ["倾斜校正", "傾斜校正"],
+  "Reference grid mode: horizontal lines or cross grid": ["参考网格模式：水平线或十字网格", "參考網格模式：水平線或十字網格"],
+  "Reference grid spacing: sparse, normal or dense": ["参考网格间距：疏、标准或密", "參考網格間距：疏、標準或密"],
   "Minimize": ["最小化", "最小化"],
   "Maximize": ["最大化", "最大化"],
   "Check the angle and reopen this dialog if the document has changed.": ["请检查角度；文档若已变化，请重新打开此窗口。", "請檢查角度；文件若已變更，請重新開啟此視窗。"],

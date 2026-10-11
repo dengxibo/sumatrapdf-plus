@@ -31,6 +31,8 @@
 #include "CaptionGlyphs.h"
 #include "PdfPageAdjustment.h"
 #include "PdfAdjustmentTrackbar.h"
+#include "PdfDarkMode.h"
+#include "RenderCache.h"
 #include "SvgIcons.h"
 #include "Toolbar.h"
 
@@ -1603,6 +1605,7 @@ struct PdfRotatePagesDialog {
     RECT previewToolbarRc{};
     Gdiplus::Bitmap* gdiPreview = nullptr;
     int previewRenderSide = 0;
+    int previewColorEpoch = -1;
     Size minWindowSize;
     RECT sidebarRc{};
     int sidebarPos = 0;
@@ -1726,7 +1729,8 @@ static void PdfRotateLoadPreview(PdfRotatePagesDialog* dlg) {
     int renderSide = std::max(
         900, (int)std::max(dlg->previewRc.right - dlg->previewRc.left, dlg->previewRc.bottom - dlg->previewRc.top));
     renderSide = std::min((int)(renderSide * dlg->previewZoom), 4096);
-    if (dlg->gdiPreview && dlg->previewRenderSide >= renderSide) {
+    int colorEpoch = gRenderCache ? gRenderCache->darkModeEpoch : ThemeEpoch();
+    if (dlg->gdiPreview && dlg->previewRenderSide >= renderSide && dlg->previewColorEpoch == colorEpoch) {
         return;
     }
     if (!PdfRotateSourceIsCurrent(dlg)) return;
@@ -1743,11 +1747,15 @@ static void PdfRotateLoadPreview(PdfRotatePagesDialog* dlg) {
     }
     float zoom = (float)renderSide / side;
     RenderPageArgs args(dlg->currentPageNo, zoom, 0, nullptr, RenderTarget::View);
+    DarkModeProfile profile;
+    BuildViewDarkModeProfile(engine, &profile);
+    if (profile.mode != PageColorMode::Normal) args.darkProfile = &profile;
     RenderedBitmap* rendered = engine->RenderPage(args);
     if (!rendered || !rendered->IsValid()) {
         delete rendered;
         return;
     }
+    ApplyRenderThemePostColors(engine, rendered, dlg->currentPageNo, zoom, nullptr, args.darkProfile);
     Size sz = rendered->GetSize();
     if (sz.dx < 2 || sz.dy < 2) {
         delete rendered;
@@ -1774,6 +1782,7 @@ static void PdfRotateLoadPreview(PdfRotatePagesDialog* dlg) {
     delete dlg->gdiPreview;
     dlg->gdiPreview = bmp;
     dlg->previewRenderSide = renderSide;
+    dlg->previewColorEpoch = colorEpoch;
 }
 
 static void PdfRotatePaintPreview(PdfRotatePagesDialog* dlg, HDC hdc) {
@@ -1787,7 +1796,7 @@ static void PdfRotatePaintPreview(PdfRotatePagesDialog* dlg, HDC hdc) {
     g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
     g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     g.SetClip(Gdiplus::Rect(rc.left, rc.top, rw, rh));
-    COLORREF workspace = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowBackgroundColor(), -12)
+    COLORREF workspace = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowControlBackgroundColor(), 8)
                                                : AccentColor(ThemeWindowControlBackgroundColor(), -28);
     Gdiplus::SolidBrush bg(Gdiplus::Color(255, GetRValue(workspace), GetGValue(workspace), GetBValue(workspace)));
     g.FillRectangle(&bg, rc.left, rc.top, rw, rh);
@@ -1833,6 +1842,9 @@ static void PdfRotatePaintPreview(PdfRotatePagesDialog* dlg, HDC hdc) {
         g.ScaleTransform(sx, sy);
         g.TranslateTransform(-dispW * 0.5f, -dispH * 0.5f);
         g.DrawImage(dlg->gdiPreview, 0.f, 0.f, dispW, dispH);
+        COLORREF edge = ThemeWindowTextDisabledColor();
+        Gdiplus::Pen pageEdge(Gdiplus::Color(140, GetRValue(edge), GetGValue(edge), GetBValue(edge)), 1.f);
+        g.DrawRectangle(&pageEdge, 0.f, 0.f, dispW, dispH);
         g.ResetTransform();
         g.ResetClip();
         g.SetClip(Gdiplus::Rect(rc.left, rc.top, rw, rh));
@@ -1841,7 +1853,7 @@ static void PdfRotatePaintPreview(PdfRotatePagesDialog* dlg, HDC hdc) {
     // A dark underlay and lighter theme-colored hairline remain visible both
     // over white paper and over the dark workspace. Grid coordinates never
     // inherit the page transform or the user's pan offset.
-    COLORREF gridInk = ThemeSelectionFrameColor();
+    COLORREF gridInk = ThemeWindowTextDisabledColor();
     Gdiplus::Pen grid(Gdiplus::Color(95, GetRValue(gridInk), GetGValue(gridInk), GetBValue(gridInk)), 1.f);
     Gdiplus::Pen majorGrid(Gdiplus::Color(155, GetRValue(gridInk), GetGValue(gridInk), GetBValue(gridInk)), 1.f);
     Gdiplus::Pen underlay(Gdiplus::Color(45, 0, 0, 0), 1.f);
@@ -2032,7 +2044,9 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi, bool fitCli
     int footer = clientH - pad - rowH;
     dlg->previewRc = {pad, top, x - pad, clientH - pad};
     int tool = PdfRotatePx(32, dpi);
-    int toolbarW = std::min(x - pad * 2, PdfRotatePx(370, dpi));
+    TempStr previewInfo = str::FormatTemp(_TRA("Page %d  |  %.0f%%"), dlg->currentPageNo, dlg->previewZoom * 100);
+    int infoWidth = HwndMeasureText(hwnd, previewInfo, dlg->hFont).dx + gap * 2;
+    int toolbarW = std::min(x - pad * 2, tool * 3 + gap * 4 + infoWidth);
     dlg->previewToolbarRc = {pad + gap, top + gap, pad + toolbarW, top + gap + tool};
     PdfRotatePagesMoveChild(dlg->hwndPreviewInfo, pad + gap * 4 + tool * 3, top + gap,
                             std::max(1, toolbarW - tool * 3 - gap * 4), tool);
@@ -2164,6 +2178,7 @@ static void PdfRotatePreviewZoom(PdfRotatePagesDialog* dlg, float factor, POINT 
     dlg->panY = y - (y - dlg->panY) * ratio;
     dlg->previewZoom = next;
     HwndSetText(dlg->hwndPreviewInfo, str::FormatTemp(_TRA("Page %d  |  %.0f%%"), dlg->currentPageNo, next * 100));
+    PdfRotatePagesLayout(dlg, DpiGet(dlg->hwnd), true);
     PdfRotateInvalidatePreview(dlg);
     SetTimer(dlg->hwnd, 1, 150, nullptr);
 }
@@ -2287,11 +2302,11 @@ static void PdfRotateDrawIconButton(PdfRotatePagesDialog* dlg, DRAWITEMSTRUCT* i
     int state = disabled ? 3 : pressed ? 2 : hot || selected ? 1 : 0;
     // Keep selected direction backgrounds separate from transient hover.
     if (selected) state += 4;
-    int size = DpiScale(dlg->hwnd, 18);
+    int size = DpiScale(dlg->hwnd, direction ? 22 : 18);
     HDC memory = CreateCompatibleDC(item->hDC);
     HBITMAP& bitmap = dlg->iconCache[index][state];
     const TbIcon icons[] = {TbIcon::ZoomIn,     TbIcon::ZoomOut,     TbIcon::ArrowsDiagonalMinimize,
-                            TbIcon::RotateLeft, TbIcon::RotateRight, TbIcon::RotateRight};
+                            TbIcon::RotateLeft, TbIcon::RotateRight, TbIcon::Rotate180};
     if (!bitmap) {
         bitmap = CreateCompatibleBitmap(item->hDC, size, size);
         if (bitmap && memory) {
@@ -2487,6 +2502,20 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             }
             return 0;
         case WM_TIMER:
+            if (wp == 3) {
+                if (!PdfRotateSourceIsCurrent(dlg)) {
+                    PdfRotateStopHold(dlg);
+                    delete dlg->gdiPreview;
+                    dlg->gdiPreview = nullptr;
+                    PdfRotatePagesUpdateUi(dlg);
+                    PdfRotateInvalidatePreview(dlg);
+                } else if (dlg->previewColorEpoch != (int)gRenderCache->darkModeEpoch) {
+                    PdfRotateStopHold(dlg);
+                    PdfRotateLoadPreview(dlg);
+                    PdfRotateInvalidatePreview(dlg);
+                }
+                return 0;
+            }
             if (wp == 2 && dlg->holdButton) {
                 if (GetCapture() != dlg->holdButton || !PdfRotateSourceIsCurrent(dlg) || GetActiveWindow() != hwnd ||
                     !IsWindowEnabled(dlg->holdButton)) {
@@ -2533,6 +2562,7 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                     dlg->panX = dlg->panY = 0;
                     HwndSetText(dlg->hwndPreviewInfo,
                                 str::FormatTemp(_TRA("Page %d  |  %.0f%%"), dlg->currentPageNo, 100.0));
+                    PdfRotatePagesLayout(dlg, DpiGet(hwnd), true);
                     PdfRotateInvalidatePreview(dlg);
                     return 0;
                 case idRotateAngleMinus:
@@ -2758,6 +2788,8 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             DestroyWindow(hwnd);
             return 0;
         case WM_NCDESTROY:
+            KillTimer(hwnd, 1);
+            KillTimer(hwnd, 3);
             PdfRotateStopHold(dlg);
             PdfRotateClearIconCache(dlg);
             delete dlg->tooltip;
@@ -2999,6 +3031,16 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
     tooltipArgs.parent = hwnd;
     tooltipArgs.font = dlg->hFont;
     dlg->tooltip->Create(tooltipArgs);
+    auto addTip = [&](HWND control, const WCHAR* text) {
+        TOOLINFOW info{sizeof(info)};
+        info.hwnd = hwnd;
+        info.uId = (UINT_PTR)control;
+        info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        info.lpszText = (WCHAR*)text;
+        SendMessageW(dlg->tooltip->hwnd, TTM_ADDTOOLW, 0, (LPARAM)&info);
+    };
+    addTip(dlg->hwndGridMode, _TRW("Reference grid mode: horizontal lines or cross grid"));
+    addTip(dlg->hwndGridDensity, _TRW("Reference grid spacing: sparse, normal or dense"));
 
     auto iconButton = [&](int id, const WCHAR* name) {
         HWND button = CreateWindowExW(0, L"BUTTON", name, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 0, 0,
@@ -3044,6 +3086,7 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
     CenterDialog(hwnd, win->hwndFrame);
     AppDialogApplyChrome(hwnd);
     RegisterAppDialogForTheme(hwnd, PdfRotatePagesThemeRefreshCb, dlg);
+    SetTimer(hwnd, 3, 250, nullptr);
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -3054,6 +3097,8 @@ static void PdfRotatePagesThemeRefreshCb(HWND hwnd, void* ctx) {
     }
     PdfRotateStopHold(dlg);
     PdfRotateClearIconCache(dlg);
+    dlg->previewColorEpoch = -1;
+    PdfRotateLoadPreview(dlg);
     if (dlg->tooltip) dlg->tooltip->UpdateTheme();
     DeleteObject(dlg->bgBrush);
     DeleteObject(dlg->ctrlBrush);

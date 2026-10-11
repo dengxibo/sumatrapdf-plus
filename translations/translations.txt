@@ -43751,3 +43751,9 @@ tw:最大化
 :Check the angle and reopen this dialog if the document has changed.
 cn:请检查角度；文档若已变化，请重新打开此窗口。
 tw:請檢查角度；文件若已變更，請重新開啟此視窗。
+:Reference grid mode: horizontal lines or cross grid
+cn:参考网格模式：水平线或十字网格
+tw:參考網格模式：水平線或十字網格
+:Reference grid spacing: sparse, normal or dense
+cn:参考网格间距：疏、标准或密
+tw:參考網格間距：疏、標準或密

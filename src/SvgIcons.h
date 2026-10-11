@@ -70,6 +70,7 @@ enum class TbIcon {
     SidebarAnnotations,
     AnnotFreeText,
     ResetAppearance,
+    Rotate180,
     kMax
 };
 
