@@ -3,6 +3,7 @@
 
 #include "utils/BaseUtil.h"
 #include "CaptionGlyphs.h"
+#include "Theme.h"
 
 #include <gdiplus.h>
 
@@ -11,6 +12,32 @@
 // match Win11 rounded style without relying on the system font.
 
 constexpr float kCaptionGlyphEm = 2048.0f;
+
+void DrawCaptionSysButton(HDC hdc, CaptionSysButtonKind kind, Rect rc, COLORREF background, COLORREF text, int iconPx,
+                          bool hot, bool pressed, bool active) {
+    bool close = kind == CaptionSysButtonKind::Close;
+    COLORREF fill = background;
+    if (active && (hot || pressed)) {
+        fill = close ? (pressed ? RGB(0xA0, 0x22, 0x14) : RGB(0xC4, 0x2B, 0x1C))
+                     : AccentColor(background, pressed ? 12 : 8);
+    }
+    auto blend = [](int fg, int bg, int pct) { return (fg * pct + bg * (100 - pct)) / 100; };
+    COLORREF ink;
+    if (!active || ThemeUsesDarkChrome()) {
+        int pct = active ? 88 : 42;
+        ink =
+            RGB(blend(GetRValue(text), GetRValue(background), pct), blend(GetGValue(text), GetGValue(background), pct),
+                blend(GetBValue(text), GetBValue(background), pct));
+    } else {
+        ink = RGB(GetRValue(background) * 46 / 100, GetGValue(background) * 46 / 100, GetBValue(background) * 46 / 100);
+    }
+    if (active && close && (hot || pressed)) ink = RGB(255, 255, 255);
+    HBRUSH brush = CreateSolidBrush(fill);
+    RECT bounds{rc.x, rc.y, rc.Right(), rc.Bottom()};
+    FillRect(hdc, &bounds, brush);
+    DeleteObject(brush);
+    DrawCaptionSysButtonGlyph(hdc, kind, rc, ink, iconPx);
+}
 
 struct PathBuilder {
     Gdiplus::GraphicsPath* path = nullptr;

@@ -13,3 +13,5 @@ enum class CaptionSysButtonKind {
 };
 
 void DrawCaptionSysButtonGlyph(HDC hdc, CaptionSysButtonKind kind, Rect rc, COLORREF iconCol, int iconPx);
+void DrawCaptionSysButton(HDC hdc, CaptionSysButtonKind kind, Rect rc, COLORREF background, COLORREF text, int iconPx,
+                          bool hot, bool pressed, bool active);

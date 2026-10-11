@@ -13622,35 +13622,10 @@ static COLORREF CaptionSysButtonPushedBg(COLORREF chromeBg) {
     return AccentColor(chromeBg, kCaptionButtonPushedAccent);
 }
 
-static COLORREF CaptionCloseHotBg() {
-    return RGB(0xC4, 0x2B, 0x1C);
-}
-
-static COLORREF CaptionClosePushedBg() {
-    return RGB(0xA0, 0x22, 0x14);
-}
-
 static Color CaptionInactiveIconColor(COLORREF chromeBg, COLORREF textCol) {
     auto mix = [](int fg, int bg) { return (fg * 42 + bg * 58) / 100; };
     return Color(mix(GetRValue(textCol), GetRValue(chromeBg)), mix(GetGValue(textCol), GetGValue(chromeBg)),
                  mix(GetBValue(textCol), GetBValue(chromeBg)));
-}
-
-static Color CaptionSysButtonIconColor(COLORREF chromeBg, COLORREF textCol) {
-    // Win11 caption glyphs are softer than chrome text.
-    auto blend = [](int fg, int bg, int fgPct) { return (fg * fgPct + bg * (100 - fgPct)) / 100; };
-    if (ThemeUsesDarkChrome()) {
-        constexpr int kFgPct = 88;
-        return Color(blend(GetRValue(textCol), GetRValue(chromeBg), kFgPct),
-                     blend(GetGValue(textCol), GetGValue(chromeBg), kFgPct),
-                     blend(GetBValue(textCol), GetBValue(chromeBg), kFgPct));
-    }
-    // Light chrome: native buttons are ~54% grey ink, not title-text black.
-    constexpr int kBlackPct = 54;
-    int r = GetRValue(chromeBg) * (100 - kBlackPct) / 100;
-    int g = GetGValue(chromeBg) * (100 - kBlackPct) / 100;
-    int b = GetBValue(chromeBg) * (100 - kBlackPct) / 100;
-    return Color(r, g, b);
 }
 
 static void RepaintButton(HWND hwnd, int btnIdx, MainWindow* win) {
@@ -13961,42 +13936,9 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
     gfx.SetSmoothingMode(Gdiplus::SmoothingModeNone);
 
     if (isSysButton) {
-        COLORREF bgc = ThemeChromeBackgroundColor();
-        bool isClose = (button == CB_CLOSE);
-        bool isHot = (stateId == CBS_HOT);
-        bool isPushed = (stateId == CBS_PUSHED);
-        bool isInactive = (stateId == CBS_INACTIVE);
-
-        Color iconCol;
-        if (isInactive) {
-            iconCol = CaptionInactiveIconColor(bgc, ThemeWindowTextColor());
-        } else if (isClose && (isHot || isPushed)) {
-            iconCol = Color(255, 255, 255);
-        } else {
-            iconCol = CaptionSysButtonIconColor(bgc, ThemeWindowTextColor());
-        }
-        COLORREF iconColRef = RGB(iconCol.GetR(), iconCol.GetG(), iconCol.GetB());
-
-        {
-            Graphics gfxBg(hdc);
-            gfxBg.SetSmoothingMode(Gdiplus::SmoothingModeNone);
-            SolidBrush bgBrNormal(GdiRgbFromCOLORREF(bgc));
-            gfxBg.FillRectangle(&bgBrNormal, rButton.x, rButton.y, rButton.dx, rButton.dy);
-
-            if (!isInactive && (isHot || isPushed)) {
-                COLORREF hotBgCol;
-                if (isClose) {
-                    hotBgCol = isPushed ? CaptionClosePushedBg() : CaptionCloseHotBg();
-                } else {
-                    hotBgCol = isPushed ? CaptionSysButtonPushedBg(bgc) : CaptionSysButtonHotBg(bgc);
-                }
-                SolidBrush bgBr(GdiRgbFromCOLORREF(hotBgCol));
-                gfxBg.FillRectangle(&bgBr, rButton.x, rButton.y, rButton.dx, rButton.dy);
-            }
-        }
-
-        int iconPx = DpiScale(win->hwndFrame, kCaptionChromeGlyphDip);
-        DrawCaptionSysButtonGlyph(hdc, CaptionSysButtonKindFromId(button), rc, iconColRef, iconPx);
+        DrawCaptionSysButton(hdc, CaptionSysButtonKindFromId(button), rc, ThemeChromeBackgroundColor(),
+                             ThemeWindowTextColor(), DpiScale(win->hwndFrame, kCaptionChromeGlyphDip),
+                             stateId == CBS_HOT, stateId == CBS_PUSHED, stateId != CBS_INACTIVE);
     } else if (button == CB_MENU) {
         COLORREF bgc = ThemeChromeBackgroundColor();
         SolidBrush bgBrMenu(GdiRgbFromCOLORREF(bgc));
