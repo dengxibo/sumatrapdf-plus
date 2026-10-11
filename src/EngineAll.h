@@ -186,6 +186,7 @@ bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw);
 // True only when the file is a PDF this command can rewrite. Ebooks and other
 // MuPDF types stay disabled in the menu.
 bool EngineMupdfCanAdjustPageView(EngineBase* engine);
+bool EngineMupdfGetPageAdjustmentSource(EngineBase* engine, int pageNo, RectF* box);
 bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool flipH, bool flipV, bool autoCrop);
 // Auto-deskew decision. Uncertain is treated as NoDeskew by all callers.
 enum class DeskewDecision {

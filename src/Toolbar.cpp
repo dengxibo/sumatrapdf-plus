@@ -2180,6 +2180,60 @@ static void BlitPixmap(u8* dstSamples, ptrdiff_t dstStride, fz_pixmap* src, int 
     }
 }
 
+HBITMAP CreateSvgIconAlphaBitmap(int size, TbIcon icon, COLORREF color) {
+    if (size < 1) return nullptr;
+    auto ctx = fz_new_context_windows();
+    fz_buffer* buffer = nullptr;
+    fz_display_list* list = nullptr;
+    fz_pixmap* pixmap = nullptr;
+    HBITMAP bitmap = nullptr;
+    fz_var(buffer);
+    fz_var(list);
+    fz_var(pixmap);
+    fz_var(bitmap);
+    fz_try(ctx) {
+        TempStr svg = str::ReplaceTemp(GetSvgIcon(icon), "currentColor", SerializeColorTemp(color));
+        buffer = fz_new_buffer_from_copied_data(ctx, (u8*)svg, str::Len(svg));
+        float w = 0, h = 0;
+        list = fz_new_display_list_from_svg(ctx, buffer, nullptr, nullptr, &w, &h);
+        pixmap = fz_new_pixmap_from_display_list(ctx, list, fz_scale(size / w, size / h), fz_device_rgb(ctx), 1);
+        if (pixmap->n != 4 || pixmap->w < size || pixmap->h < size)
+            fz_throw(ctx, FZ_ERROR_FORMAT, "Invalid icon raster size");
+        BITMAPINFO info{};
+        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth = size;
+        info.bmiHeader.biHeight = -size;
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        void* pixels = nullptr;
+        bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+        if (bitmap) {
+            // MuPDF's RGBA samples are already premultiplied. Preserve alpha
+            // exactly; do not infer transparency from a background color key.
+            for (int y = 0; y < size; y++) {
+                u8* source = pixmap->samples + y * pixmap->stride;
+                u8* dest = (u8*)pixels + y * size * 4;
+                for (int x = 0; x < size; x++, source += 4, dest += 4) {
+                    dest[0] = source[2];
+                    dest[1] = source[1];
+                    dest[2] = source[0];
+                    dest[3] = source[3];
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, pixmap);
+        fz_drop_display_list(ctx, list);
+        fz_drop_buffer(ctx, buffer);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    fz_drop_context_windows(ctx);
+    return bitmap;
+}
+
 void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORREF bgCol) {
     if (dest.dx <= 0 || dest.dy <= 0) {
         return;

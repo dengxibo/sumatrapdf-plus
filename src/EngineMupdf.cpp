@@ -20,6 +20,7 @@ int fz_epub_fragment_rects(fz_context* ctx, fz_document* doc, int chapter, const
 }
 
 #include "utils/BaseUtil.h"
+#include "PdfAdjustmentGeometry.h"
 #include <math.h>
 #include "utils/Archive.h"
 #include "utils/ScopedWin.h"
@@ -15809,55 +15810,6 @@ static bool ClockwiseDeltaIsQuarter(float deg, int* deltaCw) {
     return false;
 }
 
-// Largest axis-aligned rectangle inside a w×h page turned by deg degrees.
-// False when the turn is a multiple of 90°: the bounding box is already tight.
-static bool InscribedPageSize(float w, float h, float deg, float* wr, float* hr) {
-    if (!wr || !hr || w < 1.f || h < 1.f) {
-        return false;
-    }
-    float a = fabsf(fmodf(deg, 180.f));
-    if (a > 90.f) {
-        a = 180.f - a;
-    }
-    if (a < 0.05f || a > 89.95f) {
-        return false;
-    }
-    float rad = a * 0.0174532925f;
-    float sinA = fabsf(sinf(rad));
-    float cosA = fabsf(cosf(rad));
-    if (sinA < 1e-4f || cosA < 1e-4f) {
-        return false;
-    }
-    bool widthIsLonger = w >= h;
-    float sideLong = widthIsLonger ? w : h;
-    float sideShort = widthIsLonger ? h : w;
-    float outW = 0;
-    float outH = 0;
-    if (sideShort <= 2.f * sinA * cosA * sideLong || fabsf(sinA - cosA) < 1e-4f) {
-        float x = 0.5f * sideShort;
-        if (widthIsLonger) {
-            outW = x / sinA;
-            outH = x / cosA;
-        } else {
-            outW = x / cosA;
-            outH = x / sinA;
-        }
-    } else {
-        float cos2 = cosA * cosA - sinA * sinA;
-        if (fabsf(cos2) < 1e-4f) {
-            return false;
-        }
-        outW = (w * cosA - h * sinA) / cos2;
-        outH = (h * cosA - w * sinA) / cos2;
-    }
-    if (outW < 1.f || outH < 1.f) {
-        return false;
-    }
-    *wr = outW;
-    *hr = outH;
-    return true;
-}
-
 static fz_matrix FitzAroundCenter(float cx, float cy, fz_matrix op) {
     fz_matrix m = fz_translate(-cx, -cy);
     m = fz_concat(m, op);
@@ -15950,6 +15902,28 @@ bool EngineMupdfCanAdjustPageView(EngineBase* engine) {
     return e && e->pdfdoc;
 }
 
+bool EngineMupdfGetPageAdjustmentSource(EngineBase* engine, int pageNo, RectF* box) {
+    auto e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || !box || pageNo < 1 || pageNo > engine->PageCount()) return false;
+    auto ctx = e->Ctx();
+    ScopedCritSec scope(&e->docLock);
+    bool valid = false;
+    fz_var(valid);
+    fz_try(ctx) {
+        pdf_obj* page = pdf_lookup_page_obj(ctx, e->pdfdoc, pageNo - 1);
+        fz_rect source{};
+        fz_matrix transform{};
+        pdf_page_obj_transform(ctx, page, &source, &transform);
+        source = fz_transform_rect(source, transform);
+        *box = RectF(source.x0, source.y0, source.x1 - source.x0, source.y1 - source.y0);
+        valid = box->dx >= 1 && box->dy >= 1;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return valid;
+}
+
 bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool flipH, bool flipV, bool autoCrop) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || !e->pdfdoc || pageNo < 1 || pageNo > engine->PageCount()) {
@@ -16006,7 +15980,7 @@ bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool
             if (autoCrop) {
                 float cropW = 0;
                 float cropH = 0;
-                if (InscribedPageSize(visW, visH, cwDeg + deskew, &cropW, &cropH)) {
+                if (PdfAdjustmentInscribedSize(visW, visH, cwDeg + deskew, &cropW, &cropH)) {
                     float mx = (bounds.x0 + bounds.x1) * 0.5f;
                     float my = (bounds.y0 + bounds.y1) * 0.5f;
                     bounds = fz_make_rect(mx - cropW * 0.5f, my - cropH * 0.5f, mx + cropW * 0.5f, my + cropH * 0.5f);

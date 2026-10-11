@@ -20,6 +20,7 @@ void UpdateToolbarState(MainWindow*);
 void UpdateToolbarAfterThemeChange(MainWindow*);
 HIMAGELIST BuildStdToolbarImageList(int dx);
 void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORREF bgCol);
+HBITMAP CreateSvgIconAlphaBitmap(int size, TbIcon icon, COLORREF color);
 Rect GetToolbarButtonScreenRect(MainWindow*, int cmdId);
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow*);
 void UpdateAutoOcrToolbarButton(MainWindow*);
