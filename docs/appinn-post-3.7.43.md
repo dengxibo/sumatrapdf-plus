@@ -139,14 +139,23 @@ OCR 后的扫描页也能使用这些文字操作。
 
 PPTX 这里说的是文字内容阅读，不是原样播放幻灯片；Office 文档转换后的排版也可能与原应用不同。平时收到一份说明文档、Markdown 笔记或课程 PPT，想先看看内容，可以直接拿来读。
 
-## 下载与升级
+## Sumatra PDF Plus 下载
 
-- **下载：** [GitHub Releases](https://github.com/dengxibo/sumatrapdf-plus/releases/latest)
-- **源码与主页说明：** [dengxibo/sumatrapdf-plus](https://github.com/dengxibo/sumatrapdf-plus)
+### 123 网盘 · 推荐
+
+① [主程序 + 带发音中英词典](https://1828067303.share.123pan.cn/123pan/2cwUjv-IWQVd)
+
+② [仅主程序](https://1828067303.share.123pan.cn/123pan/2cwUjv-A5xyd)
+
+### GitHub · 源码 / 备用下载
+
+- [源码与主页说明](https://github.com/dengxibo/sumatrapdf-plus)
+- [备用下载](https://github.com/dengxibo/sumatrapdf-plus/releases)
+
 - **更新记录：** [Version history](https://github.com/dengxibo/sumatrapdf-plus/blob/main/docs/md/Version-history.md)
 - **问题反馈：** [GitHub Issues](https://github.com/dengxibo/sumatrapdf-plus/issues)，也欢迎在本帖交流。
 
-**第一次使用**，请选择发布页提供的完整包（如有），整包解压，运行 **`SumatraPDF-Plus.exe`**。字体、本地 OCR、词典等配套数据要放在对应目录，独立 EXE 不包含全部资源。
+**第一次使用**，可从上方 123 网盘选择所需程序包，整包解压，运行 **`SumatraPDF-Plus.exe`**。字体、本地 OCR、词典等配套数据要放在对应目录，独立 EXE 不包含全部资源。
 
 **已经有完整程序目录**，退出软件后用新版 EXE 替换旧文件即可，保留配置和 `fonts`、`ocr`、`dict`、`opencc` 等原有配套文件。词典按需使用，不查词就不必配置。
 

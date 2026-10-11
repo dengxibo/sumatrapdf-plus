@@ -27,7 +27,18 @@ Supported formats include PDF, EPUB, MOBI, AZW/AZW3, FB2, CHM, CBZ/CBR, DjVu, XP
 
 ## 下载与开始使用 · Download and get started
 
-- **首次使用：** 在[发布页](https://github.com/dengxibo/sumatrapdf-plus/releases/latest)选择完整程序包（如有提供），解压后运行 `SumatraPDF-Plus.exe`。
+### 123 网盘 · 推荐
+
+① [主程序 + 带发音中英词典](https://1828067303.share.123pan.cn/123pan/2cwUjv-IWQVd)
+
+② [仅主程序](https://1828067303.share.123pan.cn/123pan/2cwUjv-A5xyd)
+
+### GitHub · 源码 / 备用下载
+
+- [源码与主页说明](https://github.com/dengxibo/sumatrapdf-plus)
+- [备用下载](https://github.com/dengxibo/sumatrapdf-plus/releases)
+
+- **首次使用：** 从上方 123 网盘选择所需程序包，或在[发布页](https://github.com/dengxibo/sumatrapdf-plus/releases/latest)选择完整程序包（如有提供），解压后运行 `SumatraPDF-Plus.exe`。
   **First use:** choose a complete package from the [release page](https://github.com/dengxibo/sumatrapdf-plus/releases/latest), when available, and run `SumatraPDF-Plus.exe` after extraction.
 - **已有完整目录：** 退出程序后，可用新版 [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe) 替换旧文件；保留原有配置及配套数据。独立 EXE 不包含全部可选资源。
   **Updating an existing folder:** close the app and replace the executable with the new [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe), keeping settings and supporting data. The standalone EXE does not contain all optional resources.
