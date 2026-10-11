@@ -6716,10 +6716,8 @@ static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* da
         data->headingFont = CreateFontIndirectW(&lf);
     }
     AppDialogApplyFontToChildren(hwnd, data->bodyFont);
-    SendMessageW(GetDlgItem(hwnd, IDC_SAVE_ANNOT_EXISTING), WM_SETFONT,
-                 (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
     int pad = MulDiv(20, dpi, 96), gap = MulDiv(8, dpi, 96);
-    int buttonGap = MulDiv(12, dpi, 96);
+    int buttonGap = MulDiv(8, dpi, 96);
     const int ids[] = {IDC_SAVE_ANNOT_EXISTING, IDC_SAVE_ANNOT_NEW, IDC_SAVE_ANNOT_DISCARD, IDCANCEL};
     Size sizes[4]{};
     int contentWidth = 0, buttonHeight = 0;
@@ -6727,9 +6725,7 @@ static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* da
         if (data->ebook && ids[i] == IDC_SAVE_ANNOT_NEW) {
             continue;
         }
-        sizes[i] = ButtonGetIdealSize(GetDlgItem(hwnd, ids[i]));
-        sizes[i].dx = std::max(sizes[i].dx + MulDiv(12, dpi, 96), MulDiv(88, dpi, 96));
-        sizes[i].dy = std::max(sizes[i].dy, MulDiv(30, dpi, 96));
+        sizes[i] = AppDialogButtonSize(GetDlgItem(hwnd, ids[i]), dpi);
         contentWidth += sizes[i].dx;
         buttonHeight = std::max(buttonHeight, sizes[i].dy);
     }
@@ -7648,7 +7644,7 @@ static bool ConfirmReplaceExistingPdfText(MainWindow* win) {
     config.cButtons = dimof(buttons);
     config.pButtons = buttons;
     int pressed = 0;
-    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    HRESULT hr = AppTaskDialogIndirect(&config, &pressed, nullptr, nullptr);
     return hr == S_OK && pressed == IDYES;
 }
 
@@ -7657,7 +7653,7 @@ static bool ConfirmSearchablePdfSignatureSave(MainWindow* win, EngineBase* engin
     if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
         return true;
     }
-    int res = MessageBoxW(
+    int res = AppMessageBoxW(
         win->hwndFrame,
         ToWStrTemp(_TRA("Saving this PDF will change it after it was digitally signed. The existing signature will "
                         "remain, but viewers will report that the document was modified. Continue?")),
@@ -7812,7 +7808,7 @@ static LockedSaveAction AskLockedSaveAction(HWND parent, const char* destPath) {
     config.pButtons = buttons;
 
     int pressed = 0;
-    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    HRESULT hr = AppTaskDialogIndirect(&config, &pressed, nullptr, nullptr);
     if (hr != S_OK || pressed == IDCANCEL || pressed == 0) {
         return LockedSaveAction::Cancel;
     }
@@ -9311,8 +9307,8 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
     if (restartRequired) {
         SaveSettings();
         int answer =
-            MessageBoxW(hwnd, ToWStrTemp(_TRA("These changes require restarting the application. Restart now?")),
-                        ToWStrTemp(_TRA("Restart required")), MB_ICONINFORMATION | MB_YESNO | MbRtlReadingMaybe());
+            AppMessageBoxW(hwnd, ToWStrTemp(_TRA("These changes require restarting the application. Restart now?")),
+                           ToWStrTemp(_TRA("Restart required")), MB_ICONINFORMATION | MB_YESNO | MbRtlReadingMaybe());
         if (answer == IDYES) {
             RestartApplication();
         }

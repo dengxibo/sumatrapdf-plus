@@ -7,6 +7,7 @@
 #include "utils/ThreadUtil.h"
 #include "utils/UITask.h"
 #include "utils/WinUtil.h"
+#include "utils/FileUtil.h"
 
 #include "wingui/UIModels.h"
 #include "wingui/Layout.h"
@@ -36,6 +37,18 @@
 #include "EbookAnnotations.h"
 #include "EditAnnotations.h"
 #include "EditEbookAnnotations.h"
+#include "ProgressUpdateUI.h"
+#include "TextSelection.h"
+#include "TextSearch.h"
+#include "Toolbar.h"
+#include "AppDialogTheme.h"
+#include "Menu.h"
+#include "SearchAndDDE.h"
+#include "Selection.h"
+#include "SelectionToolbar.h"
+#include "OcrService.h"
+#include "Commands.h"
+#include "PdfPageSelection.h"
 
 constexpr UINT_PTR kThumbRenderTimerId = 0x106;
 constexpr const WCHAR* kThumbsClass = L"SUMATRA_SIDEBAR_THUMBS";
@@ -49,6 +62,15 @@ struct ThumbSlot {
 struct SidebarThumbsWnd {
     MainWindow* win = nullptr;
     HWND hwnd = nullptr;
+    Vec<int> selected;
+    int anchor = 0;
+    Point dragStart;
+    bool dragging = false;
+    int dropBefore = 0;
+    bool busy = false;
+    int pendingAction = 0;
+    int pendingAt = 0;
+    u32 generation = 1;
     Vec<ThumbSlot> slots;
     int scrollY = 0;
     int contentDy = 0;
@@ -287,6 +309,7 @@ static int FirstMissingVisiblePage(SidebarThumbsWnd* t) {
 }
 
 struct SidebarThumbJob {
+    u32 generation = 0;
     HWND hwnd = nullptr;
     EngineBase* engine = nullptr;
     int pageNo = 0;
@@ -338,7 +361,8 @@ static void SidebarThumbDeliver(SidebarThumbJob* job) {
     t->rendering = false;
     ApplyRenderThemePostColors(job->engine, job->bmp, job->pageNo, job->zoom, &job->box,
                                job->hasProfile ? &job->profile : nullptr);
-    if (job->bmp && job->themeHash == t->themeHash) {
+    if (job->bmp && job->themeHash == t->themeHash && job->generation == t->generation &&
+        t->win->CurrentTab()->GetEngine() == job->engine) {
         StoreThumb(t, job->pageNo, job->bmp);
         job->bmp = nullptr;
         int idx = ShownIndexOf(t, job->pageNo);
@@ -354,7 +378,7 @@ static void SidebarThumbDeliver(SidebarThumbJob* job) {
 }
 
 static void RenderOneThumb(SidebarThumbsWnd* t) {
-    if (t->rendering) {
+    if (t->rendering || t->busy || t->pendingAction) {
         return;
     }
     int pageNo = FirstMissingVisiblePage(t);
@@ -392,6 +416,7 @@ static void RenderOneThumb(SidebarThumbsWnd* t) {
 
     auto* job = new SidebarThumbJob();
     job->hwnd = t->hwnd;
+    job->generation = t->generation;
     job->engine = engine;
     job->pageNo = pageNo;
     job->zoom = zoom;
@@ -536,13 +561,25 @@ static void PaintThumbs(SidebarThumbsWnd* t, HDC hdc) {
         if (bmp) {
             bmp->Blit(hdc, r);
         }
-        HPEN use = pageNo == current ? (HPEN)penCur : (HPEN)pen;
+        HPEN use =
+            (t->selected.Contains(pageNo) || (t->selected.IsEmpty() && pageNo == current)) ? (HPEN)penCur : (HPEN)pen;
         HGDIOBJ old = SelectObject(hdc, use);
         HGDIOBJ oldBr = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
         Rectangle(hdc, r.x, r.y, r.x + r.dx, r.y + r.dy);
         SelectObject(hdc, oldBr);
         SelectObject(hdc, old);
         DrawThumbPageLabel(hdc, t->hwnd, r, pageNo, font);
+    }
+    if (t->dragging && t->dropBefore > 0) {
+        int idx = ShownIndexOf(t, std::min(t->dropBefore, t->pageCount));
+        if (idx >= 0) {
+            Rect r = ThumbRect(t, idx);
+            int x = t->dropBefore > t->pageCount ? r.Right() + 3 : r.x - 3;
+            HGDIOBJ old = SelectObject(hdc, (HPEN)penCur);
+            MoveToEx(hdc, x, r.y, nullptr);
+            LineTo(hdc, x, r.Bottom());
+            SelectObject(hdc, old);
+        }
     }
     DeleteObject(font);
     if (FirstMissingVisiblePage(t) > 0) {
@@ -567,6 +604,409 @@ static void ScrollThumbsBy(SidebarThumbsWnd* t, int dy) {
     InvalidateRect(t->hwnd, nullptr, FALSE);
 }
 
+enum ThumbPageAction {
+    ThumbCopy = 41001,
+    ThumbCut,
+    ThumbDelete,
+    ThumbPasteBefore,
+    ThumbPasteAfter,
+    ThumbUndo,
+    ThumbMove,
+    ThumbSelectAll,
+    ThumbInsertBefore,
+    ThumbInsertAfter,
+    ThumbPasteImage,
+    ThumbExtract
+};
+
+static UINT PageClipboardFormat() {
+    return RegisterClipboardFormatW(L"SumatraPDF-Plus.Pages.v1");
+}
+
+static bool WritePageClipboard(HWND hwnd, ByteSlice data) {
+    if (!data.size() || !OpenClipboard(hwnd)) return false;
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, data.size() + sizeof(u64));
+    bool ok = false;
+    if (memory) {
+        auto* dst = (u8*)GlobalLock(memory);
+        if (dst) {
+            u64 size = data.size();
+            memcpy(dst, &size, sizeof(size));
+            memcpy(dst + sizeof(size), data.data(), data.size());
+            GlobalUnlock(memory);
+            if (EmptyClipboard() && SetClipboardData(PageClipboardFormat(), memory)) ok = true;
+        }
+        if (!ok) GlobalFree(memory);
+    }
+    CloseClipboard();
+    return ok;
+}
+
+static ByteSlice ReadPageClipboard(HWND hwnd) {
+    ByteSlice result;
+    if (!OpenClipboard(hwnd)) return result;
+    HGLOBAL memory = GetClipboardData(PageClipboardFormat());
+    SIZE_T total = memory ? GlobalSize(memory) : 0;
+    auto* src = memory ? (u8*)GlobalLock(memory) : nullptr;
+    if (src && total >= sizeof(u64)) {
+        u64 size;
+        memcpy(&size, src, sizeof(size));
+        if (size && size <= total - sizeof(size) && size <= 256 * 1024 * 1024) {
+            result = ByteSlice((u8*)memdup(src + sizeof(size), (size_t)size), (size_t)size);
+        }
+    }
+    if (src) GlobalUnlock(memory);
+    CloseClipboard();
+    return result;
+}
+
+static ByteSlice ReadClipboardImage(HWND hwnd) {
+    ByteSlice result;
+    if (!OpenClipboard(hwnd)) return result;
+    HGLOBAL memory = GetClipboardData(CF_DIBV5);
+    if (!memory) memory = GetClipboardData(CF_DIB);
+    SIZE_T size = memory ? GlobalSize(memory) : 0;
+    auto* dib = memory ? (u8*)GlobalLock(memory) : nullptr;
+    if (dib && size >= sizeof(BITMAPINFOHEADER) && size <= 256 * 1024 * 1024) {
+        BITMAPINFOHEADER header;
+        memcpy(&header, dib, sizeof(header));
+        if (header.biSize >= sizeof(header) && header.biSize <= size && header.biBitCount > 0 &&
+            header.biBitCount <= 32) {
+            size_t colors =
+                header.biClrUsed ? header.biClrUsed : (header.biBitCount <= 8 ? 1u << header.biBitCount : 0);
+            size_t offset = header.biSize + colors * sizeof(RGBQUAD);
+            if (header.biSize == sizeof(header) && header.biCompression == BI_BITFIELDS) offset += 12;
+            if (offset <= size) {
+                BITMAPFILEHEADER fileHeader{};
+                fileHeader.bfType = 0x4d42;
+                fileHeader.bfSize = (DWORD)(size + sizeof(fileHeader));
+                fileHeader.bfOffBits = (DWORD)(offset + sizeof(fileHeader));
+                auto* bytes = (u8*)malloc(fileHeader.bfSize);
+                if (bytes) {
+                    memcpy(bytes, &fileHeader, sizeof(fileHeader));
+                    memcpy(bytes + sizeof(fileHeader), dib, size);
+                    result = ByteSlice(bytes, fileHeader.bfSize);
+                }
+            }
+        }
+    }
+    if (dib) GlobalUnlock(memory);
+    CloseClipboard();
+    return result;
+}
+
+static AutoFreeStr ChoosePageFile(HWND hwnd, bool extract) {
+    WCHAR path[MAX_PATH]{};
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = dimof(path);
+    ofn.lpstrFilter = extract ? L"PDF documents\0*.pdf\0\0"
+                              : L"PDF / Images\0*.pdf;*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.webp\0All files\0*.*\0\0";
+    ofn.lpstrDefExt = L"pdf";
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | (extract ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+    bool ok = extract ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
+    return AutoFreeStr(ok ? str::Dup(ToUtf8Temp(path)) : nullptr);
+}
+
+struct ThumbEditJob {
+    HWND hwnd = nullptr, owner = nullptr;
+    MainWindow* win = nullptr;
+    WindowTab* tab = nullptr;
+    DisplayModel* dm = nullptr;
+    EngineBase* engine = nullptr;
+    Vec<int> selected, order;
+    ByteSlice clipboard;
+    AutoFreeStr filePath;
+    int action = 0, at = 0, page = 1;
+    bool ok = false, ownerEnabled = false, paused = false;
+    ~ThumbEditJob() {
+        clipboard.Free();
+        engine->Release();
+    }
+};
+
+static void ThumbStartAction(SidebarThumbsWnd*, int, int = 0);
+static void ThumbEditFinished(ThumbEditJob* job) {
+    AutoDelete cleanup(job);
+    if (!IsMainWindowValid(job->win)) return;
+    if (job->ownerEnabled) EnableWindow(job->owner, TRUE);
+    auto* t = IsWindow(job->hwnd) ? (SidebarThumbsWnd*)GetWindowLongPtrW(job->hwnd, GWLP_USERDATA) : nullptr;
+    if (!t || job->win->CurrentTab() != job->tab || job->tab->AsFixed() != job->dm) return;
+    t->busy = false;
+    job->dm->pauseRendering = job->paused;
+    EnableWindow(job->hwnd, TRUE);
+    if (job->action == ThumbCopy || job->action == ThumbCut) {
+        job->ok = job->ok && WritePageClipboard(job->hwnd, job->clipboard);
+        if (job->ok && job->action == ThumbCut) {
+            ThumbStartAction(t, ThumbDelete);
+            return;
+        }
+    } else if (job->action != ThumbExtract) {
+        gRenderCache->FreeForDisplayModel(job->dm);
+        job->dm->RefreshPageStructure(job->page);
+        job->tab->askedToSaveAnnotations = false;
+        ClearThumbSlots(t);
+        t->generation++;
+        t->selected.Reset();
+        t->selected.Append(job->dm->CurrentPageNo());
+        t->anchor = job->dm->CurrentPageNo();
+        t->followedPage = 0;
+        ClearTocBox(job->win);
+        LoadTocTree(job->win);
+        UpdateToolbarPageText(job->win, job->engine->PageCount());
+        ToolbarUpdateStateForWindow(job->win, false);
+        job->win->RedrawAll(true);
+    }
+    if (!job->ok) MessageBoxWarning(job->hwnd, _TRA("Unable to edit or copy the selected pages."), _TRA("Pages"));
+    InvalidateRect(job->hwnd, nullptr, FALSE);
+    SetFocus(job->hwnd);
+    SetTimer(job->hwnd, kThumbRenderTimerId, 1, nullptr);
+}
+
+static void ThumbEditWorker(ThumbEditJob* job) {
+    if (job->action == ThumbCopy || job->action == ThumbCut) {
+        job->clipboard = EngineMupdfCopyPages(job->engine, job->selected);
+        job->ok = job->clipboard.size() > 0;
+    } else if (job->action == ThumbExtract) {
+        job->clipboard = EngineMupdfCopyPages(job->engine, job->selected);
+        job->ok = job->clipboard.size() && file::WriteFile(job->filePath, job->clipboard);
+    } else {
+        if (job->action == ThumbInsertBefore || job->action == ThumbInsertAfter || job->action == ThumbPasteImage) {
+            ByteSlice source = job->action == ThumbPasteImage ? job->clipboard : file::ReadFile(job->filePath);
+            ByteSlice imported = EngineMupdfImportPageData(job->engine, source);
+            if (job->action != ThumbPasteImage) source.Free();
+            job->clipboard.Free();
+            job->clipboard = imported;
+            if (!imported.size()) {
+                uitask::Post(MkFunc0<ThumbEditJob>(ThumbEditFinished, job), "ThumbEditFinished");
+                return;
+            }
+        }
+        gRenderCache->WaitForRenderingComplete(job->dm);
+        job->ok = job->action == ThumbUndo ? EngineMupdfUndoPageOrder(job->engine)
+                                           : EngineMupdfEditPageOrder(job->engine, job->order, job->clipboard, job->at);
+    }
+    uitask::Post(MkFunc0<ThumbEditJob>(ThumbEditFinished, job), "ThumbEditFinished");
+}
+
+static void ThumbStartAction(SidebarThumbsWnd* t, int action, int at) {
+    if (action < ThumbCopy || action > ThumbExtract || t->busy || !t->win || !t->win->AsFixed()) return;
+    WindowTab* tab = t->win->CurrentTab();
+    EngineBase* engine = tab->GetEngine();
+    if (!EngineMupdfCanEditPdfToc(engine)) return;
+    if (action == ThumbSelectAll) {
+        t->selected = t->shownPages;
+        InvalidateRect(t->hwnd, nullptr, FALSE);
+        return;
+    }
+    if (t->selected.IsEmpty()) t->selected.Append(t->win->ctrl->CurrentPageNo());
+    if (action == ThumbUndo && !EngineMupdfCanUndoPageOrder(engine)) return;
+    if (action != ThumbCopy && engine->HasUnsavedOcrText()) {
+        MessageBoxWarning(t->hwnd, _TRA("Save the recognized text before changing the page order."), _TRA("Pages"));
+        return;
+    }
+    if ((action == ThumbDelete || action == ThumbCut) && t->selected.Size() >= engine->PageCount()) {
+        MessageBoxWarning(t->hwnd, _TRA("Keep at least one page in the document."), _TRA("Pages"));
+        return;
+    }
+    for (int p = 1; p <= engine->PageCount(); p++) {
+        if (OcrPageIsPending(engine, p)) {
+            MessageBoxWarning(t->hwnd, _TRA("Wait for text recognition to finish before editing pages."),
+                              _TRA("Pages"));
+            return;
+        }
+    }
+    if (t->rendering) {
+        t->pendingAction = action;
+        t->pendingAt = at;
+        SetTimer(t->hwnd, kThumbRenderTimerId + 1, 25, nullptr);
+        return;
+    }
+    if (action == ThumbDelete &&
+        AppMessageBoxW(t->hwnd, ToWStrTemp(str::FormatTemp(_TRA("Delete %d selected page(s)?"), t->selected.Size())),
+                       _TRW("Delete pages"), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+        return;
+    HWND sourceHwnd = t->hwnd;
+    MainWindow* sourceWin = t->win;
+    AbortFinding(sourceWin, true, true, true);
+    if (!IsWindow(sourceHwnd) || !IsMainWindowValid(sourceWin)) return;
+    if ((SidebarThumbsWnd*)GetWindowLongPtrW(sourceHwnd, GWLP_USERDATA) != t || sourceWin->CurrentTab() != tab ||
+        tab->GetEngine() != engine)
+        return;
+    auto* job = new ThumbEditJob;
+    job->hwnd = t->hwnd;
+    job->owner = t->win->hwndFrame;
+    job->win = t->win;
+    job->tab = tab;
+    job->dm = tab->AsFixed();
+    job->engine = engine;
+    engine->AddRef();
+    job->action = action;
+    for (int p = 1; p <= engine->PageCount(); p++)
+        if (t->selected.Contains(p)) job->selected.Append(p);
+    job->page = t->win->ctrl->CurrentPageNo();
+    for (int p = 1; p <= engine->PageCount(); p++) {
+        if ((action != ThumbDelete && action != ThumbMove) || !t->selected.Contains(p)) job->order.Append(p);
+    }
+    if (action == ThumbMove) {
+        int count = engine->PageCount();
+        int* order = AllocArray<int>(count);
+        defer {
+            free(order);
+        };
+        job->page = PdfMoveSelectedPages(count, job->selected.LendData(), job->selected.Size(), at, order);
+        job->order.Reset();
+        bool unchanged = true;
+        for (int i = 0; i < count; i++) {
+            job->order.Append(order[i]);
+            if (order[i] != i + 1) unchanged = false;
+        }
+        if (unchanged) {
+            delete job;
+            return;
+        }
+    }
+    if (action == ThumbPasteBefore || action == ThumbPasteAfter) {
+        job->clipboard = ReadPageClipboard(t->hwnd);
+        if (!job->clipboard.size()) {
+            delete job;
+            return;
+        }
+        job->at = job->page - (action == ThumbPasteBefore ? 1 : 0);
+        job->page = job->at + 1;
+    }
+    if (action == ThumbInsertBefore || action == ThumbInsertAfter || action == ThumbExtract) {
+        job->filePath = ChoosePageFile(t->win->hwndFrame, action == ThumbExtract);
+        if (!job->filePath) {
+            delete job;
+            return;
+        }
+        if (action == ThumbExtract && path::IsSame(job->filePath, engine->FilePath())) {
+            MessageBoxWarning(t->hwnd, _TRA("Choose a different file for extracted pages."), _TRA("Pages"));
+            delete job;
+            return;
+        }
+    }
+    if (action == ThumbPasteImage) {
+        job->clipboard = ReadClipboardImage(t->hwnd);
+        if (!job->clipboard.size()) {
+            delete job;
+            return;
+        }
+    }
+    if (action == ThumbInsertBefore || action == ThumbInsertAfter || action == ThumbPasteImage) {
+        job->at = job->page - (action == ThumbInsertBefore ? 1 : 0);
+        job->page = job->at + 1;
+    }
+    if (!IsMainWindowValid(job->win) || !IsWindow(job->hwnd) || job->win->CurrentTab() != job->tab ||
+        job->tab->AsFixed() != job->dm) {
+        delete job;
+        return;
+    }
+    SendMessageW(t->win->hwndFrame, WM_COMMAND, CmdStopReadAloud, 0);
+    DeleteSelectionToolbar(t->win);
+    DeleteOldSelectionInfo(t->win, true);
+    ClearPdfDeletedAnnotCovers(tab);
+    t->win->annotationUnderCursor = nullptr;
+    t->win->linkOnLastButtonDown = nullptr;
+    t->win->imageDragElement = nullptr;
+    EndFreeTextInPlaceEditForTab(tab, true);
+    CloseAndDeleteEditAnnotationsWindow(tab);
+    tab->selectedAnnotation = nullptr;
+    tab->pdfMarkupOverlays.Clear();
+    t->win->DeleteToolTip();
+    t->busy = true;
+    t->generation++;
+    job->paused = job->dm->pauseRendering;
+    job->dm->pauseRendering = true;
+    job->ownerEnabled = IsWindowEnabled(job->owner);
+    EnableWindow(job->owner, FALSE);
+    EnableWindow(t->hwnd, FALSE);
+    if (action != ThumbCopy && action != ThumbCut && action != ThumbExtract) {
+        EngineMupdfInvalidatePageStructurePreview(engine);
+    }
+    gRenderCache->CancelRendering(job->dm);
+    RunAsync(MkFunc0<ThumbEditJob>(ThumbEditWorker, job), "ThumbEdit");
+}
+
+static void ThumbContextMenu(SidebarThumbsWnd* t, LPARAM lp) {
+    if (t->busy || !t->win->AsFixed()) return;
+    POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    if (pt.x == -1 && pt.y == -1) {
+        pt = {DpiScale(t->hwnd, 20), DpiScale(t->hwnd, 20)};
+        ClientToScreen(t->hwnd, &pt);
+    } else {
+        POINT local = pt;
+        ScreenToClient(t->hwnd, &local);
+        int page = PageAtPoint(t, Point(local.x, local.y));
+        if (page > 0 && !t->selected.Contains(page)) {
+            t->selected.Reset();
+            t->selected.Append(page);
+            t->anchor = page;
+            t->win->ctrl->GoToPage(page, false);
+        }
+    }
+    InvalidateRect(t->hwnd, nullptr, FALSE);
+    HMENU menu = CreatePopupMenu();
+    bool editable = EngineMupdfCanEditPdfToc(t->win->CurrentTab()->GetEngine());
+    UINT enabled = MF_STRING | (editable ? 0 : MF_GRAYED);
+    AppendMenuW(menu, enabled, ThumbCopy, _TRW("Copy pages\tCtrl+C"));
+    AppendMenuW(menu, enabled, ThumbCut, _TRW("Cut pages\tCtrl+X"));
+    bool canPaste = editable && IsClipboardFormatAvailable(PageClipboardFormat());
+    AppendMenuW(menu, MF_STRING | (canPaste ? 0 : MF_GRAYED), ThumbPasteBefore, _TRW("Paste pages before"));
+    AppendMenuW(menu, MF_STRING | (canPaste ? 0 : MF_GRAYED), ThumbPasteAfter, _TRW("Paste pages after\tCtrl+V"));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, enabled, ThumbInsertBefore, _TRW("Insert PDF or image before…"));
+    AppendMenuW(menu, enabled, ThumbInsertAfter, _TRW("Insert PDF or image after…"));
+    bool canImage = editable && (IsClipboardFormatAvailable(CF_DIB) || IsClipboardFormatAvailable(CF_DIBV5));
+    AppendMenuW(menu, MF_STRING | (canImage ? 0 : MF_GRAYED), ThumbPasteImage, _TRW("Insert clipboard image after"));
+    AppendMenuW(menu, enabled, ThumbExtract, _TRW("Extract selected pages…"));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, enabled, ThumbDelete, _TRW("Delete pages\tDelete"));
+    AppendMenuW(menu, MF_STRING | (EngineMupdfCanUndoPageOrder(t->win->CurrentTab()->GetEngine()) ? 0 : MF_GRAYED),
+                ThumbUndo, _TRW("Undo page edit\tCtrl+Z"));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, ThumbSelectAll, _TRW("Select all\tCtrl+A"));
+    MarkMenuOwnerDraw(menu);
+    int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, t->win->hwndFrame, nullptr);
+    FreeMenuOwnerDrawInfoData(menu);
+    DestroyMenu(menu);
+    if (command) ThumbStartAction(t, command);
+}
+
+bool SidebarThumbsHandleKey(MSG& msg) {
+    if (msg.message != WM_KEYDOWN || msg.hwnd != GetFocus()) return false;
+    WCHAR cls[64]{};
+    GetClassNameW(msg.hwnd, cls, dimof(cls));
+    if (!str::Eq(cls, kThumbsClass)) return false;
+    auto* t = (SidebarThumbsWnd*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
+    int action = 0;
+    if (IsCtrlPressed()) {
+        switch (msg.wParam) {
+            case 'A':
+                action = ThumbSelectAll;
+                break;
+            case 'C':
+                action = ThumbCopy;
+                break;
+            case 'X':
+                action = ThumbCut;
+                break;
+            case 'V':
+                action = IsClipboardFormatAvailable(PageClipboardFormat()) ? ThumbPasteAfter : ThumbPasteImage;
+                break;
+            case 'Z':
+                action = ThumbUndo;
+                break;
+        }
+    } else if (msg.wParam == VK_DELETE)
+        action = ThumbDelete;
+    if (!action) return false;
+    ThumbStartAction(t, action);
+    return true;
+}
+
 static LRESULT CALLBACK WndProcSidebarThumbs(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     auto* t = (SidebarThumbsWnd*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     if (msg == WM_NCCREATE) {
@@ -586,7 +1026,7 @@ static LRESULT CALLBACK WndProcSidebarThumbs(HWND hwnd, UINT msg, WPARAM wp, LPA
     }
     switch (msg) {
         case WM_CONTEXTMENU:
-            // Do not forward thumbnail right-clicks to the shared TOC container.
+            ThumbContextMenu(t, lp);
             return 0;
         case WM_ERASEBKGND:
             return 1;
@@ -618,6 +1058,15 @@ static LRESULT CALLBACK WndProcSidebarThumbs(HWND hwnd, UINT msg, WPARAM wp, LPA
             return 0;
         }
         case WM_TIMER:
+            if (wp == kThumbRenderTimerId + 1) {
+                if (!t->rendering) {
+                    KillTimer(hwnd, kThumbRenderTimerId + 1);
+                    int action = t->pendingAction, at = t->pendingAt;
+                    t->pendingAction = 0;
+                    ThumbStartAction(t, action, at);
+                }
+                return 0;
+            }
             if (wp == kThumbRenderTimerId) {
                 KillTimer(hwnd, kThumbRenderTimerId);
                 RenderOneThumb(t);
@@ -629,14 +1078,81 @@ static LRESULT CALLBACK WndProcSidebarThumbs(HWND hwnd, UINT msg, WPARAM wp, LPA
             return 0;
         }
         case WM_LBUTTONDOWN: {
+            if (t->busy) return 0;
             SetFocus(hwnd);
-            int pageNo = PageAtPoint(t, Point(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)));
-            if (pageNo > 0 && t->win && t->win->ctrl && t->win->ctrl->ValidPageNo(pageNo)) {
-                t->win->ctrl->GoToPage(pageNo, true);
-                t->win->Focus();
+            Point point(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+            int page = PageAtPoint(t, point);
+            if (page > 0 && t->win->ctrl) {
+                if (IsShiftPressed() && t->anchor > 0) {
+                    if (!IsCtrlPressed()) t->selected.Reset();
+                    int begin = ShownIndexOf(t, t->anchor), end = ShownIndexOf(t, page);
+                    if (begin > end) std::swap(begin, end);
+                    for (int i = std::max(0, begin); i <= end; i++) {
+                        if (!t->selected.Contains(t->shownPages[i])) t->selected.Append(t->shownPages[i]);
+                    }
+                } else if (IsCtrlPressed()) {
+                    if (t->selected.Contains(page))
+                        t->selected.Remove(page);
+                    else
+                        t->selected.Append(page);
+                    t->anchor = page;
+                } else {
+                    if (!t->selected.Contains(page)) {
+                        t->selected.Reset();
+                        t->selected.Append(page);
+                    }
+                    t->anchor = page;
+                }
+                t->dragStart = point;
+                t->dragging = false;
+                t->dropBefore = 0;
+                SetCapture(hwnd);
+                t->win->ctrl->GoToPage(page, true);
+                SetFocus(hwnd);
+                InvalidateRect(hwnd, nullptr, FALSE);
             }
             return 0;
         }
+        case WM_MOUSEMOVE: {
+            if (GetCapture() != hwnd || t->busy) break;
+            Point point(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+            if (!t->dragging && (abs(point.x - t->dragStart.x) > GetSystemMetrics(SM_CXDRAG) ||
+                                 abs(point.y - t->dragStart.y) > GetSystemMetrics(SM_CYDRAG)))
+                t->dragging = true;
+            if (t->dragging) {
+                int page = PageAtPoint(t, point);
+                t->dropBefore = 0;
+                if (page > 0) {
+                    Rect rect = ThumbRect(t, ShownIndexOf(t, page));
+                    t->dropBefore = page + (point.x > rect.x + rect.dx / 2 ? 1 : 0);
+                }
+                if (point.y < 20) ScrollThumbsBy(t, -16);
+                if (point.y > ClientRect(hwnd).dy - 20) ScrollThumbsBy(t, 16);
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            return 0;
+        }
+        case WM_LBUTTONUP: {
+            if (GetCapture() != hwnd) return 0;
+            int target = t->dropBefore;
+            bool move = t->dragging;
+            t->dragging = false;
+            ReleaseCapture();
+            if (move && target > 0 && str::IsEmpty(t->appliedFind))
+                ThumbStartAction(t, ThumbMove, target);
+            else if (!move && !IsCtrlPressed() && !IsShiftPressed()) {
+                int page = PageAtPoint(t, Point(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)));
+                t->selected.Reset();
+                if (page > 0) t->selected.Append(page);
+            }
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        case WM_CAPTURECHANGED:
+            t->dragging = false;
+            t->dropBefore = 0;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
         case WM_DESTROY:
             ClearThumbSlots(t);
             if (t->win && t->win->hwndSidebarThumbs == hwnd) {
@@ -696,6 +1212,10 @@ void SidebarThumbsSyncCurrentPage(MainWindow* win) {
     }
     if (win->ctrl != t->boundCtrl) {
         t->boundCtrl = win->ctrl;
+        t->selected.Reset();
+        t->anchor = 0;
+        t->generation++;
+        t->pendingAction = 0;
         t->followedPage = 0;
         t->scrollY = 0;
     }
@@ -706,6 +1226,11 @@ void SidebarThumbsSyncCurrentPage(MainWindow* win) {
     int pageNo = win->ctrl->CurrentPageNo();
     if (pageNo == t->followedPage) {
         return;
+    }
+    if (GetFocus() != t->hwnd && GetCapture() != t->hwnd) {
+        t->selected.Reset();
+        t->selected.Append(pageNo);
+        t->anchor = pageNo;
     }
     t->followedPage = pageNo;
     int idx = -1;

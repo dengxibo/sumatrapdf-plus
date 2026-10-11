@@ -2519,9 +2519,7 @@ struct AiTocLayoutMetrics {
     // current text on every pass): sizing the static larger than its text
     // lets its empty rows erase the status line below (z-order).
     int descLines = 0;
-    // Width of "AI Detect TOC Pages" and "Specify TOC Pages": the widest
-    // label's ideal size, with no extra. "Generate TOC From Body" is that
-    // same ideal plus a few DIP so its rounded ends clear the glyphs.
+    // Branch actions share the widest label plus padding for rounded ends.
     int branchBtnW = 0;
     int bodyBtnW = 0;
 };
@@ -2578,10 +2576,7 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
             mt.descLines++;
         }
     }
-    // Ideal size is the label plus the system's own margin. The two buttons
-    // above stay at that width. Generate TOC From Body adds a little more:
-    // the warm button's 8 DIP corners eat the thin margin and sit on the
-    // glyphs, and 64 DIP made every button on this page too wide.
+    // Keep all branch actions aligned, including padding for rounded ends.
     auto idealW = [&](HWND b) -> int {
         int floor = AiTocS(dlg, 122);
         SIZE sz{};
@@ -2597,7 +2592,8 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
     if (bodyW > mt.branchBtnW) {
         mt.branchBtnW = bodyW;
     }
-    mt.bodyBtnW = bodyW + AiTocS(dlg, 16);
+    mt.branchBtnW += AiTocS(dlg, 16);
+    mt.bodyBtnW = mt.branchBtnW;
     int bodyTextW = (mt.w - 2 * mt.m) - (mt.bodyBtnW + AiTocS(dlg, 12));
     if (bodyTextW < AiTocS(dlg, 80)) {
         bodyTextW = AiTocS(dlg, 80);

@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "AppDialogTheme.h"
 #include "utils/ScopedWin.h"
 #include "utils/Dpi.h"
 #include "utils/FileUtil.h"
@@ -3017,7 +3018,7 @@ bool HomePageConfirmDeleteFiles(HWND hwnd, int count) {
     config.cButtons = dimof(buttons);
     config.pButtons = buttons;
     int pressed = 0;
-    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    HRESULT hr = AppTaskDialogIndirect(&config, &pressed, nullptr, nullptr);
     return hr == S_OK && pressed == IDYES;
 }
 

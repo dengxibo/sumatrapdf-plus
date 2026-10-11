@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "AppDialogTheme.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinDynCalls.h"
 #include "utils/CmdLineArgsIter.h"
@@ -17,6 +18,7 @@
 #include "utils/SquareTreeParser.h"
 #include "utils/ThreadUtil.h"
 #include "utils/UITask.h"
+#include "SidebarThumbs.h"
 #include "utils/WinUtil.h"
 
 #include "SumatraConfig.h"
@@ -726,6 +728,7 @@ bool PumpAppMessage(MSG& msg) {
     if (HandleGlobalFindShortcut(msg)) {
         return true;
     }
+    if (SidebarThumbsHandleKey(msg)) return true;
     if (HandleTocCalibUndoShortcut(msg)) {
         return true;
     }
@@ -941,7 +944,7 @@ static bool LoadLibmupdf() {
     dialogConfig.cButtons = 2;
     dialogConfig.pszMainIcon = TD_ERROR_ICON;
 
-    TaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
+    AppTaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
     return false;
 }
 
@@ -1020,7 +1023,7 @@ Learn more at https://www.sumatrapdfreader.org/docs/Corrupted-installation
     dialogConfig.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     dialogConfig.pszMainIcon = TD_ERROR_ICON;
 
-    auto hr = TaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
+    auto hr = AppTaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
     HandleRedirectedConsoleOnShutdown();
     ::ExitProcess(1);
 }
@@ -1072,7 +1075,7 @@ static void ShowInstallerHelp() {
     dialogConfig.dwCommonButtons = TDCBF_OK_BUTTON;
     dialogConfig.pszMainIcon = TD_INFORMATION_ICON;
 
-    TaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
+    AppTaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
 }
 
 // in Installer.cpp
@@ -1121,7 +1124,7 @@ static void ShowNoAdminErrorMessage() {
     dialogConfig.dwCommonButtons = TDCBF_OK_BUTTON;
     dialogConfig.pszMainIcon = TD_INFORMATION_ICON;
 
-    TaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
+    AppTaskDialogIndirect(&dialogConfig, nullptr, nullptr, nullptr);
 }
 
 // delete locally cached copies of cbx files that haven't been opened in a

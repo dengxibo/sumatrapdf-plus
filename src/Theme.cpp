@@ -10,6 +10,7 @@ License: GPLv3 */
 #include "Commands.h"
 #include "DisplayMode.h"
 #include "Theme.h"
+#include "AppDialogTheme.h"
 #include "GlobalPrefs.h"
 #include "PdfDarkMode.h"
 #include "Translations.h"
@@ -296,6 +297,7 @@ void CreateThemeCommands() {
         gCurrThemeIndex = 0;
     }
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
+    InitAppMessageBoxTheme();
     gThemeLight = gThemes->At(kThemeIdxLightWarm);
     gThemeLightWhite = gThemes->At(kThemeIdxLightWhite);
     gThemeDark = gThemes->At(kThemeIdxDarkDracula);
@@ -374,6 +376,7 @@ void SetThemeByIndex(int themeIdx) {
     gCurrThemeIndex = themeIdx;
     gCurrSetThemeCmdId = gFirstSetThemeCmdId + themeIdx;
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
+    InitAppMessageBoxTheme();
     UpdateLastDarkThemePref(themeIdx);
     UpdateLastLightThemePref(themeIdx);
     gLastSystemDark = systemDark;

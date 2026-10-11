@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "AppDialogTheme.h"
 #include "utils/ScopedWin.h"
 #include "utils/Dpi.h"
 #include "utils/BitManip.h"
@@ -1344,7 +1345,7 @@ static bool ConfirmPdfTocSignatureEdit(MainWindow* win, EngineBase* engine) {
     if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
         return true;
     }
-    int res = MessageBoxW(
+    int res = AppMessageBoxW(
         win->hwndFrame,
         ToWStrTemp(_TRA("Editing the table of contents changes this PDF after it was digitally signed. The "
                         "existing signature will remain, but viewers will report that the document was modified. "
@@ -1567,7 +1568,7 @@ static void ReloadPdfTocAfterEdit(MainWindow* win, const Vec<int>& selectedPath)
 
 static void ShowPdfTocEditError(MainWindow* win, const char* error) {
     TempWStr msg = ToWStrTemp(error ? error : _TRA("The PDF table of contents could not be modified."));
-    MessageBoxW(win->hwndFrame, msg, ToWStrTemp(_TRA("PDF table of contents")), MB_OK | MB_ICONERROR);
+    AppMessageBoxW(win->hwndFrame, msg, ToWStrTemp(_TRA("PDF table of contents")), MB_OK | MB_ICONERROR);
 }
 
 static bool ConfirmPdfTocDelete(MainWindow* win, int count, bool hasChildren, bool promoteChildren = false) {
@@ -1604,7 +1605,7 @@ static bool ConfirmPdfTocDelete(MainWindow* win, int count, bool hasChildren, bo
     config.pButtons = buttons;
 
     int pressed = 0;
-    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    HRESULT hr = AppTaskDialogIndirect(&config, &pressed, nullptr, nullptr);
     return hr == S_OK && pressed == IDYES;
 }
 

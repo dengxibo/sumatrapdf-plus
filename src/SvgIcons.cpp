@@ -138,13 +138,20 @@ static const char* gIconRotateLeft =
   <circle cx="19.94" cy="11" r="0.6" stroke="none" fill="currentColor"/>
 </svg>)";
 
-// https://github.com/tabler/tabler-icons/blob/master/icons/rotate-clockwise-2.svg - modified
+// The right-turn icon rotated another quarter turn around the same center.
 static const char* gIconRotate180 =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M4 11a8 8 0 0 1 15 -4M19 3v4h4"/>
-  <path d="M20 13a8 8 0 0 1 -15 4M1 17h4v4"/>
-</svg>)";
+    R"SVG(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(90 12 12)">
+    <path d="M9 4.55a8 8 0 0 1 6 14.9m0 -5.45v6h6"/>
+    <circle cx="5.63" cy="7.16" r="0.6" stroke="none" fill="currentColor"/>
+    <circle cx="4.06" cy="11" r="0.6" stroke="none" fill="currentColor"/>
+    <circle cx="4.63" cy="15.1" r="0.6" stroke="none" fill="currentColor"/>
+    <circle cx="7.16" cy="18.37" r="0.6" stroke="none" fill="currentColor"/>
+    <circle cx="11" cy="19.94" r="0.6" stroke="none" fill="currentColor"/>
+  </g>
+</svg>)SVG";
 
+// https://github.com/tabler/tabler-icons/blob/master/icons/rotate-clockwise-2.svg - modified
 static const char* gIconRotateRight =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <path stroke="none" d="M0 0h24v24H0z" fill="none"/>

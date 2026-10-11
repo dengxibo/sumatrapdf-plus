@@ -467,8 +467,23 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
             DrawCloseButtonArgs closeArgs;
             closeArgs.hdc = hdc;
             closeArgs.r = ti->rClose;
+            // Keep the generous hit target, but make the visible mark quieter.
+            int inset = DpiScale(hwnd, 1);
+            closeArgs.r.x += inset;
+            closeArgs.r.y += inset;
+            closeArgs.r.dx -= 2 * inset;
+            closeArgs.r.dy -= 2 * inset;
             closeArgs.isHover = overClose && isUnderMouse;
             closeArgs.colBg = tabBgCol;
+            COLORREF fg = ThemeWindowTextColor();
+            closeArgs.colX =
+                RGB((GetRValue(fg) * 3 + GetRValue(tabBgCol)) / 4, (GetGValue(fg) * 3 + GetGValue(tabBgCol)) / 4,
+                    (GetBValue(fg) * 3 + GetBValue(tabBgCol)) / 4);
+            closeArgs.colXHover = fg;
+            // A subtle neutral hover fill works on both light and dark themes.
+            closeArgs.colHoverBg =
+                RGB((GetRValue(tabBgCol) * 9 + GetRValue(fg)) / 10, (GetGValue(tabBgCol) * 9 + GetGValue(fg)) / 10,
+                    (GetBValue(tabBgCol) * 9 + GetBValue(fg)) / 10);
             DrawCloseButton(closeArgs);
         }
     }

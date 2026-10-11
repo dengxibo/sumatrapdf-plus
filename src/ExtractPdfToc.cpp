@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "AppDialogTheme.h"
 #include "utils/FileUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
@@ -31155,7 +31156,7 @@ static bool ConfirmPdfTocSignatureExtract(MainWindow* win, EngineBase* engine) {
     if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
         return true;
     }
-    int res = MessageBoxW(
+    int res = AppMessageBoxW(
         win->hwndFrame,
         ToWStrTemp(_TRA("Editing the table of contents changes this PDF after it was digitally signed. The "
                         "existing signature will remain, but viewers will report that the document was modified. "

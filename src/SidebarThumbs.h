@@ -36,3 +36,5 @@ void SidebarThumbsSyncCurrentPage(MainWindow* win);
 void SidebarThumbsApplyFind(MainWindow* win, const char* query);
 void BindSidebarFindEdit(MainWindow* win, SidebarView view);
 void ApplySidebarFindEdit(MainWindow* win);
+
+bool SidebarThumbsHandleKey(MSG& msg);

@@ -42,6 +42,7 @@ int fz_epub_fragment_rects(fz_context* ctx, fz_document* doc, int chapter, const
 #include "OfficeConvert.h"
 #include "WordToc.h"
 #include "EngineMupdf.h"
+#include "PdfPageEditing.h"
 #include "EpubFlattenedCutout.h"
 #include "EngineAll.h"
 #include "DeskewPostl.h"
@@ -3691,6 +3692,11 @@ EngineMupdf::~EngineMupdf() {
         pdf_drop_page_tree(ctx, pdfdoc);
     }
 
+    for (auto* order : pageOrderUndo) {
+        for (auto* obj : order->pages) pdf_drop_obj(ctx, obj);
+        pdf_drop_obj(ctx, order->labels);
+        delete order;
+    }
     fz_drop_document(ctx, _doc);
     fz_purge_glyph_cache(ctx);
     fz_drop_context(ctx);
@@ -15924,11 +15930,16 @@ bool EngineMupdfGetPageAdjustmentSource(EngineBase* engine, int pageNo, RectF* b
     return valid;
 }
 
-bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool flipH, bool flipV, bool autoCrop) {
+bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool flipH, bool flipV, bool autoCrop,
+                               const RectF* manualCrop) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || !e->pdfdoc || pageNo < 1 || pageNo > engine->PageCount()) {
         return false;
     }
+    PdfAdjustmentCropBounds crop{};
+    if (manualCrop &&
+        !PdfAdjustmentManualCrop(0, 0, 1, 1, manualCrop->x, manualCrop->y, manualCrop->dx, manualCrop->dy, &crop))
+        return false;
     if (cwDeg > 180.f) {
         cwDeg = 180.f;
     }
@@ -15939,13 +15950,21 @@ bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool
     // A clean quarter turn with nothing else to bake stays a /Rotate edit.
     // Session deskew is part of what is on screen, so a tilted page is baked.
     int delta = 0;
-    if (!flipH && !flipV && fabsf(deskew) < 0.00001f && ClockwiseDeltaIsQuarter(cwDeg, &delta)) {
+    if (!manualCrop && !flipH && !flipV && fabsf(deskew) < 0.00001f && ClockwiseDeltaIsQuarter(cwDeg, &delta)) {
         if (delta == 0) {
             return false;
         }
         int cur = EngineMupdfGetPageRotateCw(engine, pageNo);
         if (!EngineMupdfApplyPageRotateCw(engine, pageNo, cur + delta)) {
             return false;
+        }
+        // /Rotate invalidates the loaded page too. Its annotation wrappers
+        // borrow pdf_annot pointers and must be rebuilt with the next page load.
+        {
+            ScopedCritSec scope(&e->docLock);
+            if (pageNo - 1 < e->pages.Size() && e->pages[pageNo - 1]) {
+                DeleteVecMembers(e->pages[pageNo - 1]->annotations);
+            }
         }
         engine->SetOcrPageRotate(pageNo, 0);
         return true;
@@ -15977,14 +15996,15 @@ bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool
             view = fz_concat(view, FitzAroundCenter(cx, cy, fz_scale(sx, sy)));
             view = fz_concat(view, FitzAroundCenter(cx, cy, fz_rotate(cwDeg)));
             fz_rect bounds = fz_transform_rect(fitzBox, view);
-            if (autoCrop) {
-                float cropW = 0;
-                float cropH = 0;
-                if (PdfAdjustmentInscribedSize(visW, visH, cwDeg + deskew, &cropW, &cropH)) {
-                    float mx = (bounds.x0 + bounds.x1) * 0.5f;
-                    float my = (bounds.y0 + bounds.y1) * 0.5f;
-                    bounds = fz_make_rect(mx - cropW * 0.5f, my - cropH * 0.5f, mx + cropW * 0.5f, my + cropH * 0.5f);
-                }
+            float outputW, outputH;
+            PdfAdjustmentOutputSize(visW, visH, cwDeg, deskew, flipH, flipV, autoCrop, &outputW, &outputH);
+            float mx = (bounds.x0 + bounds.x1) * .5f;
+            float my = (bounds.y0 + bounds.y1) * .5f;
+            bounds = fz_make_rect(mx - outputW * .5f, my - outputH * .5f, mx + outputW * .5f, my + outputH * .5f);
+            if (manualCrop) {
+                PdfAdjustmentManualCrop(bounds.x0, bounds.y0, bounds.x1 - bounds.x0, bounds.y1 - bounds.y0,
+                                        manualCrop->x, manualCrop->y, manualCrop->dx, manualCrop->dy, &crop);
+                bounds = fz_make_rect(crop.x, crop.y, crop.x + crop.w, crop.y + crop.h);
             }
             float fw = bounds.x1 - bounds.x0;
             float fh = bounds.y1 - bounds.y0;
@@ -16024,6 +16044,9 @@ bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool
         if (pi) {
             pi->deskewDeg = 0;
             pi->deskewDirty = false;
+            // Annotation wrappers do not retain pdf_annot. Dropping the page
+            // frees those objects; retaining wrappers causes a hover/save UAF.
+            DeleteVecMembers(pi->annotations);
             DropSingleFzPageCache(ctx, pi);
             pi->mediabox = {};
         }
@@ -17065,4 +17088,321 @@ TempStr EngineMupdfGetPdfInfo(const char* path) {
     fz_drop_buffer(ctx, buf);
     fz_drop_context(ctx);
     return res;
+}
+
+// Page references are retained by history, so undo restores ordering without
+// discarding unrelated annotation edits to pages that still exist.
+static PdfPageOrderUndo* CapturePageOrder(EngineMupdf* e) {
+    auto* order = new PdfPageOrderUndo;
+    fz_try(e->Ctx()) {
+        order->labels =
+            pdf_keep_obj(e->Ctx(), pdf_dict_getp(e->Ctx(), pdf_trailer(e->Ctx(), e->pdfdoc), "Root/PageLabels"));
+        for (int i = 0; i < pdf_count_pages(e->Ctx(), e->pdfdoc); i++) {
+            order->pages.Append(pdf_keep_obj(e->Ctx(), pdf_lookup_page_obj(e->Ctx(), e->pdfdoc, i)));
+        }
+    }
+    fz_catch(e->Ctx()) {
+        for (auto* obj : order->pages) pdf_drop_obj(e->Ctx(), obj);
+        pdf_drop_obj(e->Ctx(), order->labels);
+        delete order;
+        fz_rethrow(e->Ctx());
+    }
+    return order;
+}
+
+static void RestorePageOrder(EngineMupdf* e, const Vec<pdf_obj*>& order) {
+    PdfRestorePageOrder(e->Ctx(), e->pdfdoc, order.LendData(), order.Size());
+}
+
+static void RestorePageLabels(EngineMupdf* e, pdf_obj* labels) {
+    auto ctx = e->Ctx();
+    pdf_obj* root = pdf_dict_get(ctx, pdf_trailer(ctx, e->pdfdoc), PDF_NAME(Root));
+    if (labels)
+        pdf_dict_put(ctx, root, PDF_NAME(PageLabels), labels);
+    else
+        pdf_dict_del(ctx, root, PDF_NAME(PageLabels));
+}
+
+static void RemapPageLabels(EngineMupdf* e, const Vec<int>& order, int inserted, int at) {
+    auto ctx = e->Ctx();
+    if (!e->pageLabels) {
+        pdf_obj* existing = pdf_dict_getp(ctx, pdf_trailer(ctx, e->pdfdoc), "Root/PageLabels");
+        if (existing) e->pageLabels = BuildPageLabelVec(ctx, existing, e->pageCount);
+    }
+    if (!e->pageLabels) return;
+    Vec<const char*> labels;
+    for (int i = 0; i < e->pageLabels->Size(); i++) labels.Append(e->pageLabels->At(i));
+    PdfWriteRemappedPageLabels(ctx, e->pdfdoc, labels.LendData(), order.LendData(), order.Size(), inserted, at);
+}
+
+static void ResetPageStructureCaches(EngineMupdf* e) {
+    auto ctx = e->Ctx();
+    InterlockedIncrement(&e->pageStructureVersion);
+    for (auto* pi : e->pages) {
+        DeleteVecMembers(pi->annotations);
+        DropSingleFzPageCache(ctx, pi);
+        pi->~FzPageInfo();
+    }
+    e->pages.Reset();
+    e->pageCount = pdf_count_pages(ctx, e->pdfdoc);
+    for (int i = 0; i < e->pageCount; i++) {
+        auto* pi = New<FzPageInfo>(e->arena);
+        pi->pageNo = i + 1;
+        e->pages.Append(pi);
+    }
+    e->ClearTextCache();
+    for (int i = 1; i <= e->pageCount; i++) {
+        e->ClearOcrTried(i);
+        e->SetOcrPageRotate(i, 0);
+    }
+    e->scannedPageCache.Reset();
+    delete e->pageLabels;
+    e->pageLabels = nullptr;
+    pdf_obj* labels = pdf_dict_getp(ctx, pdf_trailer(ctx, e->pdfdoc), "Root/PageLabels");
+    if (labels) e->pageLabels = BuildPageLabelVec(ctx, labels, e->pageCount);
+    EngineMupdfReloadOutlineAfterWrite(e);
+    e->modifiedPdfToc = true;
+}
+
+ByteSlice EngineMupdfCopyPages(EngineBase* engine, const Vec<int>& pages) {
+    auto* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || pages.IsEmpty()) return {};
+    ScopedCritSec lock(&e->docLock);
+    auto ctx = e->Ctx();
+    pdf_document* dst = nullptr;
+    pdf_graft_map* map = nullptr;
+    fz_buffer* buffer = nullptr;
+    fz_output* output = nullptr;
+    ByteSlice result;
+    fz_var(dst);
+    fz_var(map);
+    fz_var(buffer);
+    fz_var(output);
+    fz_var(result);
+    fz_try(ctx) {
+        dst = pdf_create_document(ctx);
+        map = pdf_new_graft_map(ctx, dst);
+        for (int p : pages) {
+            if (p < 1 || p > e->pageCount) fz_throw(ctx, FZ_ERROR_ARGUMENT, "Invalid page");
+            PdfGraftPageWithAnnotations(ctx, dst, map, e->pdfdoc, p - 1, -1);
+        }
+        if (!e->pageLabels) {
+            pdf_obj* labels = pdf_dict_getp(ctx, pdf_trailer(ctx, e->pdfdoc), "Root/PageLabels");
+            if (labels) e->pageLabels = BuildPageLabelVec(ctx, labels, e->pageCount);
+        }
+        if (e->pageLabels) {
+            Vec<const char*> labels;
+            for (int i = 0; i < e->pageLabels->Size(); i++) labels.Append(e->pageLabels->At(i));
+            PdfWriteRemappedPageLabels(ctx, dst, labels.LendData(), pages.LendData(), pages.Size(), 0, 0);
+        }
+        buffer = fz_new_buffer(ctx, 4096);
+        output = fz_new_output_with_buffer(ctx, buffer);
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress = 1;
+        pdf_write_document(ctx, dst, output, &opts);
+        fz_close_output(ctx, output);
+        unsigned char* data = nullptr;
+        size_t len = fz_buffer_storage(ctx, buffer, &data);
+        result = ByteSlice((u8*)memdup(data, len), len);
+    }
+    fz_always(ctx) {
+        fz_drop_output(ctx, output);
+        fz_drop_buffer(ctx, buffer);
+        pdf_drop_graft_map(ctx, map);
+        pdf_drop_document(ctx, dst);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return result;
+}
+
+bool EngineMupdfEditPageOrder(EngineBase* engine, const Vec<int>& order, ByteSlice paste, int insertAt) {
+    auto* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || order.IsEmpty() || !EngineMupdfCanEditPdfToc(engine)) return false;
+    ScopedCritSec lock(&e->docLock);
+    auto ctx = e->Ctx();
+    PdfPageOrderUndo* before = nullptr;
+    Vec<pdf_obj*> desired;
+    fz_stream* stream = nullptr;
+    pdf_document* source = nullptr;
+    pdf_graft_map* map = nullptr;
+    bool ok = false;
+    fz_var(before);
+    fz_var(stream);
+    fz_var(source);
+    fz_var(map);
+    fz_var(ok);
+    fz_try(ctx) {
+        before = CapturePageOrder(e);
+        for (int page : order) {
+            if (page < 1 || page > before->pages.Size()) fz_throw(ctx, FZ_ERROR_ARGUMENT, "Invalid page");
+            desired.Append(before->pages[page - 1]);
+        }
+        if (paste.size()) {
+            stream = fz_open_memory(ctx, paste.data(), paste.size());
+            source = pdf_open_document_with_stream(ctx, stream);
+            if (pdf_needs_password(ctx, source)) fz_throw(ctx, FZ_ERROR_ARGUMENT, "Encrypted clipboard PDF");
+        }
+        pdf_begin_operation(ctx, e->pdfdoc, "Edit PDF pages");
+        fz_try(ctx) {
+            RestorePageOrder(e, desired);
+            if (source) {
+                map = pdf_new_graft_map(ctx, e->pdfdoc);
+                int at = limitValue(insertAt, 0, desired.Size());
+                for (int i = 0; i < pdf_count_pages(ctx, source); i++) {
+                    PdfGraftPageWithAnnotations(ctx, e->pdfdoc, map, source, i, at++);
+                }
+            }
+            int inserted = source ? pdf_count_pages(ctx, source) : 0;
+            RemapPageLabels(e, order, inserted, limitValue(insertAt, 0, order.Size()));
+            pdf_end_operation(ctx, e->pdfdoc);
+            // Bound retained page references for long editing sessions.
+            if (e->pageOrderUndo.Size() >= 32) {
+                auto* oldest = e->pageOrderUndo[0];
+                for (auto* obj : oldest->pages) pdf_drop_obj(ctx, obj);
+                pdf_drop_obj(ctx, oldest->labels);
+                delete oldest;
+                e->pageOrderUndo.RemoveAt(0);
+            }
+            e->pageOrderUndo.Append(before);
+            before = nullptr;
+            ResetPageStructureCaches(e);
+            ok = true;
+        }
+        fz_catch(ctx) {
+            pdf_abandon_operation(ctx, e->pdfdoc);
+            if (before) {
+                RestorePageOrder(e, before->pages);
+                RestorePageLabels(e, before->labels);
+            }
+            ResetPageStructureCaches(e);
+            fz_rethrow(ctx);
+        }
+    }
+    fz_always(ctx) {
+        if (before) {
+            for (auto* obj : before->pages) pdf_drop_obj(ctx, obj);
+            pdf_drop_obj(ctx, before->labels);
+            delete before;
+        }
+        pdf_drop_graft_map(ctx, map);
+        pdf_drop_document(ctx, source);
+        fz_drop_stream(ctx, stream);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return ok;
+}
+
+bool EngineMupdfCanUndoPageOrder(EngineBase* engine) {
+    auto* e = AsEngineMupdf(engine);
+    return e && !e->pageOrderUndo.IsEmpty();
+}
+
+bool EngineMupdfUndoPageOrder(EngineBase* engine) {
+    auto* e = AsEngineMupdf(engine);
+    if (!e || e->pageOrderUndo.IsEmpty()) return false;
+    ScopedCritSec lock(&e->docLock);
+    auto ctx = e->Ctx();
+    auto* order = e->pageOrderUndo.Last();
+    PdfPageOrderUndo* current = nullptr;
+    bool ok = false;
+    fz_var(ok);
+    fz_var(current);
+    fz_try(ctx) {
+        current = CapturePageOrder(e);
+        pdf_begin_operation(ctx, e->pdfdoc, "Undo PDF page edit");
+        fz_try(ctx) {
+            RestorePageOrder(e, order->pages);
+            RestorePageLabels(e, order->labels);
+            pdf_end_operation(ctx, e->pdfdoc);
+            ResetPageStructureCaches(e);
+            e->pageOrderUndo.RemoveAt(e->pageOrderUndo.Size() - 1);
+            ok = true;
+        }
+        fz_catch(ctx) {
+            pdf_abandon_operation(ctx, e->pdfdoc);
+            RestorePageOrder(e, current->pages);
+            RestorePageLabels(e, current->labels);
+            ResetPageStructureCaches(e);
+            fz_rethrow(ctx);
+        }
+    }
+    fz_always(ctx) {
+        if (current) {
+            for (auto* obj : current->pages) pdf_drop_obj(ctx, obj);
+            pdf_drop_obj(ctx, current->labels);
+            delete current;
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    if (ok) {
+        for (auto* obj : order->pages) pdf_drop_obj(ctx, obj);
+        pdf_drop_obj(ctx, order->labels);
+        delete order;
+    }
+    return ok;
+}
+
+ByteSlice EngineMupdfImportPageData(EngineBase* engine, ByteSlice data) {
+    auto* e = AsEngineMupdf(engine);
+    if (!e || !data.size()) return {};
+    // PDF input is validated by the insertion transaction before any edits.
+    if (data.size() >= 5 && memcmp(data.data(), "%PDF-", 5) == 0) {
+        return ByteSlice((u8*)memdup(data.data(), data.size()), data.size());
+    }
+    ScopedCritSec lock(&e->docLock);
+    auto ctx = e->Ctx();
+    pdf_document* doc = nullptr;
+    fz_buffer* imageBytes = nullptr;
+    fz_image* image = nullptr;
+    fz_buffer* buffer = nullptr;
+    fz_output* output = nullptr;
+    ByteSlice result;
+    fz_var(doc);
+    fz_var(imageBytes);
+    fz_var(image);
+    fz_var(buffer);
+    fz_var(output);
+    fz_var(result);
+    fz_try(ctx) {
+        imageBytes = fz_new_buffer_from_copied_data(ctx, data.data(), data.size());
+        image = fz_new_image_from_buffer(ctx, imageBytes);
+        doc = pdf_create_document(ctx);
+        PdfInsertImagePage(ctx, doc, image);
+        buffer = fz_new_buffer(ctx, 4096);
+        output = fz_new_output_with_buffer(ctx, buffer);
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress = 1;
+        pdf_write_document(ctx, doc, output, &opts);
+        fz_close_output(ctx, output);
+        unsigned char* bytes = nullptr;
+        size_t size = fz_buffer_storage(ctx, buffer, &bytes);
+        result = ByteSlice((u8*)memdup(bytes, size), size);
+    }
+    fz_always(ctx) {
+        fz_drop_output(ctx, output);
+        fz_drop_buffer(ctx, buffer);
+        pdf_drop_document(ctx, doc);
+        fz_drop_image(ctx, image);
+        fz_drop_buffer(ctx, imageBytes);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return result;
+}
+
+u32 EngineMupdfPageStructureVersion(EngineBase* engine) {
+    auto* e = AsEngineMupdf(engine);
+    return e ? (u32)InterlockedCompareExchange(&e->pageStructureVersion, 0, 0) : 0;
+}
+
+void EngineMupdfInvalidatePageStructurePreview(EngineBase* engine) {
+    auto* e = AsEngineMupdf(engine);
+    if (e) InterlockedIncrement(&e->pageStructureVersion);
 }

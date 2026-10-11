@@ -9,6 +9,7 @@
 #include "utils/WinDynCalls.h"
 
 #include "Settings.h"
+#include "Translations.h"
 #include "AppSettings.h"
 #include "Theme.h"
 #include "AppDialogTheme.h"
@@ -265,6 +266,21 @@ static COLORREF WarmComboPageColor(HWND hwnd) {
     return page;
 }
 
+static void AlignComboEditText(HWND hwnd) {
+    if ((GetWindowLongPtrW(hwnd, GWL_STYLE) & CBS_DROPDOWNLIST) != CBS_DROPDOWN) {
+        return;
+    }
+    COMBOBOXINFO info{sizeof(info)};
+    if (!GetComboBoxInfo(hwnd, &info) || !info.hwndItem) {
+        return;
+    }
+    // Match the closed list face's inset while leaving the native edit in
+    // charge of typing, selection, horizontal scrolling and the caret.
+    Rect edit = MapRectToWindow(WindowRect(info.hwndItem), HWND_DESKTOP, hwnd);
+    int left = std::max(0, 1 + DpiScale(hwnd, 8) - edit.x);
+    SendMessageW(info.hwndItem, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(left, 0));
+}
+
 static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
     RECT wr{};
     GetClientRect(hwnd, &wr);
@@ -376,6 +392,14 @@ static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
 static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
     auto* st = (WarmComboState*)data;
     switch (msg) {
+        case WM_SIZE:
+        case WM_SETFONT:
+        case WM_THEMECHANGED:
+        case CB_SETITEMHEIGHT: {
+            LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+            AlignComboEditText(hwnd);
+            return result;
+        }
         case WM_PAINT: {
             PAINTSTRUCT ps{};
             HDC hdc = BeginPaint(hwnd, &ps);
@@ -442,12 +466,84 @@ void AppDialogThemeScrollBar(HWND hwnd) {
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
+static void PaintComboList(HWND list, HWND combo, HDC dc) {
+    RECT client{};
+    GetClientRect(list, &client);
+    ScopedGdiObj<HBRUSH> background(CreateSolidBrush(ThemeWindowControlBackgroundColor()));
+    FillRect(dc, &client, background);
+    ScopedSelectObject font(dc, GetWindowFont(combo));
+    SetBkMode(dc, TRANSPARENT);
+    int count = (int)SendMessageW(list, LB_GETCOUNT, 0, 0);
+    int selected = (int)SendMessageW(list, LB_GETCURSEL, 0, 0);
+    int top = (int)SendMessageW(list, LB_GETTOPINDEX, 0, 0);
+    int pad = DpiScale(combo, 8);
+    for (int i = std::max(0, top); i < count; i++) {
+        RECT row{};
+        if (SendMessageW(list, LB_GETITEMRECT, i, (LPARAM)&row) == LB_ERR || row.top >= client.bottom) break;
+        if (row.bottom <= client.top) continue;
+        bool highlight = i == selected;
+        if (highlight) {
+            FillRect(dc, &row, GetSysColorBrush(COLOR_HIGHLIGHT));
+        }
+        int length = (int)SendMessageW(list, LB_GETTEXTLEN, i, 0);
+        if (length < 0) continue;
+        ScopedMem<WCHAR> text(AllocArray<WCHAR>((size_t)length + 1));
+        if (SendMessageW(list, LB_GETTEXT, i, (LPARAM)text.Get()) == LB_ERR) continue;
+        SetTextColor(dc, highlight ? GetSysColor(COLOR_HIGHLIGHTTEXT) : ThemeWindowTextColor());
+        row.left += pad;
+        row.right -= pad;
+        DrawTextW(dc, text.Get(), length, &row, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    }
+}
+
+static LRESULT CALLBACK ComboListProc(HWND list, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
+    HWND combo = (HWND)data;
+    bool ownerDraw = (GetWindowLongPtrW(combo, GWL_STYLE) & (CBS_OWNERDRAWFIXED | CBS_OWNERDRAWVARIABLE)) != 0;
+    if (!ownerDraw && msg == WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC dc = BeginPaint(list, &ps);
+        PaintComboList(list, combo, dc);
+        EndPaint(list, &ps);
+        return 0;
+    }
+    if (!ownerDraw && msg == WM_PRINTCLIENT) {
+        PaintComboList(list, combo, (HDC)wp);
+        return 0;
+    }
+    LRESULT result = DefSubclassProc(list, msg, wp, lp);
+    if (msg == WM_NCPAINT) {
+        // Draw every edge explicitly; the unthemed popup's native left rim
+        // otherwise blends into the page behind it in the light themes.
+        HDC dc = GetWindowDC(list);
+        RECT border{};
+        GetWindowRect(list, &border);
+        OffsetRect(&border, -border.left, -border.top);
+        COLORREF color = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), -20)
+                                               : AccentColor(ThemeWindowControlBackgroundColor(), -48);
+        ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(color));
+        FrameRect(dc, &border, brush);
+        ReleaseDC(list, dc);
+    } else if (!ownerDraw &&
+               (msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_KEYDOWN || msg == WM_MOUSEWHEEL ||
+                msg == WM_VSCROLL || msg == LB_SETCURSEL || msg == LB_SETTOPINDEX)) {
+        // Native list boxes may paint changed rows directly while tracking.
+        // Repaint those rows with the same inset as the closed combo face.
+        InvalidateRect(list, nullptr, FALSE);
+        UpdateWindow(list);
+    } else if (msg == WM_NCDESTROY) {
+        RemoveWindowSubclass(list, ComboListProc, id);
+    }
+    return result;
+}
+
 static void ThemeWarmComboListScrollBar(HWND combo) {
     COMBOBOXINFO info{};
     info.cbSize = sizeof(info);
     if (!GetComboBoxInfo(combo, &info) || !info.hwndList) {
         return;
     }
+    RemoveWindowSubclass(info.hwndList, ComboListProc, kWarmComboSubclassId);
+    SetWindowSubclass(info.hwndList, ComboListProc, kWarmComboSubclassId, (DWORD_PTR)combo);
     // Blank the list face so Warm CTLCOLOR cream shows through, then put back
     // a themed scrollbar only (full Explorer theme would paint a white slab).
     SetWindowTheme(info.hwndList, L" ", L" ");
@@ -464,6 +560,7 @@ static void InstallWarmCombo(HWND hwnd) {
     if (!IsDropDownList(hwnd)) {
         return;
     }
+    AlignComboEditText(hwnd);
     if (auto* existing = (WarmComboState*)GetPropW(hwnd, kWarmComboProp)) {
         // Theme refresh may have put another painter above us. Reinstall at
         // the top so all controls on the page keep the same final painter.
@@ -590,13 +687,20 @@ COLORREF AppDialogPanelBackgroundColor() {
 }
 
 struct StandardDialogControls {
+    bool registerForTheme = true;
     AppDialogFonts fonts;
     HBRUSH panel = nullptr;
+    HBRUSH control = nullptr;
 };
 
 static LRESULT CALLBACK StandardDialogControlsProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id,
                                                    DWORD_PTR refData) {
     auto data = (StandardDialogControls*)refData;
+    if ((msg == WM_CTLCOLOREDIT || msg == WM_CTLCOLORLISTBOX) && !ThemeUsesDarkChrome()) {
+        SetTextColor((HDC)wp, ThemeWindowTextColor());
+        SetBkColor((HDC)wp, ThemeWindowControlBackgroundColor());
+        return (LRESULT)data->control;
+    }
     if (msg == WM_CTLCOLORDLG || msg == WM_CTLCOLORSTATIC || msg == WM_CTLCOLORBTN) {
         SetTextColor((HDC)wp, ThemeWindowTextColor());
         SetBkColor((HDC)wp, AppDialogPanelBackgroundColor());
@@ -608,20 +712,22 @@ static LRESULT CALLBACK StandardDialogControlsProc(HWND hwnd, UINT msg, WPARAM w
     if (msg == WM_NCDESTROY) {
         RemoveWindowSubclass(hwnd, StandardDialogControlsProc, id);
         RemovePropW(hwnd, L"SumatraStandardDialogControls");
-        UnregisterAppDialogForTheme(hwnd);
+        if (data->registerForTheme) UnregisterAppDialogForTheme(hwnd);
         LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
         data->fonts.Destroy();
         DeleteObject(data->panel);
+        DeleteObject(data->control);
         delete data;
         return result;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-void AppDialogUseStandardControls(HWND hwnd) {
+void AppDialogUseStandardControls(HWND hwnd, bool registerForTheme) {
     auto data = (StandardDialogControls*)GetPropW(hwnd, L"SumatraStandardDialogControls");
     if (!data) {
         data = new StandardDialogControls();
+        data->registerForTheme = registerForTheme;
         data->fonts.CreateForHwnd(hwnd);
         SetPropW(hwnd, L"SumatraStandardDialogControls", (HANDLE)data);
         EnumChildWindows(
@@ -636,22 +742,26 @@ void AppDialogUseStandardControls(HWND hwnd) {
                 return TRUE;
             },
             (LPARAM)&data->fonts);
-        bool registered = false;
-        for (auto& entry : gAppDialogThemeEntries) {
-            if (entry.hwnd == hwnd) registered = true;
-        }
-        if (!registered) {
-            RegisterAppDialogForTheme(
-                hwnd,
-                [](HWND dialog, void*) {
-                    AppDialogApplyChrome(dialog);
-                    RedrawWindow(dialog, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
-                },
-                nullptr);
+        if (data->registerForTheme) {
+            bool registered = false;
+            for (auto& entry : gAppDialogThemeEntries) {
+                if (entry.hwnd == hwnd) registered = true;
+            }
+            if (!registered) {
+                RegisterAppDialogForTheme(
+                    hwnd,
+                    [](HWND dialog, void*) {
+                        AppDialogApplyChrome(dialog);
+                        RedrawWindow(dialog, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+                    },
+                    nullptr);
+            }
         }
     }
     DeleteObject(data->panel);
     data->panel = CreateSolidBrush(AppDialogPanelBackgroundColor());
+    DeleteObject(data->control);
+    data->control = CreateSolidBrush(ThemeWindowControlBackgroundColor());
     RemoveWindowSubclass(hwnd, StandardDialogControlsProc, 0xA121);
     SetWindowSubclass(hwnd, StandardDialogControlsProc, 0xA121, (DWORD_PTR)data);
 }
@@ -720,4 +830,135 @@ void AppDialogApplyFontToChildren(HWND hwnd, HFONT font) {
             return TRUE;
         },
         (LPARAM)font);
+}
+
+Size AppDialogButtonSize(HWND button, int dpi) {
+    Size text = HwndMeasureText(button, HwndGetTextTemp(button), GetWindowFont(button));
+    return {std::max(MulDiv(72, dpi, 96), text.dx + MulDiv(24, dpi, 96)),
+            std::max(MulDiv(28, dpi, 96), text.dy + MulDiv(10, dpi, 96))};
+}
+
+// Native MessageBox buttons otherwise follow the Windows display language,
+// which can differ from the language selected in the application.
+static void TranslateMessageBoxButtons(HWND hwnd) {
+    struct ButtonLabel {
+        int id;
+        const WCHAR* text;
+    };
+    ButtonLabel labels[] = {
+        {IDOK, _TRW("OK")},         {IDCANCEL, _TRW("Cancel")},      {IDYES, _TRW("Yes")},
+        {IDNO, _TRW("No")},         {IDRETRY, _TRW("&Retry")},       {IDABORT, _TRW("Abort")},
+        {IDIGNORE, _TRW("Ignore")}, {IDTRYAGAIN, _TRW("Try again")}, {IDCONTINUE, _TRW("Continue")}};
+    for (auto& label : labels) {
+        HWND button = GetDlgItem(hwnd, label.id);
+        if (button && IsPushButton(button)) SetWindowTextW(button, label.text);
+    }
+}
+
+static void LayoutMessageBoxButtons(HWND hwnd) {
+    Vec<HWND> buttons;
+    int dpi = DpiGet(hwnd);
+    int gap = MulDiv(8, dpi, 96), width = 0, height = 0;
+    Rect oldRow;
+    bool first = true;
+    for (HWND child = GetWindow(hwnd, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        if (!IsPushButton(child) || !IsWindowVisible(child)) continue;
+        buttons.Append(child);
+        Size size = AppDialogButtonSize(child, dpi);
+        width += size.dx;
+        height = std::max(height, size.dy);
+        Rect rect = MapRectToWindow(WindowRect(child), HWND_DESKTOP, hwnd);
+        oldRow = first ? rect : oldRow.Union(rect);
+        first = false;
+    }
+    if (buttons.IsEmpty()) return;
+    width += gap * (buttons.Size() - 1);
+    Rect client = ClientRect(hwnd), window = WindowRect(hwnd);
+    int extraW = std::max(0, width + MulDiv(32, dpi, 96) - client.dx);
+    int extraH = std::max(0, height - oldRow.dy);
+    SetWindowPos(hwnd, nullptr, window.x - extraW / 2, window.y - extraH / 2, window.dx + extraW, window.dy + extraH,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    int x = (client.dx + extraW - width) / 2;
+    for (HWND button : buttons) {
+        Size size = AppDialogButtonSize(button, dpi);
+        MoveWindow(button, x, oldRow.y, size.dx, height, TRUE);
+        x += size.dx + gap;
+    }
+}
+
+static volatile LONG gNativeDialogThemeReady = 0;
+
+void InitAppMessageBoxTheme() {
+    InterlockedExchange(&gNativeDialogThemeReady, 1);
+    SetNativeMessageBoxHandler(AppMessageBoxW);
+}
+
+static void AppThemeNativeMessageWindow(HWND hwnd) {
+    // Modal windows can be opened on worker threads; their resources stay with
+    // the window instead of entering the UI thread's live-dialog registry.
+    AppDialogUseStandardControls(hwnd, false);
+    AppDialogApplyChrome(hwnd);
+}
+
+static LRESULT CALLBACK AppMessageBoxCbtProc(int code, WPARAM wp, LPARAM lp) {
+    if (code == HCBT_ACTIVATE) {
+        HWND hwnd = (HWND)wp;
+        WCHAR cls[32]{};
+        GetClassNameW(hwnd, cls, dimof(cls));
+        if (wcscmp(cls, L"#32770") == 0 && !GetPropW(hwnd, L"SumatraStandardDialogControls")) {
+            AppThemeNativeMessageWindow(hwnd);
+            TranslateMessageBoxButtons(hwnd);
+            LayoutMessageBoxButtons(hwnd);
+        }
+    }
+    return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+int AppMessageBoxW(HWND owner, const WCHAR* text, const WCHAR* caption, UINT flags) {
+    if (!InterlockedCompareExchange(&gNativeDialogThemeReady, 0, 0)) return MessageBoxW(owner, text, caption, flags);
+    struct ScopedHook {
+        HHOOK hook = SetWindowsHookExW(WH_CBT, AppMessageBoxCbtProc, nullptr, GetCurrentThreadId());
+        ~ScopedHook() {
+            if (hook) UnhookWindowsHookEx(hook);
+        }
+    } hook;
+    return MessageBoxW(owner, text, caption, flags);
+}
+
+struct AppTaskDialogCallbackContext {
+    PFTASKDIALOGCALLBACK original = nullptr;
+    LONG_PTR originalData = 0;
+};
+
+static HRESULT CALLBACK AppTaskDialogCallback(HWND hwnd, UINT notification, WPARAM wp, LPARAM lp, LONG_PTR data) {
+    auto* ctx = (AppTaskDialogCallbackContext*)data;
+    if (notification == TDN_DIALOG_CONSTRUCTED || notification == TDN_NAVIGATED) {
+        if (UseDarkModeLib() && ThemeUsesDarkChrome()) DarkMode::setDarkTaskDlg(hwnd);
+        AppThemeNativeMessageWindow(hwnd);
+        // Task dialogs route text and link colors through nested notify sinks.
+        EnumChildWindows(
+            hwnd,
+            [](HWND child, LPARAM) -> BOOL {
+                WCHAR cls[64]{};
+                GetClassNameW(child, cls, dimof(cls));
+                if (wcscmp(cls, L"CtrlNotifySink") == 0 || wcscmp(cls, L"DirectUIHWND") == 0) {
+                    AppDialogUseStandardControls(child, false);
+                }
+                return TRUE;
+            },
+            0);
+    }
+    return ctx->original ? ctx->original(hwnd, notification, wp, lp, ctx->originalData) : S_OK;
+}
+
+HRESULT AppTaskDialogIndirect(const TASKDIALOGCONFIG* config, int* button, int* radio, BOOL* verification) {
+    if (!config || !InterlockedCompareExchange(&gNativeDialogThemeReady, 0, 0))
+        return TaskDialogIndirect(config, button, radio, verification);
+    TASKDIALOGCONFIG themed = *config;
+    AppTaskDialogCallbackContext ctx{config->pfCallback, config->lpCallbackData};
+    themed.pfCallback = AppTaskDialogCallback;
+    themed.lpCallbackData = (LONG_PTR)&ctx;
+    if (UseDarkModeLib() && ThemeUsesDarkChrome())
+        return DarkMode::darkTaskDialogIndirect(&themed, button, radio, verification);
+    return TaskDialogIndirect(&themed, button, radio, verification);
 }

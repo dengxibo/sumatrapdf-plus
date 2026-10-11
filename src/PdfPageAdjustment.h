@@ -6,8 +6,8 @@
 #include <math.h>
 #include <stdlib.h>
 
-// UI state remains independent of controls and bitmap resolution. Direction
-// shortcuts select an absolute quarter turn without discarding pending deskew.
+// UI state remains independent of controls and bitmap resolution. Rotation
+// actions accumulate quarter turns without discarding pending deskew.
 struct PdfPageAdjustment {
     double deskew = 0;
     int direction = 0;
@@ -17,6 +17,12 @@ struct PdfPageAdjustment {
         if (angle > 180.0) angle -= 360.0;
         if (angle < -180.0) angle += 360.0;
         return angle;
+    }
+
+    void RotateBy(int degrees) {
+        direction = (direction + degrees) % 360;
+        if (direction > 180) direction -= 360;
+        if (direction < -180) direction += 360;
     }
 
     void SetDeskew(double value) { deskew = value < -180.0 ? -180.0 : value > 180.0 ? 180.0 : value; }

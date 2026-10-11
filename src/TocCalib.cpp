@@ -6461,7 +6461,7 @@ static void TocCalibReportWriteError(MainWindow* win, char* err) {
     // instead of the generic "Could not write the PDF table of contents."
     TempWStr detail = err ? ToWStrTemp(err) : nullptr;
     const WCHAR* msg = (detail && detail[0]) ? detail : ToWStrTemp(_TRA("Could not write the PDF table of contents."));
-    MessageBoxW(win->hwndFrame, msg, ToWStrTemp(_TRA("PDF table of contents")), MB_OK | MB_ICONERROR);
+    AppMessageBoxW(win->hwndFrame, msg, ToWStrTemp(_TRA("PDF table of contents")), MB_OK | MB_ICONERROR);
     str::Free(err);
 }
 

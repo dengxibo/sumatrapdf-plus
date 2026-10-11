@@ -47377,3 +47377,138 @@ tw:參考網格模式：水平線或十字網格
 :Reference grid spacing: sparse, normal or dense
 cn:参考网格间距：疏、标准或密
 tw:參考網格間距：疏、標準或密
+:Manual Crop
+cn:手动裁切
+tw:手動裁切
+:Drag to select a crop area; drag its edges to resize or its inside to move.
+cn:拖动框选保留区域；拖动边框调整大小，拖动框内移动选区。
+tw:拖動框選保留區域；拖動邊框調整大小，拖動框內移動選區。
+:Free
+cn:自由
+tw:自由
+:Lock current ratio
+cn:锁定当前框比例
+tw:鎖定目前框比例
+:Original page ratio
+cn:原页比例
+tw:原頁比例
+:A4 Portrait
+cn:A4 竖向
+tw:A4 直向
+:A4 Landscape
+cn:A4 横向
+tw:A4 橫向
+:Adjust this page separately
+cn:本页单独调整
+tw:本頁單獨調整
+:This page only
+cn:本页单独调整
+tw:本頁單獨調整
+:Shared crop
+cn:统一框
+tw:統一框
+:Pending %d/%d - %s%s
+cn:待处理 %d/%d · %s%s
+tw:待處理 %d/%d · %s%s
+: - Crop outside page
+cn: · 裁切框越界
+tw: · 裁切框越界
+:Crop area outside page: %s
+cn:以下页面裁切框越界，请逐页修正：%s
+tw:以下頁面裁切框越界，請逐頁修正：%s
+:Unable to load page.
+cn:无法加载页面。
+tw:無法載入頁面。
+:Crop aspect ratio
+cn:裁切宽高比
+tw:裁切寬高比
+:Adjust this page separately; uncheck to restore the shared crop.
+cn:仅调整当前预览页；取消勾选则恢复统一裁切框。
+tw:僅調整目前預覽頁；取消勾選則恢復統一裁切框。
+:Page number within the selected range; press Enter to preview.
+cn:输入待处理范围内的页码，按回车预览。
+tw:輸入待處理範圍內的頁碼，按 Enter 預覽。
+:Single page
+cn:单页
+tw:單頁
+:Pending  %d / %d   -   %s%s
+cn:待处理  %d / %d   ·   %s%s
+tw:待處理  %d / %d   ·   %s%s
+:Keep adjusting pages separately while browsing; uncheck to restore this page to the shared crop.
+cn:翻页后继续单独调整各页；取消勾选则将本页恢复为统一框。
+tw:翻頁後繼續單獨調整各頁；取消勾選則將本頁恢復為統一框。
+:Preview  %d / %d   -   %s%s
+cn:预览  %d / %d   ·   %s%s
+tw:預覽  %d / %d   ·   %s%s
+:Applying changes…
+cn:正在应用…
+tw:正在套用…
+:Pages
+cn:页面
+tw:頁面
+:Copy pages	Ctrl+C
+cn:复制页面	Ctrl+C
+tw:複製頁面	Ctrl+C
+:Cut pages	Ctrl+X
+cn:剪切页面	Ctrl+X
+tw:剪下頁面	Ctrl+X
+:Paste pages before
+cn:在此页前粘贴页面
+tw:在此頁前貼上頁面
+:Paste pages after	Ctrl+V
+cn:在此页后粘贴页面	Ctrl+V
+tw:在此頁後貼上頁面	Ctrl+V
+:Delete pages	Delete
+cn:删除页面	Delete
+tw:刪除頁面	Delete
+:Undo page edit	Ctrl+Z
+cn:撤销页面编辑	Ctrl+Z
+tw:復原頁面編輯	Ctrl+Z
+:Select all	Ctrl+A
+cn:全选	Ctrl+A
+tw:全選	Ctrl+A
+:Insert PDF or image before…
+cn:在此页前插入 PDF 或图片…
+tw:在此頁前插入 PDF 或圖片…
+:Insert PDF or image after…
+cn:在此页后插入 PDF 或图片…
+tw:在此頁後插入 PDF 或圖片…
+:Insert clipboard image after
+cn:在此页后插入剪贴板图片
+tw:在此頁後插入剪貼簿圖片
+:Extract selected pages…
+cn:提取选中页面…
+tw:擷取所選頁面…
+:Delete %d selected page(s)?
+cn:删除选中的 %d 页？
+tw:刪除所選的 %d 頁？
+:Keep at least one page in the document.
+cn:文档至少需要保留一页。
+tw:文件至少需要保留一頁。
+:Save the recognized text before changing the page order.
+cn:请先保存识别的文字，再编辑、插入或提取页面。
+tw:請先儲存辨識的文字，再編輯、插入或擷取頁面。
+:Wait for text recognition to finish before editing pages.
+cn:文字识别正在进行，请完成后再编辑页面。
+tw:文字辨識正在進行，請完成後再編輯頁面。
+:Choose a different file for extracted pages.
+cn:请将提取页面保存到其他文件。
+tw:請將擷取頁面儲存到其他檔案。
+:Unable to edit or copy the selected pages.
+cn:无法处理所选页面，请检查文件是否有效、未加密，或是否可写入。
+tw:無法處理所選頁面，請檢查檔案是否有效、未加密，或是否可寫入。
+:Delete pages
+cn:删除页面
+tw:刪除頁面
+:Abort
+cn:中止
+tw:中止
+:Ignore
+cn:忽略
+tw:忽略
+:Try again
+cn:重试
+tw:重試
+:Continue
+cn:继续
+tw:繼續

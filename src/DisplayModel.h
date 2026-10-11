@@ -219,6 +219,7 @@ struct DisplayModel : DocController {
     void OnMorePagesAvailable(bool updateUi = true, bool growAll = false);
     void OnMorePagesAvailablePreservingScroll(bool updateUi = true, bool growAll = false);
     void SyncPageCountWithEngine(bool updateUi = true);
+    void RefreshPageStructure(int pageNo);
     // After reflow EPUB theme/CSS changes engine pagination; drop cached page
     // sizes and incremental layout watermark so the next UI update relayouts.
     void InvalidateReflowLayoutAfterEngineReparse();

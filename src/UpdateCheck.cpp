@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "AppDialogTheme.h"
 #include "utils/ThreadUtil.h"
 #include "utils/UITask.h"
 #include "utils/SquareTreeParser.h"
@@ -346,7 +347,7 @@ static bool PromptUserForUpdate(UpdateInfo* updateInfo) {
 
     int buttonPressedId = 0;
 
-    auto hr = TaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
+    auto hr = AppTaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
     ReportIf(hr == E_INVALIDARG);
     return (hr == S_OK) && (buttonPressedId == kBtnIdInstall);
 }
@@ -592,7 +593,7 @@ static void NotifySuspiciousUpdate(HWND hwndParent, const char* dlURL) {
     dialogConfig.hwndParent = hwndParent;
     dialogConfig.pfCallback = TaskDialogHyperlinkCallback;
     int buttonPressedId = 0;
-    TaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
+    AppTaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
     if (buttonPressedId == kBtnIdVisitWebsite) {
         SumatraLaunchBrowser(kExpectedDlHost);
     }

@@ -1,0 +1,6 @@
+<Project>
+  <!-- Alternate output directories must not overwrite the default build's compiler tracking files. -->
+  <PropertyGroup Condition="'$(SumatraSeparateBuildIntermediate)' == 'true'">
+    <IntDir>$(OutDir)obj\$(Platform)\$(Configuration)\$(MSBuildProjectName)\</IntDir>
+  </PropertyGroup>
+</Project>

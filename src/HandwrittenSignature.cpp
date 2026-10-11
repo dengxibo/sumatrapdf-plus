@@ -936,8 +936,8 @@ static void ClearPhoto(SigPad* pad) {
 
 static void ShowCantRead(SigPad* pad) {
     HWND owner = pad && pad->hwnd ? pad->hwnd : nullptr;
-    MessageBoxW(owner, ToWStrTemp(_TRA("Couldn't read that image.")), ToWStrTemp(_TRA("Handwritten Signature")),
-                MB_OK | MB_ICONINFORMATION);
+    AppMessageBoxW(owner, ToWStrTemp(_TRA("Couldn't read that image.")), ToWStrTemp(_TRA("Handwritten Signature")),
+                   MB_OK | MB_ICONINFORMATION);
 }
 
 static bool IsSignatureImagePath(const char* path) {

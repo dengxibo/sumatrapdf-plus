@@ -535,18 +535,6 @@ static void FilterLangList(HWND hDlg, const char* filter, const char* currLangCo
     }
 }
 
-static void ApplyLanguageSearchStyle(HWND hDlg) {
-    HWND edit = GetDlgItem(hDlg, IDC_CHANGE_LANG_SEARCH);
-    // Use the ordinary edit border instead of the themed focus underline.
-    DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(edit);
-    if (DynSetWindowTheme) DynSetWindowTheme(edit, L"", L"");
-    SetWindowExStyle(edit, WS_EX_CLIENTEDGE, false);
-    SetWindowLongPtrW(edit, GWL_STYLE, GetWindowLongPtrW(edit, GWL_STYLE) | WS_BORDER);
-    SetWindowPos(edit, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-}
-
-static constexpr UINT kLanguageSearchStyleMsg = WM_APP + 0x53;
-
 static INT_PTR CALLBACK Dialog_ChangeLanguage_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
     Dialog_ChangeLanguage_Data* data;
     HWND langList;
@@ -582,12 +570,9 @@ static INT_PTR CALLBACK Dialog_ChangeLanguage_Proc(HWND hDlg, UINT msg, WPARAM w
             hDlg,
             [](HWND dialog, void*) {
                 AppDialogApplyChrome(dialog);
-                ApplyLanguageSearchStyle(dialog);
                 RedrawWindow(dialog, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
             },
             nullptr);
-        // The common dialog wrapper applies chrome after WM_INITDIALOG.
-        PostMessageW(hDlg, kLanguageSearchStyleMsg, 0, 0);
 
         CenterDialog(hDlg);
         HwndSetFocus(GetDlgItem(hDlg, IDC_CHANGE_LANG_SEARCH));
@@ -595,9 +580,6 @@ static INT_PTR CALLBACK Dialog_ChangeLanguage_Proc(HWND hDlg, UINT msg, WPARAM w
     }
 
     switch (msg) {
-        case kLanguageSearchStyleMsg:
-            ApplyLanguageSearchStyle(hDlg);
-            return TRUE;
         case WM_COMMAND:
             data = (Dialog_ChangeLanguage_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
             if (LOWORD(wp) == IDC_CHANGE_LANG_SEARCH && HIWORD(wp) == EN_CHANGE) {
@@ -1330,6 +1312,11 @@ static void LayoutSettingsViewport(HWND hwnd, int pos) {
     int oldPos = gSettingsScrollPos;
     Rect client = ClientRect(hwnd);
     int pad = DpiScale(hwnd, 12);
+    Size okSize = AppDialogButtonSize(GetDlgItem(hwnd, IDOK), gSettingsLayoutDpi);
+    Size cancelSize = AppDialogButtonSize(GetDlgItem(hwnd, IDCANCEL), gSettingsLayoutDpi);
+    gSettingsOkRect.dx = okSize.dx;
+    gSettingsCancelRect.dx = cancelSize.dx;
+    gSettingsOkRect.dy = gSettingsCancelRect.dy = std::max(okSize.dy, cancelSize.dy);
     int buttonH = std::max(gSettingsOkRect.dy, gSettingsCancelRect.dy);
     int footerY = std::max(pad, client.dy - pad - buttonH);
     gSettingsViewport.dy = std::max(1, footerY - pad - gSettingsViewport.y);
@@ -1367,8 +1354,9 @@ static void LayoutSettingsViewport(HWND hwnd, int pos) {
                  client.dy - gSettingsViewport.Bottom(), SWP_NOACTIVATE | SWP_NOREDRAW);
     SetWindowPos(GetDlgItem(hwnd, IDCANCEL), HWND_TOP, client.dx - pad - gSettingsCancelRect.dx, footerY,
                  gSettingsCancelRect.dx, gSettingsCancelRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
-    SetWindowPos(GetDlgItem(hwnd, IDOK), HWND_TOP, client.dx - pad * 2 - gSettingsCancelRect.dx - gSettingsOkRect.dx,
-                 footerY, gSettingsOkRect.dx, gSettingsOkRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
+    SetWindowPos(GetDlgItem(hwnd, IDOK), HWND_TOP,
+                 client.dx - pad - DpiScale(hwnd, 8) - gSettingsCancelRect.dx - gSettingsOkRect.dx, footerY,
+                 gSettingsOkRect.dx, gSettingsOkRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
     MoveWindow(gSettingsScrollbar, client.dx - barW, gSettingsViewport.y, barW, gSettingsViewport.dy, FALSE);
     SCROLLINFO si{sizeof(si)};
     si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
@@ -1419,6 +1407,19 @@ static void InitSettingsViewport(HWND hwnd) {
         int height = r.dy;
         WCHAR cls[32]{};
         GetClassNameW(child, cls, dimof(cls));
+        // Resource labels can be shorter than the selected UI font. Their
+        // viewport regions must include the full line, even without scrolling.
+        if (str::EqI(cls, L"Static")) {
+            HDC dc = GetDC(child);
+            HGDIOBJ oldFont = SelectObject(dc, GetWindowFont(child));
+            TEXTMETRICW tm{};
+            GetTextMetricsW(dc, &tm);
+            SelectObject(dc, oldFont);
+            ReleaseDC(child, dc);
+            r.dy = std::max(r.dy, (int)(tm.tmHeight + tm.tmExternalLeading));
+            height = r.dy;
+            SetWindowPos(child, nullptr, 0, 0, r.dx, r.dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         RECT dropped{};
         if (str::EqI(cls, L"ComboBox") && SendMessageW(child, CB_GETDROPPEDCONTROLRECT, 0, (LPARAM)&dropped)) {
             height = dropped.bottom - dropped.top;
@@ -1909,7 +1910,7 @@ static void AiTocFetchModelsFinished(AiTocFetchModelsReq* req) {
         if (state && state->token == req->token && state->fetchGeneration == req->generation) {
             EnableWindow(GetDlgItem(req->hwnd, IDC_AITOC_API_FETCH_MODELS), TRUE);
             if (req->error) {
-                MessageBoxW(req->hwnd, ToWStrTemp(req->error), ToWStrTemp(_TRA("Choose a model")), MB_ICONWARNING);
+                AppMessageBoxW(req->hwnd, ToWStrTemp(req->error), ToWStrTemp(_TRA("Choose a model")), MB_ICONWARNING);
             } else {
                 AiTocClearModels(state);
                 for (auto* model : req->models) {
@@ -1919,10 +1920,11 @@ static void AiTocFetchModelsFinished(AiTocFetchModelsReq* req) {
                     state->models.Append(str::Dup(model));
                 }
                 if (state->models.IsEmpty()) {
-                    MessageBoxW(req->hwnd,
-                                ToWStrTemp(_TRA("None of the models from the API can be used here. Type a chat model "
-                                                "name instead.")),
-                                ToWStrTemp(_TRA("Choose a model")), MB_ICONINFORMATION);
+                    AppMessageBoxW(
+                        req->hwnd,
+                        ToWStrTemp(_TRA("None of the models from the API can be used here. Type a chat model "
+                                        "name instead.")),
+                        ToWStrTemp(_TRA("Choose a model")), MB_ICONINFORMATION);
                 } else {
                     state->models.Sort(CmpFetchedModelName);
                     AiModelPickData pick;
@@ -1963,7 +1965,7 @@ static void AiTocApiTestFinished(AiTocApiTestReq* req) {
     HWND owner = state && state->token == req->token ? req->hwnd : nullptr;
     const WCHAR* caption = ToWStrTemp(_TRA("AI table of contents"));
     if (req->msg && owner) {
-        MessageBoxW(owner, ToWStrTemp(req->msg), caption, req->ok ? MB_ICONINFORMATION : MB_ICONWARNING);
+        AppMessageBoxW(owner, ToWStrTemp(req->msg), caption, req->ok ? MB_ICONINFORMATION : MB_ICONWARNING);
     }
     str::Free(req->msg);
     str::Free(req->baseUrl);
@@ -2002,7 +2004,7 @@ static void VolcTranslateTestFinished(VolcTranslateTestReq* req) {
         } else {
             msg = str::FormatTemp("%s\n\n%s", _TRA("Volcengine Translate failed:"), req->err ? req->err : "");
         }
-        MessageBoxW(owner, ToWStrTemp(msg), caption, req->ok ? MB_ICONINFORMATION : MB_ICONWARNING);
+        AppMessageBoxW(owner, ToWStrTemp(msg), caption, req->ok ? MB_ICONINFORMATION : MB_ICONWARNING);
     }
     str::Free(req->ak);
     str::Free(req->sk);
@@ -2350,6 +2352,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)prefs);
             gSettingsDialogHwnd = hDlg;
             gSettingsDialogBrushes.Create();
+            // Apply fonts before measuring labels, combo faces and viewport clips.
+            AppDialogUseStandardControls(hDlg);
             AppDialogApplyChrome(hDlg);
             EnumChildWindows(hDlg, SoftenSettingsInputTheme, 0);
             RegisterAppDialogForTheme(hDlg, SettingsDialogThemeRefresh, nullptr);
@@ -3197,8 +3201,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     str::TrimWSInPlace(ak, str::TrimOpt::Both);
                     str::TrimWSInPlace(sk, str::TrimOpt::Both);
                     if (str::IsEmpty(ak) || str::IsEmpty(sk)) {
-                        MessageBoxW(hDlg, ToWStrTemp(_TRA("Enter both the Access Key and Secret Key first.")),
-                                    ToWStrTemp(_TRA("Volcengine Translate")), MB_ICONWARNING);
+                        AppMessageBoxW(hDlg, ToWStrTemp(_TRA("Enter both the Access Key and Secret Key first.")),
+                                       ToWStrTemp(_TRA("Volcengine Translate")), MB_ICONWARNING);
                         HwndSetFocus(
                             GetDlgItem(hDlg, str::IsEmpty(ak) ? IDC_TRANSLATE_VOLC_AK : IDC_TRANSLATE_VOLC_SK));
                         return TRUE;

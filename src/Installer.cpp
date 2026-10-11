@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "AppDialogTheme.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinDynCalls.h"
 #include "utils/FileUtil.h"
@@ -1178,7 +1179,7 @@ static bool ShouldInstallMismatchedArch(HWND hwndParent) {
 
     int buttonPressedId = 0;
 
-    auto hr = TaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
+    auto hr = AppTaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
     ReportIf(hr == E_INVALIDARG);
     if (buttonPressedId == kBtnIdDownload) {
         const char* url = "https://www.sumatrapdfreader.org/download-free-pdf-viewer";

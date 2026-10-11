@@ -187,7 +187,8 @@ bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw);
 // MuPDF types stay disabled in the menu.
 bool EngineMupdfCanAdjustPageView(EngineBase* engine);
 bool EngineMupdfGetPageAdjustmentSource(EngineBase* engine, int pageNo, RectF* box);
-bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool flipH, bool flipV, bool autoCrop);
+bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool flipH, bool flipV, bool autoCrop,
+                               const RectF* manualCrop = nullptr);
 // Auto-deskew decision. Uncertain is treated as NoDeskew by all callers.
 enum class DeskewDecision {
     NoDeskew = 0,
@@ -326,3 +327,15 @@ bool EngineSupportsAnnotations(EngineBase*);
 bool EngineGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineHasUnsavedAnnotations(EngineBase*);
 Annotation* EngineGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
+
+// Page structure edits stay in memory; all page numbers are 1-based.
+ByteSlice EngineMupdfCopyPages(EngineBase*, const Vec<int>& pages);
+bool EngineMupdfEditPageOrder(EngineBase*, const Vec<int>& order, ByteSlice paste, int insertAt);
+bool EngineMupdfUndoPageOrder(EngineBase*);
+bool EngineMupdfCanUndoPageOrder(EngineBase*);
+
+ByteSlice EngineMupdfImportPageData(EngineBase*, ByteSlice data);
+
+u32 EngineMupdfPageStructureVersion(EngineBase*);
+
+void EngineMupdfInvalidatePageStructurePreview(EngineBase*);

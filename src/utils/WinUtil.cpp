@@ -4301,7 +4301,7 @@ void MessageBoxWarningSimple(HWND hwnd, const WCHAR* msg, const WCHAR* title) {
     if (!title) {
         title = L"Warning";
     }
-    MessageBox(hwnd, msg, title, type);
+    NativeMessageBox(hwnd, msg, title, type);
 }
 
 void MessageBoxNYI(HWND hwnd) {
@@ -5160,10 +5160,22 @@ TempStr AtomToStrTemp(ATOM a) {
     return ToUtf8Temp(buf, cch);
 }
 
+static PVOID volatile gNativeMessageBoxHandler = nullptr;
+
+void SetNativeMessageBoxHandler(NativeMessageBoxHandler handler) {
+    InterlockedExchangePointer(&gNativeMessageBoxHandler, (PVOID)handler);
+}
+
+int NativeMessageBox(HWND hwnd, const WCHAR* text, const WCHAR* caption, UINT flags) {
+    auto handler =
+        (NativeMessageBoxHandler)InterlockedCompareExchangePointer(&gNativeMessageBoxHandler, nullptr, nullptr);
+    return handler ? handler(hwnd, text, caption, flags) : MessageBoxW(hwnd, text, caption, flags);
+}
+
 int MsgBox(HWND hwnd, const char* text, const char* caption, UINT flags) {
     TempWStr textW = ToWStrTemp(text);
     TempWStr captionW = ToWStrTemp(caption);
-    return MessageBoxW(hwnd, textW, captionW, flags);
+    return NativeMessageBox(hwnd, textW, captionW, flags);
 }
 
 static const WCHAR* kPropHwndPtr = L"HwndPtr";

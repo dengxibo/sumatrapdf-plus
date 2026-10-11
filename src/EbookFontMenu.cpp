@@ -126,8 +126,7 @@ static const WCHAR* FontComboPreviewAt(EbookFontComboState* state, HWND combo, i
         state->previews.Append(nullptr);
     }
     if (!state->previews[familyIdx]) {
-        state->previews[familyIdx] =
-            ResolveFontPreviewSample(combo, state->isCjk, state->families.At(familyIdx));
+        state->previews[familyIdx] = ResolveFontPreviewSample(combo, state->isCjk, state->families.At(familyIdx));
     }
     return state->previews[familyIdx] ? state->previews[familyIdx] : kPreviewNone;
 }
@@ -361,8 +360,7 @@ void LayoutEbookFontCombo(HWND combo, HWND heightRef) {
     COMBOBOXINFO info{sizeof(info)};
     if (GetComboBoxInfo(combo, &info) && info.hwndItem) {
         RECT rc = info.rcItem;
-        SetWindowPos(info.hwndItem, nullptr, rc.left, rc.top, RectDx(rc), RectDy(rc),
-                     SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(info.hwndItem, nullptr, rc.left, rc.top, RectDx(rc), RectDy(rc), SWP_NOZORDER | SWP_NOACTIVATE);
     }
     FontComboClearEditSelection(combo);
     InvalidateRect(combo, nullptr, TRUE);
@@ -451,7 +449,7 @@ bool DrawEbookFontComboItem(DRAWITEMSTRUCT* item) {
     SetTextColor(item->hDC, fg);
     SelectObject(item->hDC, GetWindowFont(item->hwndItem));
     RECT label = item->rcItem;
-    int pad = DpiScale(item->hwndItem, 6);
+    int pad = DpiScale(item->hwndItem, 8);
     label.left += pad;
     label.right -= pad;
 
@@ -528,8 +526,7 @@ void EbookFontComboCommand(HWND combo, int notification) {
         }
         COMBOBOXINFO info{sizeof(info)};
         HWND focus = GetFocus();
-        if (GetComboBoxInfo(combo, &info) &&
-            (focus == combo || focus == info.hwndItem || focus == info.hwndList)) {
+        if (GetComboBoxInfo(combo, &info) && (focus == combo || focus == info.hwndItem || focus == info.hwndList)) {
             return;
         }
         if (!FontComboCommitExactText(combo, state)) {

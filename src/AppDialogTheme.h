@@ -36,7 +36,7 @@ void RefreshAllAppDialogsTheme();
 void AppDialogApplyChrome(HWND hwnd);
 // Shared annotation-sidebar panel layer and application font for native dialogs.
 COLORREF AppDialogPanelBackgroundColor();
-void AppDialogUseStandardControls(HWND hwnd);
+void AppDialogUseStandardControls(HWND hwnd, bool registerForTheme = true);
 
 // Warm chrome replaces paper-white Win11 push buttons and drop-down lists.
 // Safe on other themes: it removes the custom paint when eye-care chrome is off.
@@ -53,3 +53,13 @@ HBRUSH AppDialogCtlColorBrush(UINT msg, WPARAM wp, LPARAM lp, HBRUSH bgBrush, HB
 bool AppDialogHandleEraseBkgnd(WPARAM wp, HWND hwnd, HBRUSH bgBrush);
 
 void AppDialogApplyFontToChildren(HWND hwnd, HFONT font);
+
+void InitAppMessageBoxTheme();
+
+// Keep native button IDs, defaults, modality and TaskDialog callbacks intact.
+int AppMessageBoxW(HWND owner, const WCHAR* text, const WCHAR* caption, UINT flags);
+struct _TASKDIALOGCONFIG;
+HRESULT AppTaskDialogIndirect(const _TASKDIALOGCONFIG* config, int* button, int* radio, BOOL* verification);
+
+// Shared action-button metrics: font-aware height and text-dependent width.
+Size AppDialogButtonSize(HWND button, int dpi);

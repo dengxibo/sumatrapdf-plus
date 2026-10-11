@@ -3706,3 +3706,20 @@ void DisplayModel::ScrollTo(int pageNo, RectF rect, float zoom) {
     }
     GoToPage(pageNo, scroll.y, true, scroll.x);
 }
+
+void DisplayModel::RefreshPageStructure(int pageNo) {
+    free(pagesInfo);
+    pagesInfo = nullptr;
+    startPage = limitValue(pageNo, 1, engine->PageCount());
+    BuildPagesInfo();
+    navHistory.Reset();
+    navHistoryIdx = 0;
+    delete textSelection;
+    delete textSearch;
+    textSelection = new TextSelection(engine);
+    textSearch = new TextSearch(engine);
+    Relayout(zoomVirtual, rotation);
+    GoToPage(startPage, false);
+    if (cb) cb->UpdateScrollbars(canvasSize);
+    RepaintDisplay();
+}

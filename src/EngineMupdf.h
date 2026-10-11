@@ -4,6 +4,11 @@
 #include "PdfCadDetect.h"
 #include "EpubMeta.h"
 
+struct PdfPageOrderUndo {
+    Vec<pdf_obj*> pages;
+    pdf_obj* labels = nullptr;
+};
+
 struct Annotation;
 struct DarkModePageAnalysis;
 struct DarkModeEngineCache;
@@ -184,6 +189,8 @@ class EngineMupdf : public EngineBase {
     int displayDPI{96};
     fz_document* _doc = nullptr;
     pdf_document* pdfdoc = nullptr;
+    Vec<PdfPageOrderUndo*> pageOrderUndo;
+    volatile LONG pageStructureVersion = 0;
     Vec<FzPageInfo*> pages;
     fz_outline* outline = nullptr;
     // True when the document Info carries the OCR-save marker (saved searchable

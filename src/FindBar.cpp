@@ -636,6 +636,9 @@ struct ToolbarFindState {
     HWND edit = nullptr;
     HWND tip = nullptr;
     HBRUSH fillBrush = nullptr;
+    HBITMAP searchIcon = nullptr;
+    int searchIconSize = 0;
+    COLORREF searchIconColor = 0;
     AutoFreeStr status;
     COLORREF fill = 0;
     COLORREF textCol = 0;
@@ -1050,6 +1053,26 @@ static void ToolbarFindDrawTbIcon(ToolbarFindState* st, HDC hdc, const Rect& hit
     }
     int x = hit.x + (hit.dx - dw) / 2;
     int y = hit.y + (hit.dy - dh) / 2;
+    if (icon == TbIcon::Search) {
+        COLORREF color = ThemeWindowTextColor();
+        if (!st->searchIcon || st->searchIconSize != dw || st->searchIconColor != color) {
+            DeleteObject(st->searchIcon);
+            st->searchIcon = CreateSvgIconAlphaBitmap(dw, icon, color);
+            st->searchIconSize = dw;
+            st->searchIconColor = color;
+        }
+        if (st->searchIcon) {
+            // Rasterize the SVG at the final size. HICON downscaling and the
+            // toolbar's binary color-key alpha lose the fine circular edge.
+            HDC memory = CreateCompatibleDC(hdc);
+            HGDIOBJ old = SelectObject(memory, st->searchIcon);
+            BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+            AlphaBlend(hdc, x, y, dw, dh, memory, 0, 0, dw, dw, blend);
+            SelectObject(memory, old);
+            DeleteDC(memory);
+            return;
+        }
+    }
     if (dw == iw && dh == ih) {
         ImageList_Draw(himl, (int)icon, hdc, x, y, ILD_TRANSPARENT);
         return;
@@ -1369,6 +1392,7 @@ static LRESULT CALLBACK ToolbarFindWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
             }
             return 0;
         case WM_NCDESTROY:
+            DeleteObject(st->searchIcon);
             if (st->fillBrush) {
                 DeleteObject(st->fillBrush);
             }
