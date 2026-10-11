@@ -1,197 +1,186 @@
 # Sumatra PDF Plus
 
-**Unofficial fork** of [SumatraPDF](https://github.com/sumatrapdfreader/sumatrapdf) · **非官方**社区增强版  
-Not affiliated with [sumatrapdfreader.org](https://www.sumatrapdfreader.org/) · 与官方站点无关
+Windows 文档阅读器，在 SumatraPDF 基础上增强中文电子书阅读、扫描件 OCR、PDF 页面整理、目录识别、批注与朗读。
+A Windows document reader based on SumatraPDF, with Chinese ebook improvements, local OCR, PDF page editing, table-of-contents recognition, annotations and read aloud.
 
-A Windows document reader (PDF, EPUB, MOBI, and more) with improvements for Chinese ebooks, offline lookup, themes, smart PDF dark mode, and local OCR.  
-Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词、主题、PDF 智能暗黑模式与本地 OCR 等做了增强。
+**非官方社区增强版 / Unofficial fork** · 与 [sumatrapdfreader.org](https://www.sumatrapdfreader.org/) 无隶属关系 / Not affiliated with the official project.
 
-- **Repository / 本仓库：** source code for GPLv3 compliance · 满足 GPLv3 源码随同分发要求  
-- **User guide (Chinese) / 中文详细说明：** [readme.txt](readme.txt)  
-- **Upstream / 上游项目：** [https://github.com/sumatrapdfreader/sumatrapdf](https://github.com/sumatrapdfreader/sumatrapdf)  
-- **License / 许可：** [COPYING](COPYING) (GPLv3) + [AUTHORS](AUTHORS)
+**当前版本 / Current release: [3.7.43](https://github.com/dengxibo/sumatrapdf-plus/releases/tag/3.7.43)** · [下载 / Downloads](https://github.com/dengxibo/sumatrapdf-plus/releases/latest) · [更新记录 / Changelog](docs/md/Version-history.md) · [反馈 / Issues](https://github.com/dengxibo/sumatrapdf-plus/issues)
 
 ![Sumatra PDF Plus](docs/github-social-preview.png)
 
----
+## 主要功能 · Features
 
-## Features · 主要特性
+| 功能 / Feature | 说明 / What it does |
+| --- | --- |
+| 阅读与主题 / Reading and themes | PDF、EPUB、MOBI、Markdown、Word 文档及 PPTX 文字内容；四种界面主题，文档原稿色或匹配主题色。 / Multiple formats, four interface themes, original or theme-matched document colors. |
+| 扫描件 OCR / Local OCR | 翻页自动识别、全文识别、框选识别、保存可搜索 PDF。 / Recognize pages while reading, whole documents or selected regions; save searchable PDFs. |
+| 手动调整页面 / Page adjustment | 倾斜校正、旋转、镜像、裁切比例锁定、批量逐页预览与本页单独调整。 / Deskew, rotate, flip and crop with ratio locks, batch previews and per-page overrides. |
+| 缩略图页面管理 / Thumbnail page editing | 多选、复制、剪切、粘贴、删除、拖动排序、撤销；插入和提取页面。 / Multi-select, copy/cut/paste, delete, drag to reorder, undo, insert and extract pages. |
+| AI 目录识别 / AI table of contents | 从印刷目录或正文生成书签，支持 API 与网页 AI 工作流程，导入前可校准。 / Generate bookmarks from printed contents or body text, using an API or web AI workflow, with review before importing. |
+| 批注 / Annotations | 划词工具栏、笔记与页面内自由文本编辑。 / Selection markup, notes and inline free-text editing. |
+| 离线查词 / Offline dictionary | 双击查词，支持英汉、汉语词典及繁体 PDF 查词。 / Double-click lookup, with English–Chinese, Chinese and Traditional Chinese PDF support. |
+| 朗读 / Read aloud | 系统语音逐词高亮，EPUB 3 内置录音共用朗读控制条。 / Word-highlighted text-to-speech and EPUB 3 recorded narration on one control bar. |
 
-**Highlights / 重点**
+常见格式：PDF、EPUB、MOBI、AZW/AZW3、FB2、CHM、CBZ/CBR、DjVu、XPS、Markdown（MD）、DOC、DOCX 等，也可提取阅读 PPTX 的文字内容。扫描 PDF、DjVu、图片和漫画可使用本地 OCR。
+Supported formats include PDF, EPUB, MOBI, AZW/AZW3, FB2, CHM, CBZ/CBR, DjVu, XPS, Markdown, DOC and DOCX, plus text-oriented reading of PPTX files. Local OCR also works with scanned documents, images and comics.
 
-- **OCR** — offline RapidOCR / PP-OCR for **scanned pages**. Auto OCR while reading, recognize all pages, save a searchable PDF, or drag a region; then search, select, look up, read aloud, and extract bookmarks. Keep `{exe}\ocr\`.  
-  **OCR** — **扫描页本地识别**（RapidOCR / PP-OCR）。翻页自动识别、全文识别、保存可搜索 PDF、框选识别；之后可搜索、选中、查词、朗读、提取书签。模型在 `{exe}\ocr\`。
-- **AI table of contents (API)** — recognize printed contents in scanned PDFs with a vision model. Save multiple provider profiles, filter fetched models directly in the model field, and set the request concurrency. [Setup and usage](docs/ai-toc-api.md).
-  **AI 目录识别（API）** — 用视觉模型识别扫描 PDF 的印刷目录；可保存多套平台配置、直接在模型框筛选已获取的模型、设置请求并发数。[配置与使用说明](docs/ai-toc-api.md)。
-- **Smart PDF dark mode** — Original / Match theme for PDF and ebooks; toolbar Light / Dark (Light-Warm, Light-White).  
-  **智能暗黑** — 原稿 / 匹配主题（PDF、EPUB、MOBI 等）；工具栏亮/暗主题（暖色护眼、中性浅色）。
-- **Read Aloud** — one bar for TTS and EPUB 3 recorded narration; word highlight; start from top, cursor, or selection.  
-  **朗读** — 系统语音与 EPUB 3 有声书同一条控制；逐词高亮；从页首/光标/选中开始。
-- **Offline dictionary** — double-click a word; `.idx`/`.dat` in `{exe}\dict\`.  
-  **离线查词** — 双击词语；词典放在 `{exe}\dict\`。
-- **Chinese EPUB/MOBI** — mixed text/image layout; TOC navigation; faster open for large EPUB/MOBI/AZW.  
-  **中文 EPUB/MOBI** — 图文混排与目录跳转；大型文件打开更快。
-- **Selection toolbar** — highlight, underline, strike out, Ask AI on PDF selection.  
-  **划词工具栏** — 选中后高亮、下划线、删除线、Ask AI。
+## 下载与开始使用 · Download and get started
 
-**Also / 其他：** per-monitor DPI (sidebar, toolbar, menu, tabs, TOC search; tab-detach font fix) · session restore no longer crashes on double-click open · Win11-style caption and theme-aware chrome.  
-**另有：** 双屏 DPI（书签/工具栏/菜单/标签/目录搜索字号；拖标签分窗字体）· 恢复会话后双击打开不再崩溃 · Win11 标题栏与主题配色。
+- **首次使用：** 在[发布页](https://github.com/dengxibo/sumatrapdf-plus/releases/latest)选择完整程序包（如有提供），解压后运行 `SumatraPDF-Plus.exe`。
+  **First use:** choose a complete package from the [release page](https://github.com/dengxibo/sumatrapdf-plus/releases/latest), when available, and run `SumatraPDF-Plus.exe` after extraction.
+- **已有完整目录：** 退出程序后，可用新版 [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe) 替换旧文件；保留原有配置及配套数据。独立 EXE 不包含全部可选资源。
+  **Updating an existing folder:** close the app and replace the executable with the new [EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.43/SumatraPDF-Plus.exe), keeping settings and supporting data. The standalone EXE does not contain all optional resources.
 
-**Supported formats / 常见格式：** PDF（含扫描件 OCR）、EPUB、MOBI、AZW/AZW3、FB2、CHM、CBZ/CBR、DjVu、XPS 等。Scanned PDF, DjVu, images, and comics can be recognized locally.  
-扫描 PDF、DjVu、图片和漫画可本地 OCR。
+| 同目录资源 / Folder beside the EXE | 用途 / Purpose |
+| --- | --- |
+| `fonts` | 配套字体 / Bundled fonts |
+| `ocr` | 本地 OCR 模型和 `onnxruntime.dll` / Local OCR models and runtime |
+| `dict` | 用户词典 `.idx` / `.dat`，可带音频数据 / User dictionary files and optional audio |
+| `opencc` | 繁体 PDF 查词所需的转换数据 / Conversion data for Traditional Chinese PDF lookup |
 
-Product name: **Sumatra PDF Plus**. Executable: `SumatraPDF-Plus.exe`.  
-显示名称：**Sumatra PDF Plus**，可执行文件为 `SumatraPDF-Plus.exe`。
+通过工具栏切换主题、文档颜色、自动 OCR、查词和朗读；在选项窗口调整阅读及识别设置。
+Use the toolbar for themes, document colors, automatic OCR, lookup and read aloud; configure reading and recognition in Options.
 
----
+## PDF 页面整理与裁切 · PDF page editing and cropping
 
-## Quick start · 快速开始
+### 手动调整页面 · Manually adjust pages
 
-1. Extract the full folder to any path (avoid special characters in the path).
-  解压整个文件夹到任意目录（路径尽量不要含特殊符号）。
-2. Run `SumatraPDF-Plus.exe`. Keep the `fonts` folder beside the exe.
-  双击 `SumatraPDF-Plus.exe` 运行；不要只复制 exe，请保留同目录的 `fonts` 文件夹。
-   For Traditional Chinese PDF lookup, also keep the `opencc` folder.  
-   繁体 PDF 查词还需保留 `opencc` 文件夹。
-   For scanned-page OCR, keep the `ocr` folder (`onnxruntime.dll` and `.onnx` models).  
-   扫描页 OCR 还需保留 `ocr` 文件夹（含 `onnxruntime.dll` 与模型）。
-3. Use the toolbar to toggle light/dark theme and word lookup.
-  可通过工具栏切换亮/暗主题和查词开关。
-4. Click **Auto OCR** to recognize scanned pages as you view them, or use the dropdown for recognize-all / save / region.
-  点击**自动 OCR** 可在翻页时识别扫描页；下拉菜单可全文识别、保存可搜索 PDF、或框选识别。
-5. Click the **speaker** icon or open **Read Aloud** in the menu bar to read aloud.
-  点击工具栏**喇叭**，或菜单栏 **朗读 / Read Aloud** 开始朗读。
+在 PDF 页面上右键选择“手动调整页面”。左侧查看预览，右侧设置倾斜角度、参考网格、旋转、镜像和裁切；应用范围可选当前页、全部页或指定页。
+Right-click a PDF page and choose **Manually Adjust Pages**. Preview on the left and set deskew, grid, rotation, flips and cropping on the right. Choose the current page, all pages or a specified range.
 
----
+- **锁定比例：** 自由、锁定当前框、原页比例、A4 竖向/横向、1:1、4:3、3:4；拖动锚点缩放，拖动框内区域移动。
+  **Aspect ratios:** free, current crop, original page, A4 portrait/landscape, 1:1, 4:3 and 3:4. Drag handles to resize or the inside to move.
+- **批量检查：** 先设统一框，再用预览下方的上一页、下一页和页码框遍历所选范围；同尺寸扫描件共用固定位置和尺寸。
+  **Batch review:** set a shared crop, then browse the selected range with the preview navigation controls. Same-size scans share a crop at the same physical position and size.
+- **单页例外：** 某页扫描位置偏移时，勾选“本页单独调整”；翻页后可继续分别调整各页。取消勾选则该页恢复统一框。
+  **Per-page overrides:** enable separate adjustment for a misaligned scan. Keep it enabled to adjust successive pages independently; uncheck to restore that page to the shared crop.
+- **边界检查：** 裁切框越界时标明问题，应用前检查全部目标页；需修正后才能应用。手动裁切与自动裁切互斥。
+  **Bounds checking:** out-of-page crops are flagged and all target pages are checked before applying. Manual and automatic cropping are mutually exclusive.
 
-## OCR · 扫描页识别
+翻页仅用于预览，不修改 PDF，也不改变主窗口的当前页。“应用”将调整写入内存，标签出现未保存红点；手工保存才写回文件，关闭时可选择不保存。
+Preview navigation changes neither the PDF nor the main window's current page. **Apply** changes the in-memory document and shows an unsaved indicator. Save explicitly to write the file, or discard changes when closing.
 
-Recognize scanned pages (little or no text layer) so you can **select, search, look up words, read aloud, and extract bookmarks**. Runs **offline** with RapidOCR / PP-OCR Chinese mobile models in `{exe}\ocr\`.  
-识别几乎没有文字层的扫描页，便于**选择、搜索、查词、朗读和提取书签**。使用 `{exe}\ocr\` 里的 RapidOCR / PP-OCR 中文模型，**完全离线**。
+### 缩略图侧栏 · Thumbnail sidebar
 
-**How to use / 使用方法**
+打开缩略图侧栏，使用 `Ctrl` 多选、`Shift` 连选，再右键操作；选中页面也可拖动排序。
+Open the thumbnail sidebar, use `Ctrl` or `Shift` to select pages, then right-click for actions or drag the selection to reorder it.
 
-- **Toolbar / 工具栏** — **Auto OCR** (before the speaker). Click to toggle recognition as you view or search scanned pages (default **on**). Dropdown: **Recognize all pages**, **Recognize all pages and save**, **OCR region**.  
-  **自动 OCR**（在喇叭按钮前）。单击后翻页即识别扫描页（默认**开**）。下拉：**全文识别**、**全文识别并保存**、**框选识别**。
-- **Recognize all pages / 全文识别** — re-OCRs every page even if a text layer already exists (garbled dual-layer PDFs). Results stay in memory for this session. If there is no outline, bookmarks are extracted after OCR.  
-  即使已有文字层也会再扫一遍（乱码双层 PDF）。结果先留在本次打开的文档里。没有目录时识别后提取书签。
-- **Recognize all pages and save / 全文识别并保存** — scan with progress, then **overwrite the current PDF** (no Save As). Prompts before replacing an existing text layer or outline. PDF only.  
-  显示进度后**直接覆盖当前 PDF**，不弹另存。已有文字层或目录时先询问。仅 PDF。
-- **OCR region / 框选识别** — `Ctrl+Shift+O`, then drag a rectangle; text is copied.  
-  拖选矩形，识别结果复制到剪贴板。
-- **Cancel / 取消** — stop queued jobs; pages already done are kept.  
-  取消排队中的页；已识别的页保留。
+| 操作 / Action | 使用方法 / How |
+| --- | --- |
+| 全选 / Select all | `Ctrl+A` |
+| 复制、剪切、粘贴 / Copy, cut, paste | `Ctrl+C` / `Ctrl+X` / `Ctrl+V`；可在 PDF 标签之间复制页面 / Copy pages between PDF tabs |
+| 删除 / Delete | `Delete`；至少保留一页 / At least one page must remain |
+| 撤销页面编辑 / Undo page edit | `Ctrl+Z` |
+| 插入 / Insert | 右键插入 PDF、图片文件或剪贴板图片 / Right-click to insert a PDF, image file or clipboard image |
+| 提取 / Extract | 右键将选中页另存为新 PDF / Right-click to save selected pages as a new PDF |
 
-Keep the `ocr` folder next to the exe. Details: [docs/md/OCR.md](docs/md/OCR.md).  
-请保留 exe 同目录的 `ocr` 文件夹。详见 [docs/md/OCR.md](docs/md/OCR.md)。
+这些快捷键在缩略图侧栏获得焦点时生效。对当前文档的页面编辑先留在内存，手工保存后落盘；提取页面会单独创建输出文件。
+These shortcuts apply while the thumbnail sidebar has focus. Page edits remain in memory until saved; extraction creates a separate output file.
 
-Advanced setting: `AutoOcrScanPages` (default `true` when the key is missing).  
-高级设置：`AutoOcrScanPages`（设置里没有这一项时默认 `true`）。
+有未保存 OCR 结果时，先保存识别文字再进行页面结构编辑。插入源 PDF 目前需未加密，多帧图片仅插入首帧；复杂表单关系及跨文档内部跳转链接有支持限制。详见[页面管理说明](docs/thumbnail-page-management-2026-10-11.md)。
+Save pending OCR text before changing page structure. Source PDFs must currently be unencrypted; multi-frame images insert their first frame. Complex form relationships and internal cross-document links have limitations. See the [page-management notes](docs/thumbnail-page-management-2026-10-11.md).
 
----
+## Markdown、Word 与演示文稿 · Markdown, Word and presentations
 
-## Read Aloud · 朗读
+除了 PDF 和电子书，也可以阅读 Markdown（`.md`）、Word（`.doc` / `.docx`），并提取 PPTX 的文字内容阅读。
+Read Markdown (`.md`) and Word (`.doc` / `.docx`) documents, and extract PPTX text for reading.
 
-One Read Aloud entry, one bottom bar, one Settings page. Text-to-speech **highlights the current word**. EPUB 3 books with recorded narration play that audio on the same bar (word follow inside each SMIL phrase).  
-一个入口、一条朗读条、一个设置页。系统语音**逐词高亮**。EPUB 3 有声书在同一条上放书里的录音（SMIL 片段内按词跟随）。
+- **Markdown：** 支持标题、表格、代码块等内容的阅读排版，并适配主题。
+  **Markdown:** reading layouts for headings, tables and code blocks, with theme support.
+- **Word：** 可打开 DOCX；旧版 DOC 通过本机 Microsoft Word 转换后阅读，需要安装 Word。
+  **Word:** open DOCX directly; legacy DOC uses Microsoft Word on the computer for conversion and requires Word to be installed.
+- **PPTX：** 以提取内容的方式阅读文字，适合查看讲义和演示文稿要点；不等同于 PowerPoint 的原版幻灯片、动画或放映效果。
+  **PPTX:** read extracted content for slide notes and key points, rather than a faithful PowerPoint slide or animation presentation.
 
-**How to use / 使用方法**
+这些功能用于阅读，Office 转换后的布局与原应用可能不同。
+These are reading features; converted Office layouts may differ from the original application.
 
-- **Toolbar / 工具栏** — speaker icon; click to start/pause/continue; dropdown for start options and settings  
-  **喇叭**；单击开始/暂停/继续；下拉可选起始方式和设置
-- **Menu bar / 菜单栏** — **Read Aloud** → start from top, cursor, or selection; **Read Aloud Settings...**  
-  **朗读** → 从页首/光标/选中开始；**朗读设置**
-- **Bar / 朗读条** — previous/next, play/pause, speed; narrated books also have ±10 s and time  
-  上一句/下一句、播放/暂停、倍速；有声书另有 ±10 秒和时间
-- **Right-click / 右键** — **Start Reading From Cursor Position**; **Pause Reading** / **Continue Reading** while active  
-  **从光标处开始朗读**；朗读中可**暂停朗读** / **继续朗读**
-- **Speed / 语速** — TTS 0.25×–2.0×; EPUB 3 narration 0.5×–2.0×
+## 扫描件 OCR 与目录 · OCR and table of contents
 
-**Natural voices / 自然语音**
+**本地 OCR：** 使用 RapidOCR / PP-OCR，模型位于 `ocr` 文件夹，识别过程离线运行。识别后可搜索、选字、查词、朗读和提取书签。
+**Local OCR:** RapidOCR / PP-OCR runs offline with models in the `ocr` folder. Recognized text can be searched, selected, looked up and read aloud, and used for bookmark extraction.
 
-Default Windows SAPI voices (e.g. Huihui, Kangkang, Yaoyao) sound robotic. For natural speech, install **[NaturalVoiceSAPIAdapter](https://github.com/gexgd0419/NaturalVoiceSAPIAdapter)** and configure local Narrator voices or Edge online voices — see [docs/md/Read-Aloud-TTS.md](docs/md/Read-Aloud-TTS.md).  
-系统默认 SAPI 语音（如慧慧、康康、瑶瑶）较机械。自然语音需安装 **[NaturalVoiceSAPIAdapter](https://github.com/gexgd0419/NaturalVoiceSAPIAdapter)**，详见 [docs/md/Read-Aloud-TTS.md](docs/md/Read-Aloud-TTS.md)。
+- **自动 OCR：** 阅读或搜索扫描页时识别；工具栏可开关。
+  **Auto OCR:** recognize scanned pages while reading or searching; toggle it on the toolbar.
+- **识别所有扫描页：** 提供“快速”和“精确”两种方式。
+  **Recognize all scanned pages:** choose Fast or Accurate.
+- **自动保存：** 独立开关，默认关闭。关闭时识别结果保留在内存，由用户手工保存；开启后，全文识别或目录提取完成会保存当前 PDF，相关覆盖操作会提示确认。
+  **Auto-save:** a separate toggle, off by default. With it off, results stay in memory until saved manually; with it on, whole-document OCR or outline extraction saves the current PDF, with confirmation for relevant overwrite operations.
+- **框选识别：** 按住 `Alt` 用鼠标拖选，或按 `Ctrl+Shift+X` 后拖选区域，识别文字复制到剪贴板。
+  **Region OCR:** hold `Alt` and drag with the mouse, or press `Ctrl+Shift+X` and select a region; recognized text is copied to the clipboard.
 
-Advanced settings: `ReadAloudVoiceId`, `ReadAloudSpeakingRate`.  
-高级设置：`ReadAloudVoiceId`（语音）、`ReadAloudSpeakingRate`（语速）。
+**AI 目录识别：** 支持多套 OpenAI 兼容 API 配置、模型筛选和请求并发设置，也可使用网页 AI 工作流程。可从印刷目录识别，或在没有独立目录页时从正文生成；导入前可校准目录。
+**AI table of contents:** use multiple OpenAI-compatible API profiles, model filtering and concurrency settings, or the web AI workflow. Recognize printed contents or generate an outline from body text, then review before importing.
 
----
+AI API 模式会向所配置的平台发送识别请求，与本地离线 OCR 不同。
+AI API mode sends recognition requests to your configured provider, separately from offline local OCR.
 
-## Offline dictionary · 离线查词
+[OCR 使用说明 / OCR guide](docs/md/OCR.md) · [AI 目录配置 / AI TOC setup](docs/ai-toc-api.md)
 
-Dictionary **code** is in this repo;   
-查词**功能代码**在本仓库；
+## 电子书阅读：选字体、改字号，不用折腾配置文件
 
-1. Create `{exe}\dict\` next to the executable.
-  在 exe 同目录建立 `dict` 文件夹。
-2. Add dictionary files, for example:
-  放入词典文件，例如：
-  - `SumatraDict.idx` / `SumatraDict.dat /` `SumatraDictAudio.dat`— English–Chinese · 英汉
-  - `SumatraDictZh.idx` / `SumatraDictZh.dat` — Chinese dictionary · 汉语
-3. Enable the dictionary button on the toolbar, then double-click a word in the document.
-  打开工具栏「查词」按钮，在正文中双击词语即可。
+阅读 EPUB、MOBI 等可以重新排版的电子书，字体和字号会直接影响阅读体验。这也是 Plus 持续改进的一块。
 
-Override the dictionary folder with the `OfflineDictionaryPath` advanced setting.  
-可用高级设置 `OfflineDictionaryPath` 指定其他词典目录。
+**中英文字体在选项里直接选。** 不用打开配置文件查字段、手工填写字体名称；在选项窗口分别选择中文字体和英文字体，确认后即可应用到电子书阅读。中文、西文和混排内容都能按自己的习惯设置。
 
-**Traditional Chinese PDF lookup / 繁体 PDF 查词** — keep the `opencc` folder next to the exe (OpenCC t2s data). Upgrading only the exe without `opencc` disables Traditional lookup.  
-繁体 PDF 查词需保留 exe 同目录的 `opencc` 文件夹；只升级 exe 将无法繁体查词。
+**字号可以边看边调，调整后立即看到重新排版的结果。** 这与固定版式 PDF 的整页缩放不同：电子书会根据字号重新换行、分页。想把字放大一点，不必反复改配置、重新打开文件试效果；调整字号时也会尽量保留正在阅读的位置。
 
----
+**大型 EPUB 的打开和排版做了明显加速。** 不只关注首次打开，也优化了调整字号后的重新排版和阅读位置恢复，减少大书操作时的等待。具体耗时仍与文件大小、章节结构、图片数量和电脑配置有关。
 
-## Settings · 配置文件
+此外也持续改善中文字体、图文混排、目录跳转，以及 MOBI / AZW 等电子书的阅读体验。
 
-Settings are stored in `SumatraPDF-settings.txt`:
+Choose Chinese and English fonts directly in Options, then apply them to reflowable ebooks. Change the font size while reading and see the text reflow immediately, with reading-position restoration. Large EPUB opening, relayout and position recovery have been accelerated; timings depend on the book and computer.
 
-- **Portable / 便携版:** next to `SumatraPDF-Plus.exe`
-- **Installed / 安装版:** `%LOCALAPPDATA%\SumatraPDF\SumatraPDF-settings.txt`
+## 文档暗黑模式 · Dark document reading
 
-**Annotated reference / 带中文注释的参考模板:** [SumatraPDF-settings-annotated.txt](SumatraPDF-settings-annotated.txt)
+深色界面不等于深色阅读：菜单和工具栏变暗了，如果 PDF 页面仍然是大块白底，夜间阅读时依然很亮。Plus 重点处理的是**文档本身的显示颜色**。
 
-Copy only the lines you need into your live settings file. Comments must be on their own `#` lines (inline comments after values are not supported).  
-只复制需要的配置行到真实配置文件；注释必须单独成行，不能写在值后面。
+**PDF 正文、扫描页和可重排电子书都可以匹配主题显示。** 文字和页面底色随主题调整，同时对图片、照片和彩色内容做保护处理，尽量保留辨识度。也可以切回原稿颜色，查看文档本来的样子。
 
-User guide (Chinese) / 中文说明: [readme.txt](readme.txt)
+这属于阅读时的显示处理，**不会因此改写 PDF 的原始颜色**。图片保护效果会受文档结构影响，遇到特殊页面可以切回原稿对照。
 
----
+浅色阅读也有区别：除了中性白色，还有暖色纸张风格，让页面、背景和界面处在相近色系，同时保持层次。
 
-## Build · 编译 (Windows)
+Theme-matched colors apply to document content, including PDF text, scanned pages and reflowable ebooks, with image and color protection. Switch to original colors whenever needed. This changes the reading display, not the PDF's stored colors; results depend on the document structure. Light-Warm also offers a warm paper-like reading palette.
 
-Requirements: Visual Studio 2022 build tools, [Bun](https://bun.sh).
+## 阅读、批注与主题 · Reading, annotations and themes
+
+- **四种主题：** Light-Warm、Light-White、Dark-Dracula、Dark-Black。文档颜色可保留原稿或匹配主题；菜单、侧栏、输入框和常用提示框随主题配色。
+  **Four themes:** Light-Warm, Light-White, Dark-Dracula and Dark-Black. Preserve original document colors or match the theme; menus, sidebars, inputs and common dialogs follow the interface theme.
+- **批注：** PDF 划词工具栏支持高亮、下划线、删除线与 Ask AI；自由文本可直接在页面上输入、双击编辑，`Ctrl+Enter` 提交、`Esc` 取消。
+  **Annotations:** selection tools for highlights, underlines, strikeouts and Ask AI. Edit free text directly on the page; double-click to edit, `Ctrl+Enter` to commit, `Esc` to cancel.
+- **离线查词：** 将词典放入 `dict`，启用查词后双击正文词语。高级设置 `OfflineDictionaryPath` 可指定其他目录；繁体 PDF 查词需 `opencc`。
+  **Offline lookup:** place dictionaries in `dict`, enable lookup and double-click a word. Use `OfflineDictionaryPath` for another folder; Traditional Chinese PDF lookup needs `opencc`.
+- **朗读：** 工具栏喇叭可开始、暂停和继续；支持从页首、光标或选区开始。系统语音逐词高亮，EPUB 3 录音也使用同一控制条。
+  **Read aloud:** start, pause and resume from the speaker button; begin at the page top, cursor or selection. TTS highlights words; EPUB 3 narration uses the same bar.
+- **阅读设置：** 可调整窗口大小的选项页、垂直滚轮行数及多显示器 DPI 适配。
+  **Reading settings:** resizable Options, configurable vertical wheel lines and per-monitor DPI support.
+
+[朗读说明 / Read-aloud guide](docs/md/Read-Aloud-TTS.md)
+
+## 配置与编译 · Settings and building
+
+配置文件为 `SumatraPDF-settings.txt`：便携版位于 EXE 同目录，安装版位于 `%LOCALAPPDATA%SumatraPDF`。配置注释须独立成行，以 `#` 开头。
+Settings are stored in `SumatraPDF-settings.txt`, beside the portable EXE or under `%LOCALAPPDATA%SumatraPDF` for installed copies. Put `#` comments on their own lines.
+
+当前构建脚本使用 Windows、Visual Studio 2026 C++ 工具链和 [Bun](https://bun.sh)。
+The current build scripts use Windows, the Visual Studio 2026 C++ toolchain and [Bun](https://bun.sh).
 
 ```powershell
-bun ./cmd/build.ts          # debug → out/dbg64/SumatraPDF-Plus.exe
-bun ./cmd/build-all.ts      # release → out/rel64/
+bun ./cmd/build.ts          # Debug   -> out/dbg64/SumatraPDF-Plus.exe
+bun ./cmd/build-release.ts  # Release -> out/rel64/SumatraPDF-Plus.exe
 ```
 
-See [AGENTS.md](AGENTS.md) for contributor notes.  
-贡献者说明见 [AGENTS.md](AGENTS.md)。
+构建脚本也会复制配套字体、OpenCC 数据与 OCR 资源。贡献者说明见 [agents.md](agents.md)。
+Build scripts also copy supporting fonts, OpenCC data and OCR resources. See [agents.md](agents.md) for contributor instructions.
 
----
+## 反馈与许可 · Feedback and license
 
-## Feedback · 反馈
+请在[本仓库](https://github.com/dengxibo/sumatrapdf-plus/issues)反馈 Plus 版本问题，不要提交到官方 SumatraPDF 的问题列表。请附版本、文件类型、复现步骤；界面问题请补充主题、缩放比例和截图。
+Report Plus-specific issues in [this repository](https://github.com/dengxibo/sumatrapdf-plus/issues), with the version, file type and reproduction steps. For interface issues, include the theme, display scaling and a screenshot.
 
-Bug reports and pull requests are welcome **on this repository only** — not on the official SumatraPDF issue tracker.  
-欢迎在本仓库提交 Issue 和 PR，请勿发到官方 SumatraPDF 项目。
+本项目基于 [SumatraPDF](https://github.com/sumatrapdfreader/sumatrapdf)，以 GPLv3 发布，部分代码采用其他兼容许可。参见 [COPYING](COPYING)、[AUTHORS](AUTHORS)。
+Based on [SumatraPDF](https://github.com/sumatrapdfreader/sumatrapdf), distributed under GPLv3 with portions under other compatible licenses. See [COPYING](COPYING) and [AUTHORS](AUTHORS).
 
-When reporting problems, please include the file type, book title (if ebook), and steps to reproduce.  
-反馈问题时请说明文件类型、书名（电子书）和复现步骤。
-
----
-
-## Disclaimer · 免责声明
-
-Sumatra PDF Plus is a community modification for testing and personal use.  
-Sumatra PDF Plus 为基于 GPLv3 的社区修改版，供测试与个人使用。
-
----
-
-## Upstream SumatraPDF
-
-[Build](https://github.com/sumatrapdfreader/sumatrapdf/actions/workflows/build.yml)
-
-SumatraPDF is a multi-format reader for Windows under (A)GPLv3, with some code under BSD license (see [AUTHORS](AUTHORS)).
-
-- [Website](https://www.sumatrapdfreader.org/free-pdf-reader)
-- [Manual](https://www.sumatrapdfreader.org/manual)
-- [Developer Information](https://www.sumatrapdfreader.org/docs/Contribute-to-SumatraPDF)
+[官方项目 / Upstream](https://github.com/sumatrapdfreader/sumatrapdf) · [官方手册 / Upstream manual](https://www.sumatrapdfreader.org/manual)
