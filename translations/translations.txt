@@ -43706,3 +43706,48 @@ tw:滾輪行數（0=系統，1-100）：
 :Wheel scroll lines must be between 0 and 100 (0 follows Windows).
 cn:滚轮行数必须为 0 到 100（0 表示跟随 Windows）。
 tw:滾輪行數必須為 0 到 100（0 表示跟隨 Windows）。
+:Deskew
+cn:倾斜校正
+tw:傾斜校正
+:Reference Grid
+cn:参考网格
+tw:參考網格
+:Show Grid
+cn:显示网格
+tw:顯示網格
+:Sparse
+cn:疏
+tw:疏
+:Normal
+cn:标准
+tw:標準
+:Dense
+cn:密
+tw:密
+:Horizontal Lines
+cn:水平线
+tw:水平線
+:Cross Grid
+cn:十字网格
+tw:十字網格
+:Page Rotation
+cn:页面旋转
+tw:頁面旋轉
+:Flip & Crop
+cn:翻转与裁剪
+tw:翻轉與裁剪
+:Page %d  |  %.0f%%
+cn:第 %d 页  |  %.0f%%
+tw:第 %d 頁  |  %.0f%%
+:Enter an angle from -180° to +180°.
+cn:请输入 −180° 到 +180° 的角度。
+tw:請輸入 −180° 到 +180° 的角度。
+:Minimize
+cn:最小化
+tw:最小化
+:Maximize
+cn:最大化
+tw:最大化
+:Check the angle and reopen this dialog if the document has changed.
+cn:请检查角度；文档若已变化，请重新打开此窗口。
+tw:請檢查角度；文件若已變更，請重新開啟此視窗。
