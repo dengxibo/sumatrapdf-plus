@@ -29,6 +29,9 @@
 #include "AppDialogTheme.h"
 #include "AppSettings.h"
 #include "CaptionGlyphs.h"
+#include "PdfPageAdjustment.h"
+#include "SvgIcons.h"
+#include "Toolbar.h"
 
 #include "DarkModeSubclass.h"
 #include "Notifications.h"
@@ -1525,6 +1528,8 @@ enum PdfRotatePagesCtl {
     idRotateMinimize = 123,
     idRotateMaximize = 124,
     idRotateClose = 125,
+    idRotateShowGrid = 126,
+    idRotateGridDensity = 127,
     idRotateApply = IDOK,
     idRotateCancel = IDCANCEL,
 };
@@ -1549,6 +1554,17 @@ struct PdfRotatePagesDialog {
     HWND hwndMaximize = nullptr;
     HWND hwndClose = nullptr;
     HWND hwndSidebarScroll = nullptr;
+    HWND hwndGridTitle = nullptr;
+    HWND hwndShowGrid = nullptr;
+    HWND hwndGridDensity = nullptr;
+    HWND hwndRotationTitle = nullptr;
+    HWND hwndFlipTitle = nullptr;
+    HWND hwndAngleHint = nullptr;
+    HWND hwndPreviewInfo = nullptr;
+    Tooltip* tooltip = nullptr;
+    HBITMAP iconCache[6][8]{};
+    int iconCacheDpi = 0;
+    int iconCacheEpoch = -1;
     HWND hwndDegLabel = nullptr;
     HWND hwndLeft90 = nullptr;
     HWND hwndRight90 = nullptr;
@@ -1566,7 +1582,17 @@ struct PdfRotatePagesDialog {
     MainWindow* win = nullptr;
     int pageCount = 0;
     int currentPageNo = 1;
-    float angleDeg = 0;
+    PdfPageAdjustment adjustment;
+    bool angleValid = true;
+    bool showGrid = true;
+    int gridDensity = 1;
+    WindowTab* sourceTab = nullptr;
+    EngineBase* sourceEngine = nullptr;
+    HWND holdButton = nullptr;
+    int holdDirection = 0;
+    ULONGLONG holdStart = 0;
+    double holdBase = 0;
+    int separatorY[3]{};
     bool syncing = false;
     RECT previewRc{};
     Gdiplus::Bitmap* gdiPreview = nullptr;
@@ -1633,23 +1659,13 @@ static bool PdfRotateInscribed(float w, float h, float deg, float* wr, float* hr
     return true;
 }
 
-static float PdfRotateClampDeg(float deg) {
-    if (deg > 180.f) {
-        return 180.f;
-    }
-    if (deg < -180.f) {
-        return -180.f;
-    }
-    return deg;
+static float PdfRotateReadAngle(PdfRotatePagesDialog* dlg) {
+    return dlg ? (float)dlg->adjustment.TotalAngle() : 0;
 }
 
-static float PdfRotateReadAngle(PdfRotatePagesDialog* dlg) {
-    if (!dlg || !dlg->hwndAngleEdit) {
-        return 0;
-    }
-    char buf[64]{};
-    GetWindowTextA(dlg->hwndAngleEdit, buf, (int)sizeof(buf));
-    return PdfRotateClampDeg((float)atof(buf));
+static bool PdfRotateSourceIsCurrent(PdfRotatePagesDialog* dlg) {
+    return dlg && IsMainWindowValid(dlg->win) && dlg->win->CurrentTab() == dlg->sourceTab &&
+           dlg->sourceTab->GetEngine() == dlg->sourceEngine;
 }
 
 static bool PdfRotateFlipH(PdfRotatePagesDialog* dlg) {
@@ -1675,15 +1691,16 @@ static void PdfRotateInvalidatePreview(PdfRotatePagesDialog* dlg) {
     }
 }
 
-static void PdfRotateSetAngle(PdfRotatePagesDialog* dlg, float deg, bool updateEdit, bool updateSlider) {
+static void PdfRotateSetAngle(PdfRotatePagesDialog* dlg, double deg, bool updateEdit, bool updateSlider) {
     if (!dlg) {
         return;
     }
-    deg = PdfRotateClampDeg(deg);
-    dlg->angleDeg = deg;
+    dlg->adjustment.SetDeskew(deg);
+    deg = dlg->adjustment.deskew;
+    dlg->angleValid = true;
     dlg->syncing = true;
     if (updateSlider && dlg->hwndSlider) {
-        int ticks = (int)roundf(deg * 10.f);
+        int ticks = limitValue((int)round(deg * 100.0), -500, 500);
         SendMessageW(dlg->hwndSlider, TBM_SETPOS, TRUE, ticks);
     }
     if (updateEdit && dlg->hwndAngleEdit) {
@@ -1691,6 +1708,8 @@ static void PdfRotateSetAngle(PdfRotatePagesDialog* dlg, float deg, bool updateE
         SetWindowTextA(dlg->hwndAngleEdit, text);
     }
     dlg->syncing = false;
+    HwndSetText(dlg->hwndAngleHint, _TRA("-5°                 0°                 +5°"));
+    SendMessageW(dlg->hwndAny, BM_SETCHECK, dlg->adjustment.direction == 0 ? BST_CHECKED : BST_UNCHECKED, 0);
     PdfRotateInvalidatePreview(dlg);
 }
 
@@ -1704,9 +1723,8 @@ static void PdfRotateLoadPreview(PdfRotatePagesDialog* dlg) {
     if (dlg->gdiPreview && dlg->previewRenderSide >= renderSide) {
         return;
     }
-    delete dlg->gdiPreview;
-    dlg->gdiPreview = nullptr;
-    WindowTab* tab = dlg->win ? dlg->win->CurrentTab() : nullptr;
+    if (!PdfRotateSourceIsCurrent(dlg)) return;
+    WindowTab* tab = dlg->sourceTab;
     DisplayModel* dm = tab ? tab->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
     if (!engine) {
@@ -1747,6 +1765,7 @@ static void PdfRotateLoadPreview(PdfRotatePagesDialog* dlg) {
         delete bmp;
         return;
     }
+    delete dlg->gdiPreview;
     dlg->gdiPreview = bmp;
     dlg->previewRenderSide = renderSide;
 }
@@ -1762,12 +1781,14 @@ static void PdfRotatePaintPreview(PdfRotatePagesDialog* dlg, HDC hdc) {
     g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
     g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     g.SetClip(Gdiplus::Rect(rc.left, rc.top, rw, rh));
-    Gdiplus::SolidBrush bg(Gdiplus::Color(255, 96, 96, 96));
+    COLORREF workspace = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowBackgroundColor(), -12)
+                                               : AccentColor(ThemeWindowControlBackgroundColor(), -28);
+    Gdiplus::SolidBrush bg(Gdiplus::Color(255, GetRValue(workspace), GetGValue(workspace), GetBValue(workspace)));
     g.FillRectangle(&bg, rc.left, rc.top, rw, rh);
     if (dlg->gdiPreview) {
         float bw = (float)dlg->gdiPreview->GetWidth();
         float bh = (float)dlg->gdiPreview->GetHeight();
-        float ang = dlg->angleDeg;
+        float ang = PdfRotateReadAngle(dlg);
         float cropW = 0;
         float cropH = 0;
         if (PdfRotateAutoCrop(dlg)) {
@@ -1810,14 +1831,25 @@ static void PdfRotatePaintPreview(PdfRotatePagesDialog* dlg, HDC hdc) {
         g.ResetClip();
         g.SetClip(Gdiplus::Rect(rc.left, rc.top, rw, rh));
     }
-    Gdiplus::Pen grid(Gdiplus::Color(65, 100, 130, 150), 1.f);
-    Gdiplus::Pen majorGrid(Gdiplus::Color(115, 100, 130, 150), 1.f);
-    int step = DpiScale(dlg->hwnd, 20);
+    if (!dlg->showGrid) return;
+    // A dark underlay and lighter theme-colored hairline remain visible both
+    // over white paper and over the dark workspace. Grid coordinates never
+    // inherit the page transform or the user's pan offset.
+    COLORREF gridInk = ThemeSelectionFrameColor();
+    Gdiplus::Pen grid(Gdiplus::Color(95, GetRValue(gridInk), GetGValue(gridInk), GetBValue(gridInk)), 1.f);
+    Gdiplus::Pen majorGrid(Gdiplus::Color(155, GetRValue(gridInk), GetGValue(gridInk), GetBValue(gridInk)), 1.f);
+    Gdiplus::Pen underlay(Gdiplus::Color(45, 0, 0, 0), 1.f);
+    const int spacing[] = {32, 20, 12};
+    int step = DpiScale(dlg->hwnd, spacing[dlg->gridDensity]);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeNone);
     for (int x = rc.left; x < rc.right; x += step) {
+        g.DrawLine(&underlay, (float)x + 1, (float)rc.top, (float)x + 1, (float)rc.bottom);
         g.DrawLine((x - rc.left) / step % 5 == 0 ? &majorGrid : &grid, (float)x, (float)rc.top, (float)x,
                    (float)rc.bottom);
     }
     for (int y = rc.top; y < rc.bottom; y += step) {
+        g.DrawLine(&underlay, (float)rc.left, (float)y + 1, (float)rc.right, (float)y + 1);
         g.DrawLine((y - rc.top) / step % 5 == 0 ? &majorGrid : &grid, (float)rc.left, (float)y, (float)rc.right,
                    (float)y);
     }
@@ -1836,11 +1868,16 @@ static void PdfRotatePagesUpdateUi(PdfRotatePagesDialog* dlg) {
         valid = ParseDeletePages(pages, dlg->pageCount, parsedPages);
     }
     float ang = PdfRotateReadAngle(dlg);
-    bool trivial = fabsf(ang) < 0.05f && !PdfRotateFlipH(dlg) && !PdfRotateFlipV(dlg);
-    EnableWindow(dlg->hwndRotateBtn, valid && !trivial);
+    bool trivial = fabsf(ang) < 0.00001f && !PdfRotateFlipH(dlg) && !PdfRotateFlipV(dlg);
+    EnableWindow(dlg->hwndRotateBtn, valid && dlg->angleValid && !trivial && PdfRotateSourceIsCurrent(dlg));
 }
 
 static void PdfRotatePagesDoIt(PdfRotatePagesDialog* dlg) {
+    if (!dlg->angleValid || !PdfRotateSourceIsCurrent(dlg)) {
+        MessageBoxWarning(dlg->hwnd, _TRA("Check the angle and reopen this dialog if the document has changed."),
+                          _TRA("Manually Adjust Pages"));
+        return;
+    }
     Vec<int> pageNos;
     if (SendMessageW(dlg->hwndSpecified, BM_GETCHECK, 0, 0) == BST_CHECKED) {
         char pages[256]{};
@@ -1861,7 +1898,7 @@ static void PdfRotatePagesDoIt(PdfRotatePagesDialog* dlg) {
     bool flipH = PdfRotateFlipH(dlg);
     bool flipV = PdfRotateFlipV(dlg);
     bool autoCrop = PdfRotateAutoCrop(dlg);
-    if (fabsf(ang) < 0.05f && !flipH && !flipV) {
+    if (fabsf(ang) < 0.00001f && !flipH && !flipV) {
         MessageBoxWarning(dlg->hwnd, _TRA("Nothing to change."), _TRA("Manually Adjust Pages"));
         return;
     }
@@ -1969,9 +2006,9 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi, bool fitCli
     int pad = PdfRotatePx(16, dpi);
     int gap = PdfRotatePx(8, dpi);
     int titleH = PdfRotatePx(32, dpi);
-    int sideW = PdfRotatePx(310, dpi);
-    int clientW = PdfRotatePx(940, dpi);
-    int clientH = PdfRotatePx(620, dpi);
+    int sideW = PdfRotatePx(350, dpi);
+    int clientW = PdfRotatePx(1040, dpi);
+    int clientH = PdfRotatePx(680, dpi);
     if (fitClient) {
         Rect client = ClientRect(hwnd);
         clientW = client.dx;
@@ -1987,10 +2024,31 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi, bool fitCli
     int footer = clientH - pad - rowH;
     dlg->previewRc = {pad, top, x - pad, clientH - pad};
     int tool = PdfRotatePx(32, dpi);
+    PdfRotatePagesMoveChild(dlg->hwndPreviewInfo, pad + gap * 4 + tool * 3, top + gap,
+                            std::max(1, x - pad * 2 - tool * 3 - gap * 5), tool);
     PdfRotatePagesMoveChild(dlg->hwndZoomIn, pad + gap, top + gap, tool, tool);
     PdfRotatePagesMoveChild(dlg->hwndZoomOut, pad + gap * 2 + tool, top + gap, tool, tool);
     PdfRotatePagesMoveChild(dlg->hwndZoomFit, pad + gap * 3 + tool * 2, top + gap, tool, tool);
-    int contentH = 12 * (rowH + gap) + gap * 2;
+    // Deskew stays fixed above the scrollable auxiliary settings.
+    int fixedY = top;
+    PdfRotatePagesMoveChild(dlg->hwndAny, x, fixedY, sideW, rowH);
+    fixedY += rowH + gap;
+    int editW = PdfRotatePx(90, dpi);
+    int stepGap = PdfRotatePx(4, dpi);
+    int degreeW = PdfRotatePx(10, dpi);
+    int stepW = rowH * 2 + editW + degreeW + stepGap * 3;
+    int stepX = x + (sideW - stepW) / 2;
+    PdfRotatePagesMoveChild(dlg->hwndAngleMinus, stepX, fixedY, rowH, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndAngleEdit, stepX + rowH + stepGap, fixedY, editW, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndDegLabel, stepX + rowH + editW + stepGap * 2, fixedY, degreeW, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndAnglePlus, stepX + stepW - rowH, fixedY, rowH, rowH);
+    fixedY += rowH + gap;
+    PdfRotatePagesMoveChild(dlg->hwndSlider, x, fixedY, sideW, rowH);
+    fixedY += rowH;
+    int hintH = std::max(PdfRotatePx(18, dpi), HwndMeasureText(hwnd, "Xg", dlg->hFont).dy);
+    PdfRotatePagesMoveChild(dlg->hwndAngleHint, x, fixedY, sideW, hintH);
+    top = fixedY + hintH + gap * 2;
+    int contentH = 13 * (rowH + gap) + gap * 3;
     int viewportH = std::max(1, footer - gap - top);
     dlg->sidebarRc = {x, top, x + sideW, top + viewportH};
     dlg->sidebarMax = std::max(0, contentH - viewportH);
@@ -1999,7 +2057,7 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi, bool fitCli
     int w = sideW - (dlg->sidebarMax ? barW + gap : 0);
     int y = top - dlg->sidebarPos;
     auto move = [&](HWND child, int px, int py, int width, int height) {
-        PdfRotatePagesMoveChild(child, px, py, width, height);
+        PdfRotatePagesMoveChild(child, px, py, width, child == dlg->hwndGridDensity ? PdfRotatePx(180, dpi) : height);
         Rect r(px, py, width, height);
         Rect clip = r.Intersect(Rect(x, top, w, viewportH));
         HRGN region = clip.IsEmpty()
@@ -2007,30 +2065,28 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi, bool fitCli
                           : CreateRectRgn(clip.x - r.x, clip.y - r.y, clip.Right() - r.x, clip.Bottom() - r.y);
         SetWindowRgn(child, region, TRUE);
     };
-    move(dlg->hwndAny, x, y, w, rowH);
+    move(dlg->hwndGridTitle, x, y, w, rowH);
     y += rowH + gap;
-    move(dlg->hwndSlider, x, y, w, rowH);
-    y += rowH + gap;
-    int editW = PdfRotatePx(80, dpi);
-    int stepGap = PdfRotatePx(4, dpi);
-    int degreeW = PdfRotatePx(10, dpi);
-    int stepW = rowH * 2 + editW + degreeW + stepGap * 3;
-    int stepX = x + (w - stepW) / 2;
-    move(dlg->hwndAngleMinus, stepX, y, rowH, rowH);
-    move(dlg->hwndAngleEdit, stepX + rowH + stepGap, y, editW, rowH);
-    move(dlg->hwndDegLabel, stepX + rowH + stepGap + editW + stepGap, y, degreeW, rowH);
-    move(dlg->hwndAnglePlus, stepX + stepW - rowH, y, rowH, rowH);
+    move(dlg->hwndShowGrid, x, y, w / 2, rowH);
+    move(dlg->hwndGridDensity, x + w / 2, y, w / 2, rowH);
+    y += rowH + gap * 2;
+    dlg->separatorY[0] = y - gap;
+    move(dlg->hwndRotationTitle, x, y, w, rowH);
     y += rowH + gap;
     int third = w / 3;
-    move(dlg->hwndLeft90, x, y, third, rowH);
-    move(dlg->hwndRight90, x + third, y, third, rowH);
+    move(dlg->hwndLeft90, x, y, third - gap / 2, rowH);
+    move(dlg->hwndRight90, x + third, y, third - gap / 2, rowH);
     move(dlg->hwnd180, x + third * 2, y, w - third * 2, rowH);
+    y += rowH + gap * 2;
+    dlg->separatorY[1] = y - gap;
+    move(dlg->hwndFlipTitle, x, y, w, rowH);
     y += rowH + gap;
     move(dlg->hwndFlipH, x, y, w / 2, rowH);
     move(dlg->hwndFlipV, x + w / 2, y, w - w / 2, rowH);
     y += rowH + gap;
     move(dlg->hwndAutoCrop, x, y, w, rowH);
     y += rowH + gap * 2;
+    dlg->separatorY[2] = y - gap;
     move(dlg->hwndApplyToLabel, x, y, w, rowH);
     y += rowH + gap;
     move(dlg->hwndCurrentPage, x, y, w, rowH);
@@ -2068,6 +2124,13 @@ static LRESULT PdfRotatePagesColorControl(PdfRotatePagesDialog* dlg, HDC dc, HWN
         text = ThemeWindowTextDisabledColor();
     }
     SetTextColor(dc, text);
+    if (control == dlg->hwndPreviewInfo) {
+        COLORREF workspace = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowBackgroundColor(), -12)
+                                                   : AccentColor(ThemeWindowControlBackgroundColor(), -28);
+        SetBkColor(dc, workspace);
+        SetDCBrushColor(dc, workspace);
+        return (LRESULT)GetStockObject(DC_BRUSH);
+    }
     SetBkColor(dc, edit ? ThemeWindowControlBackgroundColor() : AppDialogPanelBackgroundColor());
     return (LRESULT)(edit ? dlg->ctrlBrush : dlg->bgBrush);
 }
@@ -2080,8 +2143,66 @@ static void PdfRotatePreviewZoom(PdfRotatePagesDialog* dlg, float factor, POINT 
     dlg->panX = x - (x - dlg->panX) * ratio;
     dlg->panY = y - (y - dlg->panY) * ratio;
     dlg->previewZoom = next;
+    HwndSetText(dlg->hwndPreviewInfo, str::FormatTemp(_TRA("Page %d  |  %.0f%%"), dlg->currentPageNo, next * 100));
     PdfRotateInvalidatePreview(dlg);
     SetTimer(dlg->hwnd, 1, 150, nullptr);
+}
+
+static void PdfRotateStopHold(PdfRotatePagesDialog* dlg) {
+    HWND button = dlg->holdButton;
+    dlg->holdButton = nullptr;
+    KillTimer(dlg->hwnd, 2);
+    if (button) {
+        SendMessageW(button, BM_SETSTATE, FALSE, 0);
+        if (GetCapture() == button) ReleaseCapture();
+    }
+}
+
+static LRESULT CALLBACK PdfRotateFineButtonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id,
+                                                DWORD_PTR data) {
+    auto* dlg = (PdfRotatePagesDialog*)data;
+    if (msg == WM_LBUTTONDOWN && IsWindowEnabled(hwnd)) {
+        PdfRotateStopHold(dlg);
+        SetFocus(hwnd);
+        if (!dlg->angleValid || !PdfRotateSourceIsCurrent(dlg)) return 0;
+        dlg->holdDirection = GetDlgCtrlID(hwnd) == idRotateAnglePlus ? 1 : -1;
+        PdfRotateSetAngle(dlg, dlg->adjustment.deskew + dlg->holdDirection * 0.05, true, true);
+        PdfRotatePagesUpdateUi(dlg);
+        dlg->holdBase = dlg->adjustment.deskew;
+        dlg->holdStart = GetTickCount64();
+        dlg->holdButton = hwnd;
+        SetCapture(hwnd);
+        SendMessageW(hwnd, BM_SETSTATE, TRUE, 0);
+        SetTimer(dlg->hwnd, 2, 16, nullptr);
+        return 0;
+    }
+    if (msg == WM_MOUSEMOVE && dlg->holdButton == hwnd) {
+        POINT pt{(short)LOWORD(lp), (short)HIWORD(lp)};
+        RECT client{};
+        GetClientRect(hwnd, &client);
+        // Moving outside cancels this press; reentry requires another press.
+        if (!PtInRect(&client, pt)) PdfRotateStopHold(dlg);
+        return 0;
+    }
+    if (msg == WM_LBUTTONUP && dlg->holdButton == hwnd) {
+        PdfRotateStopHold(dlg);
+        return 0;
+    }
+    if (msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE || msg == WM_KILLFOCUS || (msg == WM_ENABLE && !wp) ||
+        msg == WM_NCDESTROY) {
+        if (dlg->holdButton == hwnd) PdfRotateStopHold(dlg);
+        if (msg == WM_NCDESTROY) RemoveWindowSubclass(hwnd, PdfRotateFineButtonProc, id);
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void PdfRotateClearIconCache(PdfRotatePagesDialog* dlg) {
+    for (auto& icons : dlg->iconCache) {
+        for (auto& bitmap : icons) {
+            DeleteObject(bitmap);
+            bitmap = nullptr;
+        }
+    }
 }
 
 static LRESULT CALLBACK PdfRotateIconButtonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
@@ -2115,38 +2236,68 @@ static void PdfRotateDrawIconButton(PdfRotatePagesDialog* dlg, DRAWITEMSTRUCT* i
                              DpiScale(dlg->hwnd, 10), hot, pressed, GetActiveWindow() == dlg->hwnd);
         return;
     }
-    COLORREF bg = ThemeWindowControlBackgroundColor();
-    if (hot || pressed) bg = AccentColor(bg, pressed ? 12 : 8);
+    bool direction = id == idRotateLeft90 || id == idRotateRight90 || id == idRotate180;
+    bool selected = direction && dlg->adjustment.direction == (id == idRotateLeft90    ? -90
+                                                               : id == idRotateRight90 ? 90
+                                                                                       : 180);
+    bool disabled = (item->itemState & ODS_DISABLED) != 0;
+    COLORREF bg = direction               ? AppDialogPanelBackgroundColor()
+                  : ThemeUsesDarkChrome() ? AccentColor(ThemeWindowBackgroundColor(), -12)
+                                          : AccentColor(ThemeWindowControlBackgroundColor(), -28);
+    if (selected)
+        bg = ThemeInspectorSelectedBackgroundColor();
+    else if (!disabled && (hot || pressed))
+        bg = AccentColor(bg, pressed ? 12 : 8);
+    COLORREF color = disabled   ? ThemeWindowTextDisabledColor()
+                     : selected ? ThemeInspectorSelectedTextColor()
+                                : ThemeWindowTextColor();
     HBRUSH brush = CreateSolidBrush(bg);
     FillRect(item->hDC, &item->rcItem, brush);
     DeleteObject(brush);
-    Gdiplus::Graphics g(item->hDC);
-    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    COLORREF color = ThemeWindowTextColor();
-    Gdiplus::Pen pen(Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color)),
-                     (float)DpiScale(dlg->hwnd, 1));
-    float cx = r.dx * 0.5f;
-    float cy = r.dy * 0.5f;
-    float radius = (float)DpiScale(dlg->hwnd, 6);
-    if (id == idRotateZoomFit) {
-        float edge = radius + DpiScale(dlg->hwnd, 2);
-        float arm = DpiScale(dlg->hwnd, 5);
-        for (int sx : {-1, 1}) {
-            for (int sy : {-1, 1}) {
-                float x = cx + sx * edge;
-                float y = cy + sy * edge;
-                g.DrawLine(&pen, x, y, x - sx * arm, y);
-                g.DrawLine(&pen, x, y, x, y - sy * arm);
-            }
+    int dpi = DpiGet(dlg->hwnd);
+    if (dlg->iconCacheDpi != dpi || dlg->iconCacheEpoch != ThemeEpoch()) {
+        PdfRotateClearIconCache(dlg);
+        dlg->iconCacheDpi = dpi;
+        dlg->iconCacheEpoch = ThemeEpoch();
+    }
+    int index = id == idRotateZoomIn    ? 0
+                : id == idRotateZoomOut ? 1
+                : id == idRotateZoomFit ? 2
+                : id == idRotateLeft90  ? 3
+                : id == idRotateRight90 ? 4
+                                        : 5;
+    int state = disabled ? 3 : pressed ? 2 : hot || selected ? 1 : 0;
+    // Keep selected direction backgrounds separate from transient hover.
+    if (selected) state += 4;
+    int size = DpiScale(dlg->hwnd, 18);
+    HDC memory = CreateCompatibleDC(item->hDC);
+    HBITMAP& bitmap = dlg->iconCache[index][state];
+    const TbIcon icons[] = {TbIcon::ZoomIn,     TbIcon::ZoomOut,     TbIcon::ArrowsDiagonalMinimize,
+                            TbIcon::RotateLeft, TbIcon::RotateRight, TbIcon::RotateRight};
+    if (!bitmap) {
+        bitmap = CreateCompatibleBitmap(item->hDC, size, size);
+        if (bitmap && memory) {
+            HGDIOBJ old = SelectObject(memory, bitmap);
+            DrawSvgIcon(memory, Rect(0, 0, size, size), icons[index], color, bg);
+            SelectObject(memory, old);
         }
-    } else {
-        cx -= DpiScale(dlg->hwnd, 2);
-        cy -= DpiScale(dlg->hwnd, 2);
-        g.DrawEllipse(&pen, cx - radius, cy - radius, radius * 2, radius * 2);
-        g.DrawLine(&pen, cx + radius * 0.7f, cy + radius * 0.7f, cx + radius * 1.7f, cy + radius * 1.7f);
-        float arm = radius * 0.5f;
-        g.DrawLine(&pen, cx - arm, cy, cx + arm, cy);
-        if (id == idRotateZoomIn) g.DrawLine(&pen, cx, cy - arm, cx, cy + arm);
+    }
+    int ix = direction ? DpiScale(dlg->hwnd, 6) : (r.dx - size) / 2;
+    if (bitmap && memory) {
+        HGDIOBJ old = SelectObject(memory, bitmap);
+        BitBlt(item->hDC, ix, (r.dy - size) / 2, size, size, memory, 0, 0, SRCCOPY);
+        SelectObject(memory, old);
+    }
+    DeleteDC(memory);
+    if (direction) {
+        RECT text = item->rcItem;
+        text.left += ix + size + DpiScale(dlg->hwnd, 4);
+        text.right -= DpiScale(dlg->hwnd, 4);
+        ScopedSelectObject font(item->hDC, dlg->hFont);
+        SetBkMode(item->hDC, TRANSPARENT);
+        SetTextColor(item->hDC, color);
+        const WCHAR* label = id == idRotate180 ? L"180°" : id == idRotateLeft90 ? _TRW("Left 90°") : _TRW("Right 90°");
+        DrawTextW(item->hDC, label, -1, &text, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
     }
     if (item->itemState & ODS_FOCUS) {
         RECT focus = item->rcItem;
@@ -2206,7 +2357,9 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             InvalidateRect(dlg->hwndClose, nullptr, FALSE);
             return DefWindowProc(hwnd, msg, wp, -1);
         case WM_DRAWITEM:
-            if (((DRAWITEMSTRUCT*)lp)->CtlID >= idRotateZoomIn && ((DRAWITEMSTRUCT*)lp)->CtlID <= idRotateClose) {
+            if ((((DRAWITEMSTRUCT*)lp)->CtlID >= idRotateZoomIn && ((DRAWITEMSTRUCT*)lp)->CtlID <= idRotateClose) ||
+                ((DRAWITEMSTRUCT*)lp)->CtlID == idRotateLeft90 || ((DRAWITEMSTRUCT*)lp)->CtlID == idRotateRight90 ||
+                ((DRAWITEMSTRUCT*)lp)->CtlID == idRotate180) {
                 PdfRotateDrawIconButton(dlg, (DRAWITEMSTRUCT*)lp);
                 return TRUE;
             }
@@ -2310,7 +2463,21 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             }
             return 0;
         case WM_TIMER:
+            if (wp == 2 && dlg->holdButton) {
+                if (GetCapture() != dlg->holdButton || !PdfRotateSourceIsCurrent(dlg) || GetActiveWindow() != hwnd ||
+                    !IsWindowEnabled(dlg->holdButton)) {
+                    PdfRotateStopHold(dlg);
+                    PdfRotatePagesUpdateUi(dlg);
+                    return 0;
+                }
+                double elapsed = (GetTickCount64() - dlg->holdStart) / 1000.0;
+                PdfRotateSetAngle(dlg, dlg->holdBase + dlg->holdDirection * PdfAdjustmentHoldTravel(elapsed), true,
+                                  true);
+                PdfRotatePagesUpdateUi(dlg);
+                return 0;
+            }
             if (wp == 1) {
+                if (dlg->holdButton) return 0;
                 KillTimer(hwnd, 1);
                 PdfRotateLoadPreview(dlg);
                 PdfRotateInvalidatePreview(dlg);
@@ -2340,21 +2507,23 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                 case idRotateZoomFit:
                     dlg->previewZoom = 1.f;
                     dlg->panX = dlg->panY = 0;
+                    HwndSetText(dlg->hwndPreviewInfo,
+                                str::FormatTemp(_TRA("Page %d  |  %.0f%%"), dlg->currentPageNo, 100.0));
                     PdfRotateInvalidatePreview(dlg);
                     return 0;
                 case idRotateAngleMinus:
                 case idRotateAnglePlus:
                     if (code == BN_CLICKED) {
-                        SendMessageW(dlg->hwndAny, BM_SETCHECK, BST_CHECKED, 0);
-                        float step = id == idRotateAnglePlus ? 0.05f : -0.05f;
-                        PdfRotateSetAngle(dlg, roundf(PdfRotateReadAngle(dlg) * 100.f + step * 100.f) / 100.f, true,
-                                          true);
+                        if (!dlg->angleValid) return 0;
+                        double step = id == idRotateAnglePlus ? 0.05 : -0.05;
+                        PdfRotateSetAngle(dlg, dlg->adjustment.deskew + step, true, true);
                         PdfRotatePagesUpdateUi(dlg);
                         return 0;
                     }
                     break;
                 case idRotateApply:
                     if (code == BN_CLICKED) {
+                        PdfRotateStopHold(dlg);
                         PdfRotatePagesDoIt(dlg);
                         return 0;
                     }
@@ -2384,28 +2553,27 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                     break;
                 case idRotateAny:
                     if (code == BN_CLICKED) {
+                        if (!dlg->angleValid) return 0;
+                        dlg->adjustment.direction = 0;
+                        PdfRotateSetAngle(dlg, dlg->adjustment.deskew, false, true);
+                        InvalidateRect(dlg->hwndLeft90, nullptr, FALSE);
+                        InvalidateRect(dlg->hwndRight90, nullptr, FALSE);
+                        InvalidateRect(dlg->hwnd180, nullptr, FALSE);
                         PdfRotatePagesUpdateUi(dlg);
                         PdfRotateInvalidatePreview(dlg);
                         return 0;
                     }
                     break;
                 case idRotateLeft90:
-                    if (code == BN_CLICKED) {
-                        PdfRotateSetAngle(dlg, -90.f, true, true);
-                        PdfRotatePagesUpdateUi(dlg);
-                        return 0;
-                    }
-                    break;
                 case idRotateRight90:
-                    if (code == BN_CLICKED) {
-                        PdfRotateSetAngle(dlg, 90.f, true, true);
-                        PdfRotatePagesUpdateUi(dlg);
-                        return 0;
-                    }
-                    break;
                 case idRotate180:
                     if (code == BN_CLICKED) {
-                        PdfRotateSetAngle(dlg, 180.f, true, true);
+                        if (!dlg->angleValid) return 0;
+                        dlg->adjustment.direction = id == idRotateLeft90 ? -90 : id == idRotateRight90 ? 90 : 180;
+                        PdfRotateSetAngle(dlg, dlg->adjustment.deskew, false, true);
+                        InvalidateRect(dlg->hwndLeft90, nullptr, FALSE);
+                        InvalidateRect(dlg->hwndRight90, nullptr, FALSE);
+                        InvalidateRect(dlg->hwnd180, nullptr, FALSE);
                         PdfRotatePagesUpdateUi(dlg);
                         return 0;
                     }
@@ -2415,9 +2583,32 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                         if (dlg->syncing) {
                             return 0;
                         }
-                        SendMessageW(dlg->hwndAny, BM_SETCHECK, BST_CHECKED, 0);
-                        PdfRotateSetAngle(dlg, PdfRotateReadAngle(dlg), false, true);
+                        char text[128]{};
+                        GetWindowTextA(dlg->hwndAngleEdit, text, dimof(text));
+                        double angle;
+                        dlg->angleValid = PdfParseAdjustmentAngle(text, &angle);
+                        if (dlg->angleValid) {
+                            PdfRotateSetAngle(dlg, angle, false, true);
+                        } else {
+                            HwndSetText(dlg->hwndAngleHint, _TRA("Enter an angle from -180° to +180°."));
+                        }
                         PdfRotatePagesUpdateUi(dlg);
+                        return 0;
+                    }
+                    break;
+                case idRotateShowGrid:
+                    if (code == BN_CLICKED) {
+                        dlg->showGrid = SendMessageW(dlg->hwndShowGrid, BM_GETCHECK, 0, 0) == BST_CHECKED;
+                        EnableWindow(dlg->hwndGridDensity, dlg->showGrid);
+                        PdfRotateInvalidatePreview(dlg);
+                        return 0;
+                    }
+                    break;
+                case idRotateGridDensity:
+                    if (code == CBN_SELCHANGE) {
+                        dlg->gridDensity =
+                            limitValue((int)SendMessageW(dlg->hwndGridDensity, CB_GETCURSEL, 0, 0), 0, 2);
+                        PdfRotateInvalidatePreview(dlg);
                         return 0;
                     }
                     break;
@@ -2436,8 +2627,7 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
         case WM_HSCROLL:
             if ((HWND)lp == dlg->hwndSlider && !dlg->syncing) {
                 int pos = (int)SendMessageW(dlg->hwndSlider, TBM_GETPOS, 0, 0);
-                SendMessageW(dlg->hwndAny, BM_SETCHECK, BST_CHECKED, 0);
-                PdfRotateSetAngle(dlg, pos / 10.f, true, false);
+                PdfRotateSetAngle(dlg, pos / 100.0, true, false);
                 PdfRotatePagesUpdateUi(dlg);
                 return 0;
             }
@@ -2467,6 +2657,18 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                       DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(paintDc, font);
             PdfRotatePaintPreview(dlg, paintDc);
+            int savedDc = SaveDC(paintDc);
+            IntersectClipRect(paintDc, dlg->sidebarRc.left, dlg->sidebarRc.top, dlg->sidebarRc.right,
+                              dlg->sidebarRc.bottom);
+            HPEN separatorPen = CreatePen(PS_SOLID, 1, ThemeSelectionFrameColor());
+            HGDIOBJ oldPen = SelectObject(paintDc, separatorPen);
+            for (int y : dlg->separatorY) {
+                MoveToEx(paintDc, dlg->sidebarRc.left, y, nullptr);
+                LineTo(paintDc, dlg->sidebarRc.right, y);
+            }
+            SelectObject(paintDc, oldPen);
+            DeleteObject(separatorPen);
+            RestoreDC(paintDc, savedDc);
             dlg->paintBuffer->Flush(targetDc, &ps.rcPaint);
             EndPaint(hwnd, &ps);
             return 0;
@@ -2475,6 +2677,7 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             // Enter triggers "Apply Rotation"
             return MAKELRESULT(idRotateApply, DC_HASDEFID);
         case WM_DPICHANGED: {
+            PdfRotateStopHold(dlg);
             // Trust LOWORD(wParam). GetDpiForWindow and monitor queries lag while
             // the window is crossing displays (see OnMainWindowDpiChanged).
             int dpi = (int)LOWORD(wp);
@@ -2495,6 +2698,10 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                 if (dlg->hwndApplyToLabel) {
                     SendMessageW(dlg->hwndApplyToLabel, WM_SETFONT, (WPARAM)title, TRUE);
                 }
+                for (HWND heading : {dlg->hwndGridTitle, dlg->hwndRotationTitle, dlg->hwndFlipTitle}) {
+                    SendMessageW(heading, WM_SETFONT, (WPARAM)title, TRUE);
+                }
+                if (dlg->tooltip) SendMessageW(dlg->tooltip->hwnd, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
             }
             // Keep the user's enlarged size when moving between monitors;
             // recompute the minimum and child geometry for the new DPI.
@@ -2518,11 +2725,21 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             // track focus so the main loop routes Enter/Esc/Tab through
             // IsDialogMessage only while this window is the active one
             SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hwnd);
+            if (LOWORD(wp) == WA_INACTIVE) PdfRotateStopHold(dlg);
+            PdfRotatePagesUpdateUi(dlg);
+            return 0;
+        case WM_CANCELMODE:
+            PdfRotateStopHold(dlg);
             return 0;
         case WM_CLOSE:
+            PdfRotateStopHold(dlg);
             DestroyWindow(hwnd);
             return 0;
         case WM_NCDESTROY:
+            PdfRotateStopHold(dlg);
+            PdfRotateClearIconCache(dlg);
+            delete dlg->tooltip;
+            dlg->tooltip = nullptr;
             UnregisterAppDialogForTheme(hwnd);
             if (GetCurrentModelessDialog() == hwnd) {
                 SetCurrentModelessDialog(nullptr);
@@ -2584,6 +2801,8 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
     dlg->win = win;
     dlg->pageCount = pageCount;
     dlg->currentPageNo = currentPageNo;
+    dlg->sourceTab = tab;
+    dlg->sourceEngine = tab->GetEngine();
 
     HINSTANCE h = GetModuleHandleW(nullptr);
     HWND hwnd = CreateWindowExW(
@@ -2643,23 +2862,24 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
                                          0, 0, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->hwndPagesHint, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
-    dlg->hwndAny = CreateWindowExW(0, L"BUTTON", _TRW("Any Angle"),
+    dlg->hwndAny = CreateWindowExW(0, L"BUTTON", _TRW("Deskew"),
                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, 0, 0, 0, 0, hwnd,
                                    (HMENU)(INT_PTR)idRotateAny, h, nullptr);
     SendMessageW(dlg->hwndAny, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     SendMessageW(dlg->hwndAny, BM_SETCHECK, BST_CHECKED, 0);
 
     dlg->hwndSlider =
-        CreateWindowExW(0, TRACKBAR_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS, 0, 0, 0, 0,
-                        hwnd, nullptr, h, nullptr);
-    SendMessageW(dlg->hwndSlider, TBM_SETRANGEMIN, FALSE, (LPARAM)-1800);
-    SendMessageW(dlg->hwndSlider, TBM_SETRANGEMAX, TRUE, (LPARAM)1800);
+        CreateWindowExW(0, TRACKBAR_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_AUTOTICKS, 0, 0, 0,
+                        0, hwnd, nullptr, h, nullptr);
+    SendMessageW(dlg->hwndSlider, TBM_SETRANGEMIN, FALSE, (LPARAM)-500);
+    SendMessageW(dlg->hwndSlider, TBM_SETRANGEMAX, TRUE, (LPARAM)500);
+    SendMessageW(dlg->hwndSlider, TBM_SETTICFREQ, 500, 0);
     SendMessageW(dlg->hwndSlider, TBM_SETLINESIZE, 0, 1);
     SendMessageW(dlg->hwndSlider, TBM_SETPAGESIZE, 0, 100);
     SendMessageW(dlg->hwndSlider, TBM_SETPOS, TRUE, 0);
 
     dlg->syncing = true;
-    dlg->hwndAngleEdit = CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"0.0",
+    dlg->hwndAngleEdit = CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"0.00",
                                          WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_CENTER, 0, 0, 0, 0,
                                          hwnd, (HMENU)(INT_PTR)idRotateAngleEdit, h, nullptr);
     SendMessageW(dlg->hwndAngleEdit, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
@@ -2671,20 +2891,12 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
                                          0, 0, hwnd, (HMENU)(INT_PTR)idRotateAnglePlus, h, nullptr);
     SendMessageW(dlg->hwndAngleMinus, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     SendMessageW(dlg->hwndAnglePlus, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
+    SetWindowSubclass(dlg->hwndAngleMinus, PdfRotateFineButtonProc, 1, (DWORD_PTR)dlg);
+    SetWindowSubclass(dlg->hwndAnglePlus, PdfRotateFineButtonProc, 1, (DWORD_PTR)dlg);
 
     dlg->hwndDegLabel = CreateWindowExW(0, L"STATIC", L"°", WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE, 0, 0, 0,
                                         0, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->hwndDegLabel, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-
-    dlg->hwndLeft90 = CreateWindowExW(0, L"BUTTON", _TRW("Left 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0,
-                                      0, 0, hwnd, (HMENU)(INT_PTR)idRotateLeft90, h, nullptr);
-    SendMessageW(dlg->hwndLeft90, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-    dlg->hwndRight90 = CreateWindowExW(0, L"BUTTON", _TRW("Right 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0,
-                                       0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateRight90, h, nullptr);
-    SendMessageW(dlg->hwndRight90, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-    dlg->hwnd180 = CreateWindowExW(0, L"BUTTON", L"180°", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0, 0, 0, hwnd,
-                                   (HMENU)(INT_PTR)idRotate180, h, nullptr);
-    SendMessageW(dlg->hwnd180, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
     dlg->hwndFlipH = CreateWindowExW(0, L"BUTTON", _TRW("Flip Horizontal"),
                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTOCHECKBOX, 0, 0, 0, 0, hwnd,
@@ -2708,13 +2920,51 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
                                          0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateCancel, h, nullptr);
     SendMessageW(dlg->hwndCancelBtn, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
+    auto label = [&](const WCHAR* text, bool bold = true) {
+        HWND control = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE, 0, 0, 0, 0,
+                                       hwnd, nullptr, h, nullptr);
+        SendMessageW(control, WM_SETFONT, (WPARAM)(bold ? hfontTitle : dlg->hFont), TRUE);
+        return control;
+    };
+    dlg->hwndGridTitle = label(_TRW("Reference Grid"));
+    dlg->hwndRotationTitle = label(_TRW("Page Rotation"));
+    dlg->hwndFlipTitle = label(_TRW("Flip & Crop"));
+    dlg->hwndAngleHint = label(_TRW("-5°                 0°                 +5°"), false);
+    dlg->hwndPreviewInfo = label(ToWStrTemp(str::FormatTemp(_TRA("Page %d  |  %.0f%%"), currentPageNo, 100.0)), false);
+    dlg->hwndShowGrid =
+        CreateWindowExW(0, L"BUTTON", _TRW("Show Grid"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 0, 0, 0,
+                        0, hwnd, (HMENU)(INT_PTR)idRotateShowGrid, h, nullptr);
+    SendMessageW(dlg->hwndShowGrid, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
+    SendMessageW(dlg->hwndShowGrid, BM_SETCHECK, BST_CHECKED, 0);
+    dlg->hwndGridDensity = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+                                           0, 0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateGridDensity, h, nullptr);
+    SendMessageW(dlg->hwndGridDensity, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
+    CbAddString(dlg->hwndGridDensity, _TRA("Sparse"));
+    CbAddString(dlg->hwndGridDensity, _TRA("Normal"));
+    CbAddString(dlg->hwndGridDensity, _TRA("Dense"));
+    SendMessageW(dlg->hwndGridDensity, CB_SETCURSEL, 1, 0);
+    dlg->tooltip = new Tooltip();
+    Tooltip::CreateArgs tooltipArgs;
+    tooltipArgs.parent = hwnd;
+    tooltipArgs.font = dlg->hFont;
+    dlg->tooltip->Create(tooltipArgs);
+
     auto iconButton = [&](int id, const WCHAR* name) {
         HWND button = CreateWindowExW(0, L"BUTTON", name, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 0, 0,
                                       hwnd, (HMENU)(INT_PTR)id, h, nullptr);
         SendMessageW(button, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
         SetWindowSubclass(button, PdfRotateIconButtonProc, 1, 0);
+        TOOLINFOW info{sizeof(info)};
+        info.hwnd = hwnd;
+        info.uId = (UINT_PTR)button;
+        info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        info.lpszText = (WCHAR*)name;
+        SendMessageW(dlg->tooltip->hwnd, TTM_ADDTOOLW, 0, (LPARAM)&info);
         return button;
     };
+    dlg->hwndLeft90 = iconButton(idRotateLeft90, _TRW("Left 90°"));
+    dlg->hwndRight90 = iconButton(idRotateRight90, _TRW("Right 90°"));
+    dlg->hwnd180 = iconButton(idRotate180, L"180°");
     dlg->hwndMinimize = iconButton(idRotateMinimize, _TRW("Minimize"));
     dlg->hwndMaximize = iconButton(idRotateMaximize, _TRW("Maximize"));
     dlg->hwndClose = iconButton(idRotateClose, _TRW("Close"));
@@ -2751,6 +3001,9 @@ static void PdfRotatePagesThemeRefreshCb(HWND hwnd, void* ctx) {
     if (!dlg) {
         return;
     }
+    PdfRotateStopHold(dlg);
+    PdfRotateClearIconCache(dlg);
+    if (dlg->tooltip) dlg->tooltip->UpdateTheme();
     DeleteObject(dlg->bgBrush);
     DeleteObject(dlg->ctrlBrush);
     dlg->bgBrush = CreateSolidBrush(AppDialogPanelBackgroundColor());

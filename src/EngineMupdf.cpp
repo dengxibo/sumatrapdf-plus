@@ -15786,7 +15786,8 @@ bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw) {
     return EngineMupdfApplyPageRotateCw(engine, pageNo, wantCw);
 }
 
-// Clockwise degrees in [0, 360). A value within 0.05° of 0/90/180/270 is that step.
+// Clockwise degrees in [0, 360). Only numerical noise may snap to a quarter
+// turn: a real 0.01° correction must retain its content transform.
 static bool ClockwiseDeltaIsQuarter(float deg, int* deltaCw) {
     float a = fmodf(deg, 360.f);
     if (a < 0.f) {
@@ -15794,7 +15795,7 @@ static bool ClockwiseDeltaIsQuarter(float deg, int* deltaCw) {
     }
     const float kTargets[] = {0.f, 90.f, 180.f, 270.f, 360.f};
     for (float t : kTargets) {
-        if (fabsf(a - t) <= 0.05f) {
+        if (fabsf(a - t) <= 0.00001f) {
             int d = (int)(t + 0.5f);
             if (d >= 360) {
                 d = 0;
@@ -15964,7 +15965,7 @@ bool EngineMupdfAdjustPageView(EngineBase* engine, int pageNo, float cwDeg, bool
     // A clean quarter turn with nothing else to bake stays a /Rotate edit.
     // Session deskew is part of what is on screen, so a tilted page is baked.
     int delta = 0;
-    if (!flipH && !flipV && fabsf(deskew) < 0.05f && ClockwiseDeltaIsQuarter(cwDeg, &delta)) {
+    if (!flipH && !flipV && fabsf(deskew) < 0.00001f && ClockwiseDeltaIsQuarter(cwDeg, &delta)) {
         if (delta == 0) {
             return false;
         }
