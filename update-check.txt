@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.44
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.44/SumatraPDF-Plus.exe
-Notes: Stream AI replies as they arrive; preserve the reading position instead of jumping to the end of long answers.
-NotesZh: AI 对话支持流式输出，边生成边阅读；保留阅读位置，长回复不再自动跳到末尾。
+Latest: 3.7.45
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.45/SumatraPDF-Plus.exe
+Notes: Prefer printed Word TOC anchors; show WMF/EMF images; open large DOCX faster; fix missing first-open scrollbar.
+NotesZh: Word 印刷目录按锚点提取；显示 WMF/EMF 图片；大型 DOCX 打开更快；修复首次打开缺少滚动条。
