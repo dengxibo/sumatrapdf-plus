@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.46
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.46/SumatraPDF-Plus.exe
-Notes: Fix Options dialog combo boxes shaking or flashing on hover.
-NotesZh: 修复选项对话框下拉框悬停时抖动/闪烁。
+Latest: 3.7.47
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.47/SumatraPDF-Plus.exe
+Notes: Full Options dropdown arrows, rounded light-theme fields, and small logos no longer hidden in light mode.
+NotesZh: 可输入下拉框箭头显示完整，浅色输入框改为圆角，明亮模式下小标志不再被白块挡住。
