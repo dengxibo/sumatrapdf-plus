@@ -254,22 +254,26 @@ void UpdateWindowCaptionTheme(HWND hwnd) {
         return;
     }
     // DarkModeLib's setDarkTitleBarEx defaults DWMWA_BORDER_COLOR to system
-    // DEFAULT, which paints a bright 1px edge on dialogs in dark chrome.
-    // Match the frame: chrome background for dark / eye-care, else DEFAULT.
+    // DEFAULT (a bright hairline). Matching chrome background removes that glare
+    // but also erases the dialog silhouette against a dark main window. Use the
+    // same muted link-tint as Options group edges for dark chrome instead.
     if (ThemeUsesEyeCareChrome()) {
         if (UseDarkModeLib()) {
             DarkMode::setDarkTitleBarEx(hwnd, false);
         }
         dwm::SetWindowCaptionColors(hwnd, ThemeChromeBackgroundColor(), ThemeWindowTextColor());
-        dwm::SetWindowBorderColor(hwnd, ThemeChromeBackgroundColor());
+        dwm::SetWindowBorderColor(hwnd, AccentColor(ThemeChromeBackgroundColor(), 48));
         return;
     }
     dwm::ResetWindowCaptionColors(hwnd);
     if (UseDarkModeLib()) {
         DarkMode::setDarkTitleBarEx(hwnd, ThemeUsesDarkChrome());
     }
-    dwm::SetWindowBorderColor(hwnd,
-                              ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : (COLORREF)DWMWA_COLOR_DEFAULT);
+    if (ThemeUsesDarkChrome()) {
+        dwm::SetWindowBorderColor(hwnd, AccentColor(ThemeWindowLinkColor(), -20));
+    } else {
+        dwm::SetWindowBorderColor(hwnd, (COLORREF)DWMWA_COLOR_DEFAULT);
+    }
 }
 
 bool IsDarkThemeSelected() {

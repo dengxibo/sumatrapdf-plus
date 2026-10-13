@@ -41,6 +41,8 @@ void AppDialogUseStandardControls(HWND hwnd, bool registerForTheme = true);
 // Warm chrome replaces paper-white Win11 push buttons and drop-down lists.
 // Safe on other themes: it removes the custom paint when eye-care chrome is off.
 void AppDialogSyncWarmPushButtons(HWND hwnd);
+// Keep a CBS_DROPDOWN edit inside the rounded face so it does not cover the left stroke.
+void AppDialogInsetComboEdit(HWND combo);
 
 // Theme only the vertical scrollbar (Ask AI / InlineTranslate pattern). Keeps a
 // blank or custom list face for Warm cream CTLCOLOR while adapting White /

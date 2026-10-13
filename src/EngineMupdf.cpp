@@ -63,6 +63,7 @@ int fz_epub_fragment_rects(fz_context* ctx, fz_document* doc, int chapter, const
 #include "PdfDarkModeV2.h"
 #include "PdfCadDetect.h"
 #include "PdfCadEnhanceDevice.h"
+#include "PdfPaperPlateDevice.h"
 #include "PdfJoinSplitImages.h"
 #include "DisplayModel.h"
 #include "GlobalPrefs.h"
@@ -10690,6 +10691,8 @@ static fz_device* WrapViewRenderDevice(fz_context* ctx, EngineMupdf* engine, fz_
         opts.hairlineVector = engine->CadEnhanceUseHairlineBoost();
         renderDev = PdfCadEnhanceWrapDevice(ctx, renderDev, opts);
     }
+    // Outermost, so the plate is judged in source colors before dark-mode remap.
+    renderDev = PdfPaperPlateWrapDevice(ctx, renderDev);
     return renderDev;
 }
 

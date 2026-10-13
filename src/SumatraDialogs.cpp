@@ -1305,8 +1305,10 @@ static void WidenSettingsPage(HWND hwnd, int extraWidth) {
     }
 }
 
-static void LayoutSettingsViewport(HWND hwnd, int pos) {
-    if (!gSettingsScrollbar || gSettingsScrollLayout) return;
+static void LayoutSettingsViewport(HWND hwnd, int pos, bool fromScroll = false) {
+    if (!gSettingsScrollbar || gSettingsScrollLayout) {
+        return;
+    }
     gSettingsScrollLayout = true;
     Rect oldViewport = gSettingsViewport;
     int oldPos = gSettingsScrollPos;
@@ -1326,10 +1328,21 @@ static void LayoutSettingsViewport(HWND hwnd, int pos) {
     WidenSettingsPage(hwnd, std::max(0, client.dx - gSettingsClientWidth - barW));
     int bottom = gSettingsViewport.y;
     for (const auto& item : gSettingsScrollItems) {
-        if (IsWindowVisible(item.hwnd)) bottom = std::max(bottom, item.layoutRect.Bottom());
+        if (IsWindowVisible(item.hwnd)) {
+            bottom = std::max(bottom, item.layoutRect.Bottom());
+        }
     }
     gSettingsScrollMax = std::max(0, bottom - gSettingsViewport.Bottom());
     gSettingsScrollPos = limitValue(pos, 0, gSettingsScrollMax);
+    bool viewportSame = oldViewport.x == gSettingsViewport.x && oldViewport.y == gSettingsViewport.y &&
+                        oldViewport.dx == gSettingsViewport.dx && oldViewport.dy == gSettingsViewport.dy;
+    // Wheel/scrollbar at the end used to call layout with an unchanged pos, then
+    // fall through to a full-dialog RDW_ERASE and make the window shake.
+    if (fromScroll && gSettingsScrollPos == oldPos && viewportSame) {
+        gSettingsScrollLayout = false;
+        return;
+    }
+    bool scrollOnly = fromScroll && gSettingsScrollPos != oldPos && viewportSame;
     // Keep controls parented to the dialog for its existing notifications and
     // keyboard navigation. Window regions clip them to the content viewport.
     for (const auto& item : gSettingsScrollItems) {
@@ -1337,8 +1350,13 @@ static void LayoutSettingsViewport(HWND hwnd, int pos) {
         r.y -= gSettingsScrollPos;
         // A combo's visible rectangle excludes its drop-down list. Moving it
         // with that height would also shrink the list, so only resize groups.
-        UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS;
-        if (!IsSettingsGroup(item.hwnd) && r.dx == WindowRect(item.hwnd).dx) flags |= SWP_NOSIZE;
+        UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW;
+        if (!scrollOnly) {
+            flags |= SWP_NOCOPYBITS;
+        }
+        if (!IsSettingsGroup(item.hwnd) && r.dx == WindowRect(item.hwnd).dx) {
+            flags |= SWP_NOSIZE;
+        }
         int height = IsSettingsGroup(item.hwnd) ? r.dy : item.resizeHeight;
         SetWindowPos(item.hwnd, nullptr, r.x, r.y, r.dx, height, flags);
         Rect clip = r.Intersect(gSettingsViewport);
@@ -1347,17 +1365,19 @@ static void LayoutSettingsViewport(HWND hwnd, int pos) {
                           : CreateRectRgn(clip.x - r.x, clip.y - r.y, clip.Right() - r.x, clip.Bottom() - r.y);
         SetWindowRgn(item.hwnd, region, FALSE);
     }
-    MoveWindow(GetDlgItem(hwnd, IDC_SETTINGS_CATEGORY), gSettingsCategoryRect.x, gSettingsCategoryRect.y,
-               gSettingsCategoryRect.dx, std::max(1, gSettingsViewport.Bottom() - gSettingsCategoryRect.y), FALSE);
-    // Keep an opaque footer above content painting, with its buttons on top.
-    SetWindowPos(gSettingsFooter, HWND_TOP, 0, gSettingsViewport.Bottom(), client.dx,
-                 client.dy - gSettingsViewport.Bottom(), SWP_NOACTIVATE | SWP_NOREDRAW);
-    SetWindowPos(GetDlgItem(hwnd, IDCANCEL), HWND_TOP, client.dx - pad - gSettingsCancelRect.dx, footerY,
-                 gSettingsCancelRect.dx, gSettingsCancelRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
-    SetWindowPos(GetDlgItem(hwnd, IDOK), HWND_TOP,
-                 client.dx - pad - DpiScale(hwnd, 8) - gSettingsCancelRect.dx - gSettingsOkRect.dx, footerY,
-                 gSettingsOkRect.dx, gSettingsOkRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
-    MoveWindow(gSettingsScrollbar, client.dx - barW, gSettingsViewport.y, barW, gSettingsViewport.dy, FALSE);
+    if (!scrollOnly) {
+        MoveWindow(GetDlgItem(hwnd, IDC_SETTINGS_CATEGORY), gSettingsCategoryRect.x, gSettingsCategoryRect.y,
+                   gSettingsCategoryRect.dx, std::max(1, gSettingsViewport.Bottom() - gSettingsCategoryRect.y), FALSE);
+        // Keep an opaque footer above content painting, with its buttons on top.
+        SetWindowPos(gSettingsFooter, HWND_TOP, 0, gSettingsViewport.Bottom(), client.dx,
+                     client.dy - gSettingsViewport.Bottom(), SWP_NOACTIVATE | SWP_NOREDRAW);
+        SetWindowPos(GetDlgItem(hwnd, IDCANCEL), HWND_TOP, client.dx - pad - gSettingsCancelRect.dx, footerY,
+                     gSettingsCancelRect.dx, gSettingsCancelRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
+        SetWindowPos(GetDlgItem(hwnd, IDOK), HWND_TOP,
+                     client.dx - pad - DpiScale(hwnd, 8) - gSettingsCancelRect.dx - gSettingsOkRect.dx, footerY,
+                     gSettingsOkRect.dx, gSettingsOkRect.dy, SWP_NOACTIVATE | SWP_NOREDRAW);
+        MoveWindow(gSettingsScrollbar, client.dx - barW, gSettingsViewport.y, barW, gSettingsViewport.dy, FALSE);
+    }
     SCROLLINFO si{sizeof(si)};
     si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
     si.nMax = gSettingsViewport.dy + gSettingsScrollMax - 1;
@@ -1366,13 +1386,14 @@ static void LayoutSettingsViewport(HWND hwnd, int pos) {
     SetScrollInfo(gSettingsScrollbar, SB_CTL, &si, TRUE);
     ShowWindow(gSettingsScrollbar, gSettingsScrollMax ? SW_SHOWNA : SW_HIDE);
     gSettingsScrollLayout = false;
-    bool scrollOnly = oldPos != gSettingsScrollPos && oldViewport.x == gSettingsViewport.x &&
-                      oldViewport.y == gSettingsViewport.y && oldViewport.dx == gSettingsViewport.dx &&
-                      oldViewport.dy == gSettingsViewport.dy;
     // Scrolling only changes the content viewport and its scrollbar. Leave the
     // stationary navigation/footer out of the erase pass to avoid flicker.
     RECT repaint{gSettingsViewport.x, gSettingsViewport.y, client.dx, gSettingsViewport.Bottom()};
-    RedrawWindow(hwnd, scrollOnly ? &repaint : nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+    UINT redraw = RDW_INVALIDATE | RDW_ALLCHILDREN;
+    if (!scrollOnly) {
+        redraw |= RDW_ERASE;
+    }
+    RedrawWindow(hwnd, scrollOnly ? &repaint : nullptr, nullptr, redraw);
 }
 
 static void EnsureSettingsFocusVisible(HWND hwnd) {
@@ -1427,6 +1448,18 @@ static void InitSettingsViewport(HWND hwnd) {
         RECT dropped{};
         if (str::EqI(cls, L"ComboBox") && SendMessageW(child, CB_GETDROPPEDCONTROLRECT, 0, (LPARAM)&dropped)) {
             height = dropped.bottom - dropped.top;
+            // Window rect includes the dropped list. Clip the scroll region to
+            // the closed face, or the unthemed frame paints over the next row.
+            COMBOBOXINFO info{sizeof(info)};
+            if (GetComboBoxInfo(child, &info)) {
+                POINT origin{0, 0};
+                ClientToScreen(child, &origin);
+                RECT windowRc = ToRECT(WindowRect(child));
+                int face = (origin.y - windowRc.top) + std::max(info.rcItem.bottom, info.rcButton.bottom);
+                if (face > 0 && face < r.dy) {
+                    r.dy = face;
+                }
+            }
         }
         gSettingsScrollItems.Append({child, r, r, height});
     }
@@ -2109,6 +2142,10 @@ static BOOL CALLBACK ClearSettingsComboEditSelProc(HWND hwnd, LPARAM) {
     if (((DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE) & CBS_DROPDOWNLIST) != CBS_DROPDOWN) {
         return TRUE;
     }
+    // Posted after the dialog is up, when the arrow button metrics exist.
+    // The init-time inset runs too early and leaves the edit over the chevron.
+    AppDialogInsetComboEdit(hwnd);
+    InvalidateRect(hwnd, nullptr, FALSE);
     SendMessageW(hwnd, CB_SETEDITSEL, 0, MAKELPARAM(-1, 0));
     COMBOBOXINFO info{sizeof(info)};
     if (GetComboBoxInfo(hwnd, &info) && info.hwndItem) {
@@ -2820,7 +2857,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                         pos = si.nTrackPos;
                         break;
                 }
-                LayoutSettingsViewport(hDlg, pos);
+                LayoutSettingsViewport(hDlg, pos, true);
                 return TRUE;
             }
             return FALSE;
@@ -2829,11 +2866,16 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             if (gSettingsScrollbar) {
                 Point pt(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
                 MapWindowPoints(HWND_DESKTOP, hDlg, (POINT*)&pt, 1);
-                if (!gSettingsViewport.Contains(pt)) return FALSE;
+                if (!gSettingsViewport.Contains(pt)) {
+                    return FALSE;
+                }
                 gSettingsWheelRemainder += GET_WHEEL_DELTA_WPARAM(wp);
                 int steps = gSettingsWheelRemainder / WHEEL_DELTA;
                 gSettingsWheelRemainder %= WHEEL_DELTA;
-                LayoutSettingsViewport(hDlg, gSettingsScrollPos - steps * DpiScale(hDlg, 48));
+                if (steps == 0) {
+                    return TRUE;
+                }
+                LayoutSettingsViewport(hDlg, gSettingsScrollPos - steps * DpiScale(hDlg, 48), true);
                 return TRUE;
             }
             return FALSE;

@@ -3505,9 +3505,9 @@ static void OcrQueueAutoNearby(EngineBase* engine, HWND hwnd, int centerPage) {
     if (!engine) {
         return;
     }
+    // Only the next page. Queuing the previous page and two ahead made Auto OCR
+    // look like a full-document scan and kept a core busy while reading.
     OcrEnqueueAutoPage(engine, hwnd, centerPage + 1);
-    OcrEnqueueAutoPage(engine, hwnd, centerPage - 1);
-    OcrEnqueueAutoPage(engine, hwnd, centerPage + 2);
     StartOcrWorkerIfNeeded();
 }
 

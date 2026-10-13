@@ -1163,6 +1163,7 @@
     <ClInclude Include="..\src\PalmDbReader.h" />
     <ClInclude Include="..\src\PdfCadDetect.h" />
     <ClInclude Include="..\src\PdfCadEnhanceDevice.h" />
+    <ClInclude Include="..\src\PdfPaperPlateDevice.h" />
     <ClInclude Include="..\src\PdfCreator.h" />
     <ClInclude Include="..\src\PdfDarkMode.h" />
     <ClInclude Include="..\src\PdfDarkModeInternal.h" />
@@ -1345,6 +1346,7 @@
     <ClCompile Include="..\src\PalmDbReader.cpp" />
     <ClCompile Include="..\src\PdfCadDetect.cpp" />
     <ClCompile Include="..\src\PdfCadEnhanceDevice.cpp" />
+    <ClCompile Include="..\src\PdfPaperPlateDevice.cpp" />
     <ClCompile Include="..\src\PdfCreator.cpp" />
     <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp" />
     <ClCompile Include="..\src\PdfDarkModeCache.cpp" />

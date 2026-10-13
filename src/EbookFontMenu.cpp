@@ -363,6 +363,7 @@ void LayoutEbookFontCombo(HWND combo, HWND heightRef) {
         SetWindowPos(info.hwndItem, nullptr, rc.left, rc.top, RectDx(rc), RectDy(rc), SWP_NOZORDER | SWP_NOACTIVATE);
     }
     FontComboClearEditSelection(combo);
+    AppDialogInsetComboEdit(combo);
     InvalidateRect(combo, nullptr, TRUE);
 
     auto state = FontComboState(combo);

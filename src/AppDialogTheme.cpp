@@ -203,10 +203,137 @@ static void RemoveWarmPushButton(HWND hwnd) {
 static void InstallWarmCombo(HWND hwnd);
 constexpr const wchar_t* kWarmComboProp = L"SumatraWarmCombo";
 
+constexpr UINT_PTR kWarmEditSubclassId = 0xA11D;
+
+static COLORREF WarmComboPageColor(HWND hwnd);
+
+static bool IsSingleLineEdit(HWND hwnd) {
+    WCHAR cls[32]{};
+    if (GetClassNameW(hwnd, cls, dimof(cls)) <= 0 || !str::EqI(cls, L"Edit")) {
+        return false;
+    }
+    if (GetWindowLongPtrW(hwnd, GWL_STYLE) & ES_MULTILINE) {
+        return false;
+    }
+    HWND parent = GetParent(hwnd);
+    WCHAR parentCls[32]{};
+    if (parent && GetClassNameW(parent, parentCls, dimof(parentCls)) > 0 && str::EqI(parentCls, L"ComboBox")) {
+        return false;
+    }
+    return true;
+}
+
+static void PaintWarmEditChrome(HWND hwnd, HDC dc) {
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    if (rc.right <= rc.left || rc.bottom <= rc.top) {
+        return;
+    }
+    COLORREF page = WarmComboPageColor(hwnd);
+    COLORREF border = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), GetFocus() == hwnd ? 0 : -20)
+                                            : AccentColor(page, GetFocus() == hwnd ? 56 : 32);
+    COLORREF fill = ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : ThemeWindowControlBackgroundColor();
+    if (!IsWindowEnabled(hwnd)) {
+        fill = page;
+    }
+    {
+        ScopedGdiObj<HBRUSH> pageBr(CreateSolidBrush(page));
+        FillRect(dc, &rc, pageBr);
+    }
+    int rad = DpiScale(hwnd, 8);
+    int h = rc.bottom - rc.top;
+    if (rad > h - 2) {
+        rad = std::max(2, h - 2);
+    }
+    ScopedGdiObj<HBRUSH> fillBr(CreateSolidBrush(fill));
+    ScopedGdiObj<HPEN> pen(CreatePen(PS_SOLID, 1, border));
+    ScopedSelectObject selBr(dc, fillBr);
+    ScopedSelectObject selPen(dc, pen);
+    // A 1px non-client ring clips the corner arc, so light themes looked square.
+    // Paint the same rounded face as the combos in the client.
+    RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, rad, rad);
+}
+
+static LRESULT CALLBACK WarmEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
+    constexpr const wchar_t* kPrinting = L"SumatraWarmEditPrinting";
+    switch (msg) {
+        case WM_NCCALCSIZE:
+            // Frame is drawn in the client. A 1px non-client inset made the
+            // corner arc fall outside the visible border in light themes.
+            return DefSubclassProc(hwnd, msg, wp, lp);
+        case WM_NCPAINT:
+            return 0;
+        case WM_ERASEBKGND:
+            PaintWarmEditChrome(hwnd, (HDC)wp);
+            return 1;
+        case WM_PAINT: {
+            if (GetPropW(hwnd, kPrinting)) {
+                break;
+            }
+            PAINTSTRUCT ps{};
+            HDC hdc = BeginPaint(hwnd, &ps);
+            PaintWarmEditChrome(hwnd, hdc);
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            int rad = DpiScale(hwnd, 8);
+            int h = rc.bottom - rc.top;
+            if (rad > h - 2) {
+                rad = std::max(2, h - 2);
+            }
+            RECT inner = rc;
+            InflateRect(&inner, -2, -2);
+            int innerRad = std::max(2, rad - 2);
+            if (inner.right > inner.left && inner.bottom > inner.top) {
+                HRGN rgn =
+                    CreateRoundRectRgn(inner.left, inner.top, inner.right + 1, inner.bottom + 1, innerRad, innerRad);
+                int saved = SaveDC(hdc);
+                SelectClipRgn(hdc, rgn);
+                SetPropW(hwnd, kPrinting, (HANDLE)1);
+                SendMessageW(hwnd, WM_PRINTCLIENT, (WPARAM)hdc, PRF_CLIENT);
+                RemovePropW(hwnd, kPrinting);
+                RestoreDC(hdc, saved);
+                DeleteObject(rgn);
+            }
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_SETFOCUS:
+        case WM_KILLFOCUS:
+        case WM_ENABLE:
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+        case WM_NCDESTROY:
+            RemoveWindowSubclass(hwnd, WarmEditProc, id);
+            return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void InstallWarmEdit(HWND hwnd) {
+    if (!IsSingleLineEdit(hwnd)) {
+        return;
+    }
+    LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    ex &= ~(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE);
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    style &= ~WS_BORDER;
+    SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (!GetPropW(hwnd, L"SumatraWarmEdit")) {
+        if (SetWindowSubclass(hwnd, WarmEditProc, kWarmEditSubclassId, 0)) {
+            SetPropW(hwnd, L"SumatraWarmEdit", (HANDLE)1);
+        }
+    }
+    int pad = DpiScale(hwnd, 6);
+    SendMessageW(hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad, pad));
+}
+
 static BOOL CALLBACK SyncWarmPushButton(HWND child, LPARAM warm) {
     // Dropdown faces share one painter in all four themes, including White.
     // Theme tokens supply the colors; only push-button treatment is Warm-only.
     InstallWarmCombo(child);
+    InstallWarmEdit(child);
     if (warm) {
         InstallWarmPushButton(child);
     } else {
@@ -267,19 +394,131 @@ static COLORREF WarmComboPageColor(HWND hwnd) {
     return page;
 }
 
-static void AlignComboEditText(HWND hwnd) {
+static void WarmComboClosedFaceRect(HWND hwnd, RECT* out);
+
+// Closed-face chevron, shared by the painter and the editable inset. The list
+// combos have no child edit, so this rect is the whole arrow. An editable
+// combo's edit must end at textRight or it paints over the left of the same v.
+struct WarmComboFace {
+    RECT box{};
+    RECT arrow{};
+    int textRight = 0;
+};
+
+static bool WarmComboFaceMetrics(HWND hwnd, WarmComboFace* out) {
+    RECT face{};
+    WarmComboClosedFaceRect(hwnd, &face);
+    if (face.right <= face.left + DpiScale(hwnd, 24) || face.bottom <= face.top) {
+        return false;
+    }
+    // A not-yet-shown combo reports the dropped-list height. Don't lock the
+    // edit to that, or the closed face never gets a real chevron gap.
+    if (face.bottom - face.top > DpiScale(hwnd, 48)) {
+        return false;
+    }
+    RECT box = face;
+    InflateRect(&box, -1, -1);
+    int halfArrow = std::max(1, DpiScale(hwnd, 7) / 2);
+    int aw = halfArrow * 2;
+    int ax = box.right - DpiScale(hwnd, 10) - aw;
+    out->box = box;
+    out->arrow = RECT{ax - DpiScale(hwnd, 3), box.top, ax + aw + DpiScale(hwnd, 3), box.bottom};
+    out->textRight = ax - DpiScale(hwnd, 4);
+    return out->textRight > box.left + DpiScale(hwnd, 12);
+}
+
+static bool DesiredComboEditRect(HWND combo, RECT* out) {
+    COMBOBOXINFO info{sizeof(info)};
+    if (!GetComboBoxInfo(combo, &info) || info.rcButton.bottom <= 0) {
+        return false;
+    }
+    WarmComboFace face{};
+    if (!WarmComboFaceMetrics(combo, &face)) {
+        return false;
+    }
+    // Same closed face as a dropdown list. The edit fills only the text, and
+    // stops where that list's text stops, so it cannot cover the chevron.
+    int inset = std::max(2, DpiScale(combo, 2));
+    out->left = inset;
+    out->top = inset;
+    out->right = face.textRight;
+    out->bottom = (int)info.rcButton.bottom - inset;
+    return out->right > out->left + DpiScale(combo, 12) && out->bottom > out->top + DpiScale(combo, 8);
+}
+
+static LRESULT CALLBACK WarmComboEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    // The combo face already draws the rounded rim. The inner edit's own
+    // non-client border is the broken left edge on editable combos.
+    if (msg == WM_NCPAINT) {
+        return 0;
+    }
+    // The combo puts the edit back over the stroke and the chevron after we
+    // move it. Clamp every position change.
+    if (msg == WM_WINDOWPOSCHANGING) {
+        auto* pos = (WINDOWPOS*)lp;
+        RECT want{};
+        if (pos && !(pos->flags & SWP_HIDEWINDOW) && DesiredComboEditRect(GetParent(hwnd), &want)) {
+            pos->x = want.left;
+            pos->y = want.top;
+            pos->cx = want.right - want.left;
+            pos->cy = want.bottom - want.top;
+            pos->flags &= ~(SWP_NOMOVE | SWP_NOSIZE);
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+void AppDialogInsetComboEdit(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
     if ((GetWindowLongPtrW(hwnd, GWL_STYLE) & CBS_DROPDOWNLIST) != CBS_DROPDOWN) {
         return;
     }
     COMBOBOXINFO info{sizeof(info)};
-    if (!GetComboBoxInfo(hwnd, &info) || !info.hwndItem) {
+    if (!GetComboBoxInfo(hwnd, &info) || !info.hwndItem || info.rcButton.right <= info.rcButton.left) {
         return;
     }
-    // Match the closed list face's inset while leaving the native edit in
-    // charge of typing, selection, horizontal scrolling and the caret.
-    Rect edit = MapRectToWindow(WindowRect(info.hwndItem), HWND_DESKTOP, hwnd);
-    int left = std::max(0, 1 + DpiScale(hwnd, 8) - edit.x);
-    SendMessageW(info.hwndItem, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(left, 0));
+    HWND edit = info.hwndItem;
+    // The native edit covers the rounded stroke. Dropdown-list faces have no
+    // child edit, which is why only these combos lose the left edge.
+    RECT want{};
+    if (!DesiredComboEditRect(hwnd, &want)) {
+        return;
+    }
+    int left = want.left;
+    int top = want.top;
+    int right = want.right;
+    int bottom = want.bottom;
+    RECT cur{};
+    GetWindowRect(edit, &cur);
+    MapWindowPoints(HWND_DESKTOP, hwnd, (POINT*)&cur, 2);
+    bool placed = cur.left == left && cur.top == top && cur.right == right && cur.bottom == bottom;
+    DWORD_PTR unused = 0;
+    BOOL subclassed = GetWindowSubclass(edit, WarmComboEditProc, kWarmComboSubclassId, &unused);
+    if (placed && subclassed) {
+        return;
+    }
+    if (!subclassed) {
+        if (DynSetWindowTheme) {
+            DynSetWindowTheme(edit, L"", L"");
+        }
+        LONG_PTR ex = GetWindowLongPtrW(edit, GWL_EXSTYLE);
+        ex &= ~(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE);
+        SetWindowLongPtrW(edit, GWL_EXSTYLE, ex);
+        SetWindowSubclass(edit, WarmComboEditProc, kWarmComboSubclassId, 0);
+        // Closed list text starts DpiScale(8) from the face. The edit is already inset.
+        int pad = std::max(0, DpiScale(hwnd, 8) - left);
+        SendMessageW(edit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad, DpiScale(hwnd, 4)));
+    }
+    if (!placed) {
+        SetWindowPos(edit, nullptr, left, top, right - left, bottom - top,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+}
+
+static void AlignComboEditText(HWND hwnd) {
+    AppDialogInsetComboEdit(hwnd);
 }
 
 static void WarmComboClosedFaceRect(HWND hwnd, RECT* out) {
@@ -287,15 +526,16 @@ static void WarmComboClosedFaceRect(HWND hwnd, RECT* out) {
     // Settings layout sizes ComboBox windows to their dropped height and clips
     // the closed face with SetWindowRgn. Paint only that face, not the tall
     // client, or hover redraws look like the control is shaking.
+    // Use the button's outer edge. rcItem follows an inset edit and would
+    // pull the rounded face inward, which clips the left corner.
     COMBOBOXINFO info{sizeof(info)};
-    if (!GetComboBoxInfo(hwnd, &info)) {
+    if (!GetComboBoxInfo(hwnd, &info) || info.rcButton.right <= 0 || info.rcButton.bottom <= 0) {
         return;
     }
-    RECT face{};
-    UnionRect(&face, &info.rcItem, &info.rcButton);
-    if (face.right > face.left && face.bottom > face.top) {
-        *out = face;
-    }
+    out->left = 0;
+    out->top = 0;
+    out->right = info.rcButton.right;
+    out->bottom = info.rcButton.bottom;
 }
 
 static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
@@ -309,9 +549,12 @@ static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
     if (editable) {
         COMBOBOXINFO info{};
         info.cbSize = sizeof(info);
-        if (GetComboBoxInfo(hwnd, &info)) {
-            // Leave typing, caret and selection painting to the native edit.
-            ExcludeClipRect(hdc, info.rcItem.left, info.rcItem.top, info.rcItem.right, info.rcItem.bottom);
+        if (GetComboBoxInfo(hwnd, &info) && info.hwndItem) {
+            // Clip the edit window, not rcItem. rcItem includes the left stroke.
+            RECT er{};
+            GetWindowRect(info.hwndItem, &er);
+            MapWindowPoints(HWND_DESKTOP, hwnd, (POINT*)&er, 2);
+            ExcludeClipRect(hdc, er.left, er.top, er.right, er.bottom);
         }
     }
     COLORREF page = WarmComboPageColor(hwnd);
@@ -358,16 +601,18 @@ static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
     }
 
     COLORREF ink = enabled ? ThemeWindowTextColor() : ThemeWindowTextDisabledColor();
-    int halfArrow = std::max(1, DpiScale(hwnd, 7) / 2);
-    int aw = halfArrow * 2;
-    int ax = box.right - DpiScale(hwnd, 10) - aw;
+    WarmComboFace face{};
+    if (!WarmComboFaceMetrics(hwnd, &face)) {
+        face.box = box;
+        face.arrow = box;
+        face.textRight = box.right - DpiScale(hwnd, 22);
+    }
     {
-        // Same font-rendered chevron as DarkModeLib's combo face.
+        // Same chevron, same rect, as the dropdown-list faces.
         ScopedSelectObject arrowFont(hdc, GetWindowFont(hwnd));
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, ink);
-        RECT arrowRc{ax - DpiScale(hwnd, 3), box.top, ax + aw + DpiScale(hwnd, 3), box.bottom};
-        DrawTextW(hdc, L"\u02c5", -1, &arrowRc, DT_NOPREFIX | DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, L"\u02c5", -1, &face.arrow, DT_NOPREFIX | DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
     WCHAR text[256]{};
@@ -378,7 +623,7 @@ static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
     SetTextColor(hdc, ink);
     RECT textRc = box;
     textRc.left += DpiScale(hwnd, 8);
-    textRc.right = ax - DpiScale(hwnd, 4);
+    textRc.right = face.textRight;
     if (editable) {
         // The child edit owns the value, not the combo face painter.
     } else if (GetWindowLongW(hwnd, GWL_STYLE) & (CBS_OWNERDRAWFIXED | CBS_OWNERDRAWVARIABLE)) {
@@ -421,7 +666,17 @@ static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             AlignComboEditText(hwnd);
             return result;
         }
+        case WM_PARENTNOTIFY:
+            if (LOWORD(wp) == WM_CREATE) {
+                // SetWindowTheme recreates the edit after the first inset.
+                AlignComboEditText(hwnd);
+            }
+            break;
         case WM_PAINT: {
+            // First show lays the edit out before the arrow button exists, so
+            // the edit covers the chevron. Theme switches redo this after the
+            // button is real; do the same before the first paint.
+            AppDialogInsetComboEdit(hwnd);
             PAINTSTRUCT ps{};
             HDC hdc = BeginPaint(hwnd, &ps);
             RECT face{};
@@ -447,6 +702,17 @@ static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             return 0;
         case WM_ERASEBKGND:
             return 1;
+        case WM_NCPAINT:
+            // Our WM_PAINT face is the border. The unthemed combo frame is a
+            // second, square rim and is what the screenshots mark as broken.
+            return 0;
+        case WM_CTLCOLOREDIT: {
+            COLORREF fill = ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : ThemeWindowControlBackgroundColor();
+            SetTextColor((HDC)wp, IsWindowEnabled(hwnd) ? ThemeWindowTextColor() : ThemeWindowTextDisabledColor());
+            SetBkColor((HDC)wp, fill);
+            HBRUSH br = WarmComboBrush(st, fill);
+            return (LRESULT)br;
+        }
         case WM_CTLCOLORLISTBOX: {
             COLORREF fill = ThemeWindowControlBackgroundColor();
             SetTextColor((HDC)wp, ThemeWindowTextColor());
@@ -808,6 +1074,11 @@ static LRESULT CALLBACK StandardDialogControlsProc(HWND hwnd, UINT msg, WPARAM w
     if ((msg == WM_CTLCOLOREDIT || msg == WM_CTLCOLORLISTBOX) && !ThemeUsesDarkChrome()) {
         SetTextColor((HDC)wp, ThemeWindowTextColor());
         SetBkColor((HDC)wp, ThemeWindowControlBackgroundColor());
+        // Warm edits paint their own rounded fill. An opaque text background
+        // would stamp a square over the corners.
+        if (msg == WM_CTLCOLOREDIT && GetPropW((HWND)lp, L"SumatraWarmEdit")) {
+            SetBkMode((HDC)wp, TRANSPARENT);
+        }
         return (LRESULT)data->control;
     }
     if (msg == WM_CTLCOLORDLG || msg == WM_CTLCOLORSTATIC || msg == WM_CTLCOLORBTN) {
@@ -915,6 +1186,9 @@ HBRUSH AppDialogCtlColorBrush(UINT msg, WPARAM wp, LPARAM lp, HBRUSH bgBrush, HB
                     (msg == WM_CTLCOLORLISTBOX && ctrlBrush);
     SetTextColor(dc, ThemeWindowTextColor());
     SetBkColor(dc, recessed ? ThemeWindowControlBackgroundColor() : AppDialogPanelBackgroundColor());
+    if (msg == WM_CTLCOLOREDIT && GetPropW(ctrl, L"SumatraWarmEdit")) {
+        SetBkMode(dc, TRANSPARENT);
+    }
     return recessed ? ctrlBrush : bgBrush;
 }
 
@@ -1023,15 +1297,116 @@ static LRESULT CALLBACK AppMessageBoxCbtProc(int code, WPARAM wp, LPARAM lp) {
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
-int AppMessageBoxW(HWND owner, const WCHAR* text, const WCHAR* caption, UINT flags) {
-    if (!InterlockedCompareExchange(&gNativeDialogThemeReady, 0, 0)) return MessageBoxW(owner, text, caption, flags);
+static int AppMessageBoxFallbackW(HWND owner, const WCHAR* text, const WCHAR* caption, UINT flags) {
     struct ScopedHook {
         HHOOK hook = SetWindowsHookExW(WH_CBT, AppMessageBoxCbtProc, nullptr, GetCurrentThreadId());
         ~ScopedHook() {
-            if (hook) UnhookWindowsHookEx(hook);
+            if (hook) {
+                UnhookWindowsHookEx(hook);
+            }
         }
     } hook;
     return MessageBoxW(owner, text, caption, flags);
+}
+
+// Classic MessageBox leaves a paper-white button strip under dark chrome and
+// clips long lines after we swap fonts. Task Dialog sizes to content and takes
+// the same AppTaskDialogIndirect theme path as the rest of the app.
+static void AppMessageBoxFillTaskDialog(TASKDIALOGCONFIG* tdc, HWND owner, const WCHAR* text, const WCHAR* caption,
+                                        UINT flags) {
+    *tdc = {};
+    tdc->cbSize = sizeof(*tdc);
+    tdc->hwndParent = owner;
+    tdc->dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+    tdc->pszWindowTitle = caption;
+    tdc->pszContent = text;
+    tdc->lpCallbackData = (LONG_PTR)flags;
+
+    switch (flags & MB_TYPEMASK) {
+        case MB_OKCANCEL:
+            tdc->dwCommonButtons = TDCBF_OK_BUTTON | TDCBF_CANCEL_BUTTON;
+            tdc->nDefaultButton = ((flags & MB_DEFMASK) == MB_DEFBUTTON2) ? IDCANCEL : IDOK;
+            break;
+        case MB_YESNOCANCEL:
+            tdc->dwCommonButtons = TDCBF_YES_BUTTON | TDCBF_NO_BUTTON | TDCBF_CANCEL_BUTTON;
+            if ((flags & MB_DEFMASK) == MB_DEFBUTTON2) {
+                tdc->nDefaultButton = IDNO;
+            } else if ((flags & MB_DEFMASK) == MB_DEFBUTTON3) {
+                tdc->nDefaultButton = IDCANCEL;
+            } else {
+                tdc->nDefaultButton = IDYES;
+            }
+            break;
+        case MB_YESNO:
+            tdc->dwCommonButtons = TDCBF_YES_BUTTON | TDCBF_NO_BUTTON;
+            tdc->nDefaultButton = ((flags & MB_DEFMASK) == MB_DEFBUTTON2) ? IDNO : IDYES;
+            break;
+        case MB_RETRYCANCEL:
+            tdc->dwCommonButtons = TDCBF_RETRY_BUTTON | TDCBF_CANCEL_BUTTON;
+            tdc->nDefaultButton = ((flags & MB_DEFMASK) == MB_DEFBUTTON2) ? IDCANCEL : IDRETRY;
+            break;
+        case MB_OK:
+        default:
+            tdc->dwCommonButtons = TDCBF_OK_BUTTON;
+            break;
+    }
+
+    switch (flags & MB_ICONMASK) {
+        case MB_ICONERROR:
+            tdc->pszMainIcon = TD_ERROR_ICON;
+            break;
+        case MB_ICONWARNING:
+            tdc->pszMainIcon = TD_WARNING_ICON;
+            break;
+        case MB_ICONINFORMATION:
+            tdc->pszMainIcon = TD_INFORMATION_ICON;
+            break;
+        case MB_ICONQUESTION:
+            tdc->dwFlags |= TDF_USE_HICON_MAIN;
+            tdc->hMainIcon = (HICON)LoadImageW(nullptr, IDI_QUESTION, IMAGE_ICON, 0, 0, LR_SHARED);
+            break;
+        default:
+            break;
+    }
+
+    if (flags & MB_RTLREADING) {
+        tdc->dwFlags |= TDF_RTL_LAYOUT;
+    }
+}
+
+static HRESULT CALLBACK AppMessageBoxTaskDialogExtra(HWND hwnd, UINT notification, WPARAM, LPARAM, LONG_PTR data) {
+    if (notification == TDN_DIALOG_CONSTRUCTED) {
+        UINT flags = (UINT)data;
+        if (flags & (MB_SYSTEMMODAL | MB_TOPMOST)) {
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        }
+        if (flags & MB_SETFOREGROUND) {
+            SetForegroundWindow(hwnd);
+        }
+        TranslateMessageBoxButtons(hwnd);
+    }
+    return S_OK;
+}
+
+int AppMessageBoxW(HWND owner, const WCHAR* text, const WCHAR* caption, UINT flags) {
+    if (!InterlockedCompareExchange(&gNativeDialogThemeReady, 0, 0)) {
+        return MessageBoxW(owner, text, caption, flags);
+    }
+    // Custom button sets (Abort/Retry/Ignore, Cancel/Try/Continue) stay on the
+    // classic MessageBox path; everything Options uses is OK / YesNo / etc.
+    UINT type = flags & MB_TYPEMASK;
+    if (type == MB_ABORTRETRYIGNORE || type == MB_CANCELTRYCONTINUE) {
+        return AppMessageBoxFallbackW(owner, text, caption, flags);
+    }
+    TASKDIALOGCONFIG tdc{};
+    AppMessageBoxFillTaskDialog(&tdc, owner, text, caption, flags);
+    tdc.pfCallback = AppMessageBoxTaskDialogExtra;
+    tdc.lpCallbackData = (LONG_PTR)flags;
+    int button = 0;
+    if (SUCCEEDED(AppTaskDialogIndirect(&tdc, &button, nullptr, nullptr)) && button != 0) {
+        return button;
+    }
+    return AppMessageBoxFallbackW(owner, text, caption, flags);
 }
 
 struct AppTaskDialogCallbackContext {
@@ -1042,7 +1417,9 @@ struct AppTaskDialogCallbackContext {
 static HRESULT CALLBACK AppTaskDialogCallback(HWND hwnd, UINT notification, WPARAM wp, LPARAM lp, LONG_PTR data) {
     auto* ctx = (AppTaskDialogCallbackContext*)data;
     if (notification == TDN_DIALOG_CONSTRUCTED || notification == TDN_NAVIGATED) {
-        if (UseDarkModeLib() && ThemeUsesDarkChrome()) DarkMode::setDarkTaskDlg(hwnd);
+        if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
+            DarkMode::setDarkTaskDlg(hwnd);
+        }
         AppThemeNativeMessageWindow(hwnd);
         // Task dialogs route text and link colors through nested notify sinks.
         EnumChildWindows(
@@ -1052,10 +1429,14 @@ static HRESULT CALLBACK AppTaskDialogCallback(HWND hwnd, UINT notification, WPAR
                 GetClassNameW(child, cls, dimof(cls));
                 if (wcscmp(cls, L"CtrlNotifySink") == 0 || wcscmp(cls, L"DirectUIHWND") == 0) {
                     AppDialogUseStandardControls(child, false);
+                    AppDialogApplyChrome(child);
                 }
                 return TRUE;
             },
             0);
+        // DirectUI often paints a system button strip; force our panel color
+        // after construction so Warm / dark themes do not keep a white band.
+        InvalidateRect(hwnd, nullptr, TRUE);
     }
     return ctx->original ? ctx->original(hwnd, notification, wp, lp, ctx->originalData) : S_OK;
 }

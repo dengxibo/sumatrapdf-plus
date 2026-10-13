@@ -291,6 +291,9 @@
     <ClInclude Include="..\src\PdfCadEnhanceDevice.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\PdfPaperPlateDevice.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\PdfCreator.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -723,6 +726,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfCadEnhanceDevice.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfPaperPlateDevice.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfCreator.cpp">

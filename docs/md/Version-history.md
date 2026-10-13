@@ -2,6 +2,15 @@
 
 ## next
 
+## 3.7.47 (2026-10-14)
+
+- 选项对话框里可输入的下拉框（树字体、默认缩放、西文/中日韩字体）箭头与其他下拉框一样完整；浅色主题的单行输入框改为圆角。滚轮滚到尽头不再带动整页抖动。
+  Editable Options dropdowns show the same full arrow as the other boxes, light-theme single-line fields are rounded, and wheel-scrolling at the end no longer shakes the page.
+- 明亮模式下，盖在嵌入图片上的小块近白矢量底不再挡住图片里的标志。
+  In light mode, small near-white vector plates painted over an embedded image no longer hide the picture underneath.
+- 自动识别只预读下一页；识别菜单增加「识别当前页」。深色对话框边框改用淡色描边，贴在深色主窗口上仍能看出轮廓。
+  Auto OCR prefetches only the next page, the OCR menu can recognize the current page, and dark dialogs keep a visible border against the main window.
+
 ## 3.7.46 (2026-10-13)
 
 - 修复选项对话框下拉框在鼠标悬停时抖动/闪烁（含设置页滚动定位）。
