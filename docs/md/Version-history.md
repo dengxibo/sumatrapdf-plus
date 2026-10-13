@@ -2,6 +2,11 @@
 
 ## next
 
+## 3.7.46 (2026-10-13)
+
+- 修复选项对话框下拉框在鼠标悬停时抖动/闪烁（含设置页滚动定位）。
+  Fix Options dialog combo boxes shaking or flashing on hover, including settings scroll-into-view.
+
 ## 3.7.45 (2026-10-13)
 
 - 带可跳转印刷目录的 DOC/DOCX，侧栏目录优先按目录锚点提取；隐藏 OLE_LINK、`RANGE!…` 等 Word 自动书签；兼容 `1.2.` / `1.2.1.` 尾点编号。

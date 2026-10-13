@@ -148,14 +148,15 @@ static LRESULT CALLBACK WarmPushButtonProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
         }
         case WM_ERASEBKGND:
             return 1;
-        case WM_MOUSEMOVE:
+        case WM_MOUSEMOVE: {
+            TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tme);
             if (st && !st->hot) {
                 st->hot = true;
-                TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd, 0};
-                TrackMouseEvent(&tme);
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
             break;
+        }
         case WM_MOUSELEAVE:
             if (st && st->hot) {
                 st->hot = false;
@@ -281,9 +282,25 @@ static void AlignComboEditText(HWND hwnd) {
     SendMessageW(info.hwndItem, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(left, 0));
 }
 
+static void WarmComboClosedFaceRect(HWND hwnd, RECT* out) {
+    GetClientRect(hwnd, out);
+    // Settings layout sizes ComboBox windows to their dropped height and clips
+    // the closed face with SetWindowRgn. Paint only that face, not the tall
+    // client, or hover redraws look like the control is shaking.
+    COMBOBOXINFO info{sizeof(info)};
+    if (!GetComboBoxInfo(hwnd, &info)) {
+        return;
+    }
+    RECT face{};
+    UnionRect(&face, &info.rcItem, &info.rcButton);
+    if (face.right > face.left && face.bottom > face.top) {
+        *out = face;
+    }
+}
+
 static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
     RECT wr{};
-    GetClientRect(hwnd, &wr);
+    WarmComboClosedFaceRect(hwnd, &wr);
     if (wr.right <= wr.left || wr.bottom <= wr.top) {
         return;
     }
@@ -306,24 +323,28 @@ static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
     bool dropped = SendMessageW(hwnd, CB_GETDROPPEDSTATE, 0, 0) != 0;
     bool enabled = IsWindowEnabled(hwnd) != FALSE;
     bool focused = enabled && GetFocus() == hwnd;
+    // Light themes: ignore hover for the closed face. Border-delta changes on
+    // enter/leave were the remaining flash after the leave-loop fix.
+    bool hotVisual = hot && ThemeUsesDarkChrome();
     COLORREF fill = ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : ThemeWindowControlBackgroundColor();
     if (!enabled) {
         fill = page;
     } else if (dropped) {
         fill = AccentColor(fill, 8);
-    } else if (hot && ThemeUsesDarkChrome()) {
+    } else if (hotVisual) {
         fill = AccentColor(fill, 0, 8);
     }
     int borderDelta = 32;
-    if (hot || dropped) {
+    if (hotVisual || dropped) {
         borderDelta = 48;
     }
     if (focused) {
         borderDelta = 56;
     }
     // Dark: same purple edge as Note / Options (DarkMode setEdgeColor).
-    COLORREF border = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), (hot || dropped || focused) ? 0 : -20)
-                                            : AccentColor(page, borderDelta);
+    COLORREF border = ThemeUsesDarkChrome()
+                          ? AccentColor(ThemeWindowLinkColor(), (hotVisual || dropped || focused) ? 0 : -20)
+                          : AccentColor(page, borderDelta);
 
     RECT box = wr;
     InflateRect(&box, -1, -1);
@@ -403,7 +424,21 @@ static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         case WM_PAINT: {
             PAINTSTRUCT ps{};
             HDC hdc = BeginPaint(hwnd, &ps);
-            PaintWarmCombo(hwnd, hdc, st && st->hot);
+            RECT face{};
+            WarmComboClosedFaceRect(hwnd, &face);
+            int fw = face.right - face.left;
+            int fh = face.bottom - face.top;
+            if (fw > 0 && fh > 0) {
+                HDC mem = CreateCompatibleDC(hdc);
+                HBITMAP bmp = CreateCompatibleBitmap(hdc, fw, fh);
+                HGDIOBJ oldBmp = SelectObject(mem, bmp);
+                SetWindowOrgEx(mem, face.left, face.top, nullptr);
+                PaintWarmCombo(hwnd, mem, st && st->hot);
+                BitBlt(hdc, face.left, face.top, fw, fh, mem, face.left, face.top, SRCCOPY);
+                SelectObject(mem, oldBmp);
+                DeleteObject(bmp);
+                DeleteDC(mem);
+            }
             EndPaint(hwnd, &ps);
             return 0;
         }
@@ -419,20 +454,30 @@ static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             HBRUSH br = WarmComboBrush(st, fill);
             return (LRESULT)br;
         }
-        case WM_MOUSEMOVE:
+        case WM_MOUSEMOVE: {
+            // TrackMouseEvent cancels on the next mouse message. Re-arm every
+            // move or we get leave→enter loops and the closed face shakes.
+            TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tme);
             if (st && !st->hot) {
                 st->hot = true;
-                TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd, 0};
-                TrackMouseEvent(&tme);
-                InvalidateRect(hwnd, nullptr, FALSE);
+                // Light themes keep a constant closed face; only dark paints hover.
+                if (ThemeUsesDarkChrome()) {
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
             }
-            break;
+            // Native combo paints its own hot face from mouse-move; skip it so
+            // our closed face is the only paint.
+            return 0;
+        }
         case WM_MOUSELEAVE:
             if (st && st->hot) {
                 st->hot = false;
-                InvalidateRect(hwnd, nullptr, FALSE);
+                if (ThemeUsesDarkChrome()) {
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
             }
-            break;
+            return 0;
         case WM_SETFOCUS:
         case WM_KILLFOCUS:
         case WM_ENABLE:
@@ -469,31 +514,53 @@ void AppDialogThemeScrollBar(HWND hwnd) {
 static void PaintComboList(HWND list, HWND combo, HDC dc) {
     RECT client{};
     GetClientRect(list, &client);
+    int w = client.right - client.left;
+    int h = client.bottom - client.top;
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    HDC mem = CreateCompatibleDC(dc);
+    HBITMAP bmp = CreateCompatibleBitmap(dc, w, h);
+    HGDIOBJ oldBmp = SelectObject(mem, bmp);
     ScopedGdiObj<HBRUSH> background(CreateSolidBrush(ThemeWindowControlBackgroundColor()));
-    FillRect(dc, &client, background);
-    ScopedSelectObject font(dc, GetWindowFont(combo));
-    SetBkMode(dc, TRANSPARENT);
+    FillRect(mem, &client, background);
+    ScopedSelectObject font(mem, GetWindowFont(combo));
+    SetBkMode(mem, TRANSPARENT);
     int count = (int)SendMessageW(list, LB_GETCOUNT, 0, 0);
     int selected = (int)SendMessageW(list, LB_GETCURSEL, 0, 0);
     int top = (int)SendMessageW(list, LB_GETTOPINDEX, 0, 0);
     int pad = DpiScale(combo, 8);
     for (int i = std::max(0, top); i < count; i++) {
         RECT row{};
-        if (SendMessageW(list, LB_GETITEMRECT, i, (LPARAM)&row) == LB_ERR || row.top >= client.bottom) break;
-        if (row.bottom <= client.top) continue;
+        if (SendMessageW(list, LB_GETITEMRECT, i, (LPARAM)&row) == LB_ERR || row.top >= client.bottom) {
+            break;
+        }
+        if (row.bottom <= client.top) {
+            continue;
+        }
         bool highlight = i == selected;
         if (highlight) {
-            FillRect(dc, &row, GetSysColorBrush(COLOR_HIGHLIGHT));
+            FillRect(mem, &row, GetSysColorBrush(COLOR_HIGHLIGHT));
         }
         int length = (int)SendMessageW(list, LB_GETTEXTLEN, i, 0);
-        if (length < 0) continue;
+        if (length < 0) {
+            continue;
+        }
         ScopedMem<WCHAR> text(AllocArray<WCHAR>((size_t)length + 1));
-        if (SendMessageW(list, LB_GETTEXT, i, (LPARAM)text.Get()) == LB_ERR) continue;
-        SetTextColor(dc, highlight ? GetSysColor(COLOR_HIGHLIGHTTEXT) : ThemeWindowTextColor());
-        row.left += pad;
-        row.right -= pad;
-        DrawTextW(dc, text.Get(), length, &row, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+        if (SendMessageW(list, LB_GETTEXT, i, (LPARAM)text.Get()) == LB_ERR) {
+            continue;
+        }
+        SetTextColor(mem, highlight ? GetSysColor(COLOR_HIGHLIGHTTEXT) : ThemeWindowTextColor());
+        RECT textRc = row;
+        textRc.left += pad;
+        textRc.right -= pad;
+        DrawTextW(mem, text.Get(), length, &textRc,
+                  DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
     }
+    BitBlt(dc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
+    SelectObject(mem, oldBmp);
+    DeleteObject(bmp);
+    DeleteDC(mem);
 }
 
 static LRESULT CALLBACK ComboListProc(HWND list, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
@@ -510,6 +577,47 @@ static LRESULT CALLBACK ComboListProc(HWND list, UINT msg, WPARAM wp, LPARAM lp,
         PaintComboList(list, combo, (HDC)wp);
         return 0;
     }
+    if (!ownerDraw && msg == WM_ERASEBKGND) {
+        return 1;
+    }
+    // Hover/keyboard tracking: freeze native painting, then paint our face only
+    // when the selection or scroll position actually changed.
+    if (!ownerDraw && (msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_KEYDOWN ||
+                       msg == WM_MOUSEWHEEL || msg == WM_VSCROLL || msg == LB_SETCURSEL || msg == LB_SETTOPINDEX)) {
+        int selBefore = (int)SendMessageW(list, LB_GETCURSEL, 0, 0);
+        int topBefore = (int)SendMessageW(list, LB_GETTOPINDEX, 0, 0);
+        SendMessageW(list, WM_SETREDRAW, FALSE, 0);
+        LRESULT result = DefSubclassProc(list, msg, wp, lp);
+        SendMessageW(list, WM_SETREDRAW, TRUE, 0);
+        int selAfter = (int)SendMessageW(list, LB_GETCURSEL, 0, 0);
+        int topAfter = (int)SendMessageW(list, LB_GETTOPINDEX, 0, 0);
+        if (topAfter != topBefore) {
+            InvalidateRect(list, nullptr, FALSE);
+            UpdateWindow(list);
+        } else if (selAfter != selBefore) {
+            // Only the old and new rows change; avoid flashing the whole popup.
+            RECT dirty{};
+            bool have = false;
+            RECT row{};
+            if (selBefore >= 0 && SendMessageW(list, LB_GETITEMRECT, selBefore, (LPARAM)&row) != LB_ERR) {
+                dirty = row;
+                have = true;
+            }
+            if (selAfter >= 0 && SendMessageW(list, LB_GETITEMRECT, selAfter, (LPARAM)&row) != LB_ERR) {
+                if (have) {
+                    UnionRect(&dirty, &dirty, &row);
+                } else {
+                    dirty = row;
+                    have = true;
+                }
+            }
+            if (have) {
+                InvalidateRect(list, &dirty, FALSE);
+                UpdateWindow(list);
+            }
+        }
+        return result;
+    }
     LRESULT result = DefSubclassProc(list, msg, wp, lp);
     if (msg == WM_NCPAINT) {
         // Draw every edge explicitly; the unthemed popup's native left rim
@@ -523,13 +631,6 @@ static LRESULT CALLBACK ComboListProc(HWND list, UINT msg, WPARAM wp, LPARAM lp,
         ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(color));
         FrameRect(dc, &border, brush);
         ReleaseDC(list, dc);
-    } else if (!ownerDraw &&
-               (msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_KEYDOWN || msg == WM_MOUSEWHEEL ||
-                msg == WM_VSCROLL || msg == LB_SETCURSEL || msg == LB_SETTOPINDEX)) {
-        // Native list boxes may paint changed rows directly while tracking.
-        // Repaint those rows with the same inset as the closed combo face.
-        InvalidateRect(list, nullptr, FALSE);
-        UpdateWindow(list);
     } else if (msg == WM_NCDESTROY) {
         RemoveWindowSubclass(list, ComboListProc, id);
     }
@@ -554,6 +655,14 @@ static void ThemeWarmComboListScrollBar(HWND combo) {
         SetWindowPos(info.hwndList, nullptr, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
+    // Short lists (OCR detail, voice mode) do not need a bar. Leaving WS_VSCROLL
+    // visible reserves gutter space and the popup width jumps while hovering.
+    int count = (int)SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    int minVis = (int)SendMessageW(combo, CB_GETMINVISIBLE, 0, 0);
+    if (minVis <= 0) {
+        minVis = 30;
+    }
+    ShowScrollBar(info.hwndList, SB_VERT, count > minVis);
 }
 
 static void InstallWarmCombo(HWND hwnd) {

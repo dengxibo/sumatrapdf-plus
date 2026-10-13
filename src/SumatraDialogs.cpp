@@ -1379,7 +1379,11 @@ static void EnsureSettingsFocusVisible(HWND hwnd) {
     HWND focus = GetFocus();
     for (const auto& item : gSettingsScrollItems) {
         if (focus != item.hwnd && !IsChild(item.hwnd, focus)) continue;
-        Rect r = MapRectToWindow(WindowRect(item.hwnd), HWND_DESKTOP, hwnd);
+        // Combo windows are sized to their dropped height for the list popup.
+        // Use the closed face (layoutRect) so focusing a combo does not scroll
+        // as if a 300px-tall control were suddenly on screen.
+        Rect r = item.layoutRect;
+        r.y -= gSettingsScrollPos;
         if (r.y < gSettingsViewport.y) {
             LayoutSettingsViewport(hwnd, gSettingsScrollPos + r.y - gSettingsViewport.y);
         } else if (r.Bottom() > gSettingsViewport.Bottom()) {
