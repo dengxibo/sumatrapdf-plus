@@ -268,6 +268,10 @@ static int DetectNumbering(const char* s, int len, BodyNumberingKind& kind, int&
             if (dotted) {
                 kind = BodyNumberingKind::Dotted;
                 depth = groups;
+                // "1.2." / "1.2.1." — consume the closing dot, same section as "1.2".
+                if (q < len && s[q] == '.' && (q + 1 >= len || s[q + 1] < '0' || s[q + 1] > '9')) {
+                    q++;
+                }
                 return q;
             }
         }

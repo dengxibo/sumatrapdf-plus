@@ -8293,6 +8293,231 @@ static TocItem* TocItemFromWordNode(PdfTocEditNode* n, TocItem* parent, int& id)
     return item;
 }
 
+// "1.2." / "1.2.1." and "1.2" / "1.2.1". A lone "1." is one component.
+// bodyOut points at the title text after the number (spaces skipped).
+static bool LeadingDottedNumber(const char* s, int* nCompOut, int* lastOut, const char** bodyOut) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    const char* p = s;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p < '1' || *p > '9') {
+        return false;
+    }
+    int nComp = 0;
+    int last = 0;
+    while (nComp < 6 && *p >= '0' && *p <= '9') {
+        int v = 0;
+        int nd = 0;
+        while (*p >= '0' && *p <= '9' && nd < 4) {
+            v = v * 10 + (*p - '0');
+            p++;
+            nd++;
+        }
+        if (nd < 1) {
+            break;
+        }
+        last = v;
+        nComp++;
+        if (*p != '.') {
+            break;
+        }
+        if (p[1] >= '0' && p[1] <= '9') {
+            p++;
+            continue;
+        }
+        p++;
+        break;
+    }
+    if (nComp < 1) {
+        return false;
+    }
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (!*p) {
+        return false;
+    }
+    if (nCompOut) {
+        *nCompOut = nComp;
+    }
+    if (lastOut) {
+        *lastOut = last;
+    }
+    if (bodyOut) {
+        *bodyOut = p;
+    }
+    return true;
+}
+
+struct LiveDottedTitle {
+    const char* body = nullptr;
+    const char* title = nullptr;
+    int nComp = 0;
+    int last = 0;
+};
+
+static void CollectLiveDottedTitles(fz_outline* ol, Vec<LiveDottedTitle>& out) {
+    for (; ol; ol = ol->next) {
+        int nComp = 0;
+        int last = 0;
+        const char* body = nullptr;
+        if (ol->title && LeadingDottedNumber(ol->title, &nComp, &last, &body) && body && body[0]) {
+            LiveDottedTitle t;
+            t.body = body;
+            t.title = ol->title;
+            t.nComp = nComp;
+            t.last = last;
+            out.Append(t);
+        }
+        if (ol->down) {
+            CollectLiveDottedTitles(ol->down, out);
+        }
+    }
+}
+
+static const LiveDottedTitle* FindFullerDottedTitle(const Vec<LiveDottedTitle>& live, const char* body, int last) {
+    const LiveDottedTitle* best = nullptr;
+    if (!body || !body[0]) {
+        return nullptr;
+    }
+    for (const LiveDottedTitle& t : live) {
+        if (t.nComp < 2 || t.last != last || !t.body || !str::Eq(t.body, body)) {
+            continue;
+        }
+        if (!best || t.nComp > best->nComp) {
+            best = &t;
+        }
+    }
+    return best;
+}
+
+static char* TitleWithNumberSpace(const char* title) {
+    int nComp = 0;
+    int last = 0;
+    const char* body = nullptr;
+    if (!LeadingDottedNumber(title, &nComp, &last, &body) || !body) {
+        return str::Dup(title ? title : "");
+    }
+    const char* numEnd = body;
+    while (numEnd > title && (numEnd[-1] == ' ' || numEnd[-1] == '\t')) {
+        numEnd--;
+    }
+    int nNum = (int)(numEnd - title);
+    if (nNum < 1) {
+        return str::Dup(title);
+    }
+    char* num = str::Dup(title, (size_t)nNum);
+    char* spaced = str::Join(num, " ", body);
+    str::Free(num);
+    return spaced ? spaced : str::Dup(title);
+}
+
+static void VisitWordTocNodes(const Vec<PdfTocEditNode*>& nodes, Vec<PdfTocEditNode*>& out) {
+    for (PdfTocEditNode* n : nodes) {
+        if (!n) {
+            continue;
+        }
+        out.Append(n);
+        VisitWordTocNodes(n->children, out);
+    }
+}
+
+static void DetachWordTocNodes(Vec<PdfTocEditNode*>& nodes, Vec<PdfTocEditNode*>& out) {
+    for (PdfTocEditNode* n : nodes) {
+        if (!n) {
+            continue;
+        }
+        out.Append(n);
+        Vec<PdfTocEditNode*> kids;
+        for (PdfTocEditNode* c : n->children) {
+            kids.Append(c);
+        }
+        n->children.Reset();
+        DetachWordTocNodes(kids, out);
+    }
+}
+
+static int DottedTitleDepth(const char* title) {
+    int nComp = 0;
+    if (!LeadingDottedNumber(title, &nComp, nullptr, nullptr) || nComp < 1) {
+        return 0;
+    }
+    return nComp;
+}
+
+// An older extract kept only the last piece of "1.2." / "1.2.1." ("2. 标题").
+// The heading outline still has the full number. Put that number back and
+// nest by how many pieces it has. "1." / "2." stay one level.
+static void RepairFlattenedDottedWordToc(WordTocModel* model, fz_outline* outline) {
+    if (!model || !outline) {
+        return;
+    }
+    Vec<LiveDottedTitle> live;
+    CollectLiveDottedTitles(outline, live);
+    if (live.Size() < 4) {
+        return;
+    }
+    Vec<PdfTocEditNode*> seen;
+    VisitWordTocNodes(model->roots, seen);
+    int single = 0;
+    int canRestore = 0;
+    for (PdfTocEditNode* n : seen) {
+        int nComp = 0;
+        int last = 0;
+        const char* body = nullptr;
+        if (!n || !n->title || !LeadingDottedNumber(n->title, &nComp, &last, &body) || nComp != 1) {
+            continue;
+        }
+        single++;
+        if (FindFullerDottedTitle(live, body, last)) {
+            canRestore++;
+        }
+    }
+    if (canRestore < 6 || single < 1 || canRestore * 2 < single) {
+        return;
+    }
+    Vec<PdfTocEditNode*> flat;
+    DetachWordTocNodes(model->roots, flat);
+    model->roots.Reset();
+    struct Frame {
+        PdfTocEditNode* node = nullptr;
+        int depth = 0;
+    };
+    Vec<Frame> stack;
+    for (PdfTocEditNode* n : flat) {
+        int nComp = 0;
+        int last = 0;
+        const char* body = nullptr;
+        if (n->title && LeadingDottedNumber(n->title, &nComp, &last, &body) && nComp == 1) {
+            const LiveDottedTitle* full = FindFullerDottedTitle(live, body, last);
+            if (full && full->title) {
+                char* neu = TitleWithNumberSpace(full->title);
+                if (neu) {
+                    str::Free(n->title);
+                    n->title = neu;
+                }
+            }
+        }
+        int depth = DottedTitleDepth(n->title);
+        if (depth < 1 && stack.Size() > 0) {
+            depth = stack.at(stack.Size() - 1).depth;
+        }
+        while (stack.Size() > 0 && stack.at(stack.Size() - 1).depth >= depth && depth > 0) {
+            stack.RemoveLast();
+        }
+        if (stack.Size() == 0 || depth < 1) {
+            model->roots.Append(n);
+            stack.Append({n, depth < 1 ? 0 : depth});
+        } else {
+            stack.at(stack.Size() - 1).node->children.Append(n);
+            stack.Append({n, depth});
+        }
+    }
+}
+
 static TocTree* TocTreeFromWordModel(EngineMupdf* e) {
     int id = 0;
     TocItem* first = nullptr;
@@ -8337,8 +8562,20 @@ TocTree* EngineMupdf::GetToc() {
     tocTreeStale = false;
     EngineMupdfDropRetiredOutlines(this);
     if (wordToc && wordToc->active) {
-        tocTree = TocTreeFromWordModel(this);
-        return tocTree;
+        char printed[8]{};
+        bool printedToc = false;
+        if (_doc && fz_lookup_metadata(Ctx(), _doc, "SumatraPrintedToc", printed, sizeof printed) > 0 &&
+            printed[0] == 'y') {
+            printedToc = true;
+        }
+        /* A saved snapshot must not hide a printed TOC whose links still jump. */
+        if (!printedToc) {
+            if (!modifiedPdfToc && outline) {
+                RepairFlattenedDottedWordToc(wordToc, outline);
+            }
+            tocTree = TocTreeFromWordModel(this);
+            return tocTree;
+        }
     }
     if (outline == nullptr && attachments == nullptr) {
         if (EngineMupdfIsWordDocument(this)) {

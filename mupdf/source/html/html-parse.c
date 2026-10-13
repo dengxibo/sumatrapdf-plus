@@ -28,6 +28,12 @@
 #include <stdio.h>
 #include <assert.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 enum { T, R, B, L };
 
 static const char *html_default_css =
@@ -273,6 +279,7 @@ struct genstate
 
 	int depth;
 	int depth_warned;
+	fz_html *html; /* document being built; NULL for stories */
 };
 
 static int iswhite(int c)
@@ -679,11 +686,307 @@ static void generate_text(fz_context *ctx, fz_html_box *box, const char *text, i
 	}
 }
 
+#ifdef _WIN32
+/* Word often stores page scans as placeable WMF with an .emf name. MuPDF has no
+ * metafile decoder; GDI plays them when the page is actually drawn. */
+
+typedef struct
+{
+	fz_image super;
+	fz_archive *zip;
+	char *path;
+} win_meta_image;
+
+static int
+win_rd_i16(const unsigned char *p)
+{
+	return (short)(p[0] | (p[1] << 8));
+}
+
+static int
+win_rd_i32(const unsigned char *p)
+{
+	return (int)(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
+}
+
+static unsigned
+win_rd_u16(const unsigned char *p)
+{
+	return (unsigned)(p[0] | (p[1] << 8));
+}
+
+static unsigned
+win_rd_u32(const unsigned char *p)
+{
+	return (unsigned)(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
+}
+
+static void
+win_cap_pixels(int *w, int *h)
+{
+	if (*w < 1) *w = 1;
+	if (*h < 1) *h = 1;
+	if (*w > 2000)
+	{
+		*h = (int)((double)*h * 2000.0 / *w);
+		*w = 2000;
+	}
+	if (*h > 2600)
+	{
+		*w = (int)((double)*w * 2600.0 / *h);
+		*h = 2600;
+	}
+	if (*w < 1) *w = 1;
+	if (*h < 1) *h = 1;
+}
+
+/* 1 if data is EMF or WMF. Pixel size is the playback box (about 144 dpi). */
+static int
+win_meta_pixel_size(const unsigned char *d, size_t n, int *outw, int *outh)
+{
+	const double dpi = 144.0;
+	if (!d || n < 18 || !outw || !outh) return 0;
+	/* Aldus placeable WMF (Word's "emf" screenshots). */
+	if (d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A)
+	{
+		int left = win_rd_i16(d + 6);
+		int top = win_rd_i16(d + 8);
+		int right = win_rd_i16(d + 10);
+		int bottom = win_rd_i16(d + 12);
+		int inch = (int)win_rd_u16(d + 14);
+		int pw, ph;
+		if (inch < 1) inch = 96;
+		pw = right - left; if (pw < 0) pw = -pw;
+		ph = bottom - top; if (ph < 0) ph = -ph;
+		if (pw < 1) pw = inch;
+		if (ph < 1) ph = inch;
+		*outw = (int)(pw * dpi / inch);
+		*outh = (int)(ph * dpi / inch);
+		win_cap_pixels(outw, outh);
+		return 1;
+	}
+	/* Real EMF: record type 1 and " EMF" signature. Frame is in 0.01 mm. */
+	if (n >= 44 && win_rd_u32(d) == 1 && win_rd_u32(d + 40) == 0x464D4520)
+	{
+		int pw = win_rd_i32(d + 32) - win_rd_i32(d + 24);
+		int ph = win_rd_i32(d + 36) - win_rd_i32(d + 28);
+		if (pw < 0) pw = -pw;
+		if (ph < 0) ph = -ph;
+		if (pw < 1) pw = 2540 * 6;
+		if (ph < 1) ph = 2540 * 8;
+		*outw = (int)(pw * dpi / 2540.0);
+		*outh = (int)(ph * dpi / 2540.0);
+		win_cap_pixels(outw, outh);
+		return 1;
+	}
+	/* Classic memory/disk WMF. */
+	if ((d[0] == 1 || d[0] == 2) && d[1] == 0 && d[2] == 9 && d[3] == 0)
+	{
+		*outw = (int)(8.0 * dpi);
+		*outh = (int)(6.0 * dpi);
+		win_cap_pixels(outw, outh);
+		return 1;
+	}
+	return 0;
+}
+
+static HENHMETAFILE
+win_meta_open(const unsigned char *d, size_t n)
+{
+	HDC screen;
+	HENHMETAFILE hemf = NULL;
+	if (n >= 22 && d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A)
+	{
+		int left = win_rd_i16(d + 6);
+		int top = win_rd_i16(d + 8);
+		int right = win_rd_i16(d + 10);
+		int bottom = win_rd_i16(d + 12);
+		int inch = (int)win_rd_u16(d + 14);
+		int pw, ph;
+		METAFILEPICT mfp;
+		if (inch < 1) inch = 96;
+		pw = right - left; if (pw < 0) pw = -pw;
+		ph = bottom - top; if (ph < 0) ph = -ph;
+		mfp.mm = MM_ANISOTROPIC;
+		mfp.xExt = (int)((double)pw * 2540.0 / inch);
+		mfp.yExt = (int)((double)ph * 2540.0 / inch);
+		mfp.hMF = NULL;
+		screen = GetDC(NULL);
+		hemf = SetWinMetaFileBits((UINT)(n - 22), (const BYTE *)d + 22, screen, &mfp);
+		ReleaseDC(NULL, screen);
+		return hemf;
+	}
+	if (n >= 44 && win_rd_u32(d) == 1 && win_rd_u32(d + 40) == 0x464D4520)
+		return SetEnhMetaFileBits((UINT)n, (const BYTE *)d);
+	if (n > 18 && (d[0] == 1 || d[0] == 2) && d[1] == 0 && d[2] == 9 && d[3] == 0)
+	{
+		screen = GetDC(NULL);
+		hemf = SetWinMetaFileBits((UINT)n, (const BYTE *)d, screen, NULL);
+		ReleaseDC(NULL, screen);
+		return hemf;
+	}
+	return NULL;
+}
+
+static fz_pixmap *
+win_meta_render(fz_context *ctx, const unsigned char *d, size_t n, int w, int h)
+{
+	HENHMETAFILE hemf = NULL;
+	HDC screen = NULL;
+	HDC mem = NULL;
+	HBITMAP dib = NULL;
+	HGDIOBJ old = NULL;
+	void *bits = NULL;
+	BITMAPINFO bmi;
+	RECT rc;
+	fz_pixmap *pix = NULL;
+	int x, y;
+
+	hemf = win_meta_open(d, n);
+	if (!hemf) return NULL;
+	screen = GetDC(NULL);
+	mem = CreateCompatibleDC(screen);
+	memset(&bmi, 0, sizeof bmi);
+	bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bmi.bmiHeader.biWidth = w;
+	bmi.bmiHeader.biHeight = -h;
+	bmi.bmiHeader.biPlanes = 1;
+	bmi.bmiHeader.biBitCount = 32;
+	bmi.bmiHeader.biCompression = BI_RGB;
+	dib = CreateDIBSection(mem, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (!dib || !bits)
+	{
+		if (dib) DeleteObject(dib);
+		DeleteDC(mem);
+		ReleaseDC(NULL, screen);
+		DeleteEnhMetaFile(hemf);
+		return NULL;
+	}
+	old = SelectObject(mem, dib);
+	rc.left = 0; rc.top = 0; rc.right = w; rc.bottom = h;
+	FillRect(mem, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+	if (!PlayEnhMetaFile(mem, hemf, &rc))
+	{
+		SelectObject(mem, old);
+		DeleteObject(dib);
+		DeleteDC(mem);
+		ReleaseDC(NULL, screen);
+		DeleteEnhMetaFile(hemf);
+		return NULL;
+	}
+	SelectObject(mem, old);
+
+	fz_try(ctx)
+	{
+		unsigned char *sp = bits;
+		pix = fz_new_pixmap(ctx, fz_device_rgb(ctx), w, h, NULL, 0);
+		for (y = 0; y < h; y++)
+		{
+			unsigned char *s = sp + (size_t)y * (size_t)w * 4;
+			unsigned char *dp = pix->samples + (size_t)y * (size_t)pix->stride;
+			int ncomp = pix->n;
+			for (x = 0; x < w; x++)
+			{
+				dp[0] = s[2];
+				dp[1] = s[1];
+				dp[2] = s[0];
+				s += 4;
+				dp += ncomp;
+			}
+		}
+	}
+	fz_always(ctx)
+	{
+		DeleteObject(dib);
+		DeleteDC(mem);
+		ReleaseDC(NULL, screen);
+		DeleteEnhMetaFile(hemf);
+	}
+	fz_catch(ctx)
+	{
+		fz_drop_pixmap(ctx, pix);
+		fz_rethrow(ctx);
+	}
+	return pix;
+}
+
+static void
+win_meta_drop(fz_context *ctx, fz_image *image_)
+{
+	win_meta_image *image = (win_meta_image *)image_;
+	fz_drop_archive(ctx, image->zip);
+	fz_free(ctx, image->path);
+}
+
+static size_t
+win_meta_size(fz_context *ctx, fz_image *image_)
+{
+	win_meta_image *image = (win_meta_image *)image_;
+	(void)ctx;
+	return sizeof(win_meta_image) + (image->path ? strlen(image->path) + 1 : 0);
+}
+
+static fz_pixmap *
+win_meta_get_pixmap(fz_context *ctx, fz_image *image_, fz_irect *subarea, int w, int h, int *l2factor)
+{
+	win_meta_image *image = (win_meta_image *)image_;
+	fz_buffer *buf = NULL;
+	fz_pixmap *pix = NULL;
+	(void)subarea;
+	(void)w;
+	(void)h;
+	(void)l2factor;
+
+	fz_var(buf);
+	fz_try(ctx)
+	{
+		buf = fz_read_archive_entry(ctx, image->zip, image->path);
+		pix = win_meta_render(ctx, buf->data, buf->len, image_->w, image_->h);
+		if (!pix)
+			fz_throw(ctx, FZ_ERROR_FORMAT, "cannot play metafile");
+	}
+	fz_always(ctx)
+		fz_drop_buffer(ctx, buf);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+	return pix;
+}
+
+static fz_image *
+win_meta_new_image(fz_context *ctx, fz_archive *zip, const char *path, int w, int h)
+{
+	win_meta_image *image = NULL;
+	char *copy = NULL;
+
+	fz_var(image);
+	fz_var(copy);
+	fz_try(ctx)
+	{
+		copy = fz_strdup(ctx, path);
+		image = (win_meta_image *)fz_new_image_of_size(ctx, w, h, 8, fz_device_rgb(ctx), 96, 96,
+			1, 0, NULL, NULL, NULL, sizeof(win_meta_image),
+			win_meta_get_pixmap, win_meta_size, NULL, win_meta_drop);
+		image->path = copy;
+		copy = NULL;
+		image->zip = fz_keep_archive(ctx, zip);
+	}
+	fz_catch(ctx)
+	{
+		fz_free(ctx, copy);
+		if (image)
+			fz_drop_image(ctx, &image->super);
+		fz_rethrow(ctx);
+	}
+	return &image->super;
+}
+#endif
+
 static fz_image *load_html_image(fz_context *ctx, fz_archive *zip, const char *base_uri, const char *src)
 {
 	char path[2048];
 	fz_image *img = NULL;
 	fz_buffer *buf = NULL;
+	int from_archive = 0;
 
 	fz_var(img);
 	fz_var(buf);
@@ -698,27 +1001,74 @@ static fz_image *load_html_image(fz_context *ctx, fz_archive *zip, const char *b
 			buf = fz_new_buffer_from_base64(ctx, src+22, 0);
 		else
 		{
+			const char *ext;
 			fz_strlcpy(path, base_uri, sizeof path);
 			fz_strlcat(path, "/", sizeof path);
 			fz_strlcat(path, src, sizeof path);
 			fz_urldecode(path);
 			fz_cleanname(path);
-			buf = fz_read_archive_entry(ctx, zip, path);
-		}
-#if FZ_ENABLE_SVG
-		if (strstr(src, ".svg"))
-			img = fz_new_image_from_svg(ctx, buf, base_uri, zip);
-		else
+			from_archive = 1;
+			ext = strrchr(src, '.');
+#ifdef _WIN32
+			/* Don't inflate every .emf/.wmf during open. Size comes from the header;
+			 * GDI plays the file when the page is drawn. */
+			if (ext && (!fz_strcasecmp(ext, ".emf") || !fz_strcasecmp(ext, ".wmf")))
+			{
+				fz_stream *stm = fz_open_archive_entry(ctx, zip, path);
+				unsigned char hdr[64];
+				size_t got = 0;
+				int iw = 0, ih = 0;
+				fz_try(ctx)
+					got = fz_read(ctx, stm, hdr, sizeof hdr);
+				fz_always(ctx)
+					fz_drop_stream(ctx, stm);
+				fz_catch(ctx)
+					fz_rethrow(ctx);
+				if (win_meta_pixel_size(hdr, got, &iw, &ih))
+					img = win_meta_new_image(ctx, zip, path, iw, ih);
+			}
+#else
+			(void)ext;
 #endif
-			img = fz_new_image_from_buffer(ctx, buf);
+			if (!img)
+				buf = fz_read_archive_entry(ctx, zip, path);
+		}
+		if (!img && buf)
+		{
+#if FZ_ENABLE_SVG
+			if (strstr(src, ".svg"))
+				img = fz_new_image_from_svg(ctx, buf, base_uri, zip);
+			else
+#endif
+			{
+				fz_try(ctx)
+					img = fz_new_image_from_buffer(ctx, buf);
+				fz_catch(ctx)
+				{
+					fz_ignore_error(ctx);
+					img = NULL;
+				}
+			}
+#ifdef _WIN32
+			if (!img && from_archive)
+			{
+				int iw = 0, ih = 0;
+				if (win_meta_pixel_size(buf->data, buf->len, &iw, &ih))
+					img = win_meta_new_image(ctx, zip, path, iw, ih);
+			}
+#endif
+		}
 	}
 	fz_always(ctx)
 		fz_drop_buffer(ctx, buf);
 	fz_catch(ctx)
 	{
 		fz_ignore_error(ctx);
-		fz_warn(ctx, "html: cannot load image src='%s'", src);
+		img = NULL;
 	}
+
+	if (!img)
+		fz_warn(ctx, "html: cannot load image src='%s'", src);
 
 	return img;
 }
@@ -787,6 +1137,16 @@ static void fz_drop_html_box(fz_context *ctx, fz_html_box *box)
 static void fz_drop_html_imp(fz_context *ctx, fz_storable *stor)
 {
 	fz_html *html = (fz_html *)stor;
+	int i;
+	for (i = 0; i < html->printed_toc_n; i++)
+	{
+		fz_free(ctx, html->printed_toc_title ? html->printed_toc_title[i] : NULL);
+		fz_free(ctx, html->printed_toc_uri ? html->printed_toc_uri[i] : NULL);
+	}
+	fz_free(ctx, html->printed_toc_title);
+	fz_free(ctx, html->printed_toc_uri);
+	fz_free(ctx, html->printed_toc_level);
+	fz_free(ctx, html->id_tab);
 	fz_drop_html_box(ctx, html->tree.root);
 	fz_drop_pool(ctx, html->tree.pool);
 }
@@ -1438,6 +1798,61 @@ static void gen2_image_svg(fz_context *ctx, struct genstate *g, fz_html_box *roo
 	gen2_image_common(ctx, g, root_box, node, img, display, style);
 }
 
+static void capture_printed_toc(fz_context *ctx, fz_html *html, fz_xml *nav)
+{
+	fz_xml *a;
+	int cap = 0;
+
+	if (!html || !nav)
+		return;
+	for (a = fz_xml_down(nav); a; a = fz_xml_next(a))
+	{
+		const char *href, *lvl;
+		char buf[512];
+		int level, len;
+		fz_xml *t;
+
+		if (!fz_xml_is_tag(a, "a"))
+			continue;
+		href = fz_xml_att(a, "href");
+		lvl = fz_xml_att(a, "data-level");
+		if (!href || href[0] != '#' || !href[1])
+			continue;
+		level = lvl ? fz_atoi(lvl) : 1;
+		if (level < 1)
+			level = 1;
+		if (level > 9)
+			level = 9;
+		buf[0] = 0;
+		len = 0;
+		for (t = fz_xml_down(a); t; t = fz_xml_next(t))
+		{
+			const char *s = fz_xml_text(t);
+			if (!s && fz_xml_down(t))
+				s = fz_xml_text(fz_xml_down(t));
+			if (!s)
+				continue;
+			while (*s && len < (int)sizeof buf - 1)
+				buf[len++] = *s++;
+		}
+		buf[len] = 0;
+		if (!buf[0])
+			continue;
+		if (html->printed_toc_n == cap)
+		{
+			int ncap = cap ? cap * 2 : 32;
+			html->printed_toc_title = fz_realloc(ctx, html->printed_toc_title, sizeof(char *) * ncap);
+			html->printed_toc_uri = fz_realloc(ctx, html->printed_toc_uri, sizeof(char *) * ncap);
+			html->printed_toc_level = fz_realloc(ctx, html->printed_toc_level, sizeof(int) * ncap);
+			cap = ncap;
+		}
+		html->printed_toc_title[html->printed_toc_n] = fz_strdup(ctx, buf);
+		html->printed_toc_uri[html->printed_toc_n] = fz_strdup(ctx, href);
+		html->printed_toc_level[html->printed_toc_n] = level;
+		html->printed_toc_n++;
+	}
+}
+
 static int get_heading_from_tag(fz_context *ctx, struct genstate *g, const char *tag)
 {
 	if (tag[0] == 'h' && tag[1] != 0 && tag[2] == 0)
@@ -1484,6 +1899,16 @@ static void gen2_tag(fz_context *ctx, struct genstate *g, fz_html_box *root_box,
 	save_markup_dir = g->markup_dir;
 	save_markup_lang = g->markup_lang;
 	save_href = g->href;
+
+	{
+		const char *early = fz_xml_tag(node);
+		const char *early_id = early ? fz_xml_att(node, "id") : NULL;
+		if (early_id && !strcmp(early_id, "sumatra-printed-toc"))
+		{
+			capture_printed_toc(ctx, g->html, node);
+			goto end;
+		}
+	}
 
 	if (display == DIS_NONE)
 		goto end;
@@ -2174,7 +2599,8 @@ xml_to_boxes(fz_context *ctx,
 	fz_html_flavor flavor,
 	int publisher_css,
 	float *meta_w,
-	float *meta_h
+	float *meta_h,
+	fz_html *html
 )
 {
 	fz_xml *root, *node, *head;
@@ -2204,6 +2630,7 @@ xml_to_boxes(fz_context *ctx,
 	g.publisher_css = publisher_css;
 	g.depth = 0;
 	g.depth_warned = 0;
+	g.html = html;
 
 	if (rtitle)
 		*rtitle = NULL;
@@ -2466,7 +2893,8 @@ fz_parse_html_tree(fz_context *ctx,
 	int try_xml, int try_html5, fz_html_tree *tree, char **rtitle, fz_html_flavor flavor,
 	int publisher_css,
 	float *meta_w,
-	float *meta_h
+	float *meta_h,
+	fz_html *html
 )
 {
 	fz_xml_doc *xml;
@@ -2481,7 +2909,7 @@ fz_parse_html_tree(fz_context *ctx,
 
 	fz_try(ctx)
 		xml_to_boxes(ctx, set, zip, base_uri, user_css, xml, tree, rtitle, flavor, publisher_css,
-			meta_w, meta_h);
+			meta_w, meta_h, html);
 	fz_always(ctx)
 		fz_drop_xml(ctx, xml);
 	fz_catch(ctx)
@@ -2528,10 +2956,17 @@ fz_parse_html(fz_context *ctx,
 	html->title = NULL;
 	html->author = NULL; /* SumatraPDF */
 	html->subject = NULL; /* SumatraPDF */
+	html->printed_toc_title = NULL;
+	html->printed_toc_uri = NULL;
+	html->printed_toc_level = NULL;
+	html->printed_toc_n = 0;
+	html->id_tab = NULL;
+	html->id_tab_cap = 0;
+	html->id_tab_b = -1;
 
 	fz_try(ctx)
 		fz_parse_html_tree(ctx, set, zip, base_uri, buf, user_css, try_xml, try_html5, &html->tree, &html->title, flavor, publisher_css,
-			&html->meta_w, &html->meta_h);
+			&html->meta_w, &html->meta_h, html);
 	fz_catch(ctx)
 	{
 		fz_drop_html(ctx, html);
@@ -3014,7 +3449,7 @@ convert_to_boxes(fz_context *ctx, fz_story *story)
 	fz_try(ctx)
 	{
 		redirect_warnings_to_buffer(ctx, story->warnings, &saved);
-		xml_to_boxes(ctx, story->font_set, story->zip, ".", story->user_css, story->dom, &story->tree, NULL, FZ_HTML_FLAVOR_DEFAULT, 1, NULL, NULL);
+		xml_to_boxes(ctx, story->font_set, story->zip, ".", story->user_css, story->dom, &story->tree, NULL, FZ_HTML_FLAVOR_DEFAULT, 1, NULL, NULL, NULL);
 	}
 	fz_always(ctx)
 	{

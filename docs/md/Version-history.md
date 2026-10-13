@@ -2,6 +2,13 @@
 
 ## next
 
+## 3.7.45 (2026-10-13)
+
+- 带可跳转印刷目录的 DOC/DOCX，侧栏目录优先按目录锚点提取；隐藏 OLE_LINK、`RANGE!…` 等 Word 自动书签；兼容 `1.2.` / `1.2.1.` 尾点编号。
+  Prefer printed TOC anchors for hyperlinked Word tables of contents; hide OLE_LINK and Excel-style `RANGE!…` auto bookmarks; accept trailing-dot section numbers.
+- 正确显示 DOCX 中的 WMF/EMF 图片（含 Aldus WMF 却命名为 `.emf` 的文件）；优化大型 DOCX 打开速度；修复个别文件首次打开缺少垂直滚动条的问题。
+  Show WMF/EMF images in Word documents (including Aldus WMF named `.emf`); speed up large DOCX opens; fix missing vertical scrollbar on first open for some files.
+
 ## 3.7.44 (2026-10-12)
 
 - AI 对话支持流式输出，收到回复内容后逐步显示，可以边生成边阅读，无需等待整段回复完成。

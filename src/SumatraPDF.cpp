@@ -4333,6 +4333,13 @@ static void EnsureDisplayModelPagesInfo(MainWindow* win, WindowTab* tab) {
     }
     if (needPagesInfo || needZoom) {
         dm->Relayout(zoomVirtual, rotation);
+        // Relayout positions pages but does not show the scrollbar. A slow docx
+        // finishes that layout while the chapter count still holds the document
+        // lock, so the later progress update sees nothing left to do and the bar
+        // stays hidden until the tab is focused again.
+        if (dm->cb && win->ctrl == dm) {
+            dm->cb->UpdateScrollbars(dm->canvasSize);
+        }
     }
     ScrollState actual = dm->GetScrollState();
     logf(

@@ -184,6 +184,9 @@ htdoc_lookup_metadata(fz_context *ctx, fz_document *doc_, const char *key, char 
 		return 1 + (int)fz_strlcpy(buf, doc->html->author, size);
 	if (!strcmp(key, FZ_META_INFO_SUBJECT) && doc->html->subject)
 		return 1 + (int)fz_strlcpy(buf, doc->html->subject, size);
+	/* Printed Word TOC (toc styles + HYPERLINK bookmarks) replaced the heading outline. */
+	if (!strcmp(key, "SumatraPrintedToc") && doc->html && doc->html->printed_toc_n >= 4)
+		return 1 + (int)fz_strlcpy(buf, "yes", size);
 	return -1;
 }
 

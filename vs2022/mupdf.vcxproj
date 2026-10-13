@@ -1068,22 +1068,38 @@
     <ClCompile Include="..\mupdf\source\fitz\warp.c" />
     <ClCompile Include="..\mupdf\source\fitz\writer.c" />
     <ClCompile Include="..\mupdf\source\fitz\xml-write.c" />
-    <ClCompile Include="..\mupdf\source\fitz\xml.c" />
+    <ClCompile Include="..\mupdf\source\fitz\xml.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\fitz\xmltext-device.c" />
     <ClCompile Include="..\mupdf\source\fitz\zip.c" />
     <ClCompile Include="..\mupdf\source\helpers\mu-threads\mu-threads.c" />
     <ClCompile Include="..\mupdf\source\helpers\pkcs7\pkcs7-windows.c" />
-    <ClCompile Include="..\mupdf\source\html\css-apply.c" />
-    <ClCompile Include="..\mupdf\source\html\css-parse.c" />
+    <ClCompile Include="..\mupdf\source\html\css-apply.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
+    <ClCompile Include="..\mupdf\source\html\css-parse.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\html\epub-doc.c" />
-    <ClCompile Include="..\mupdf\source\html\html-doc.c" />
-    <ClCompile Include="..\mupdf\source\html\html-font.c" />
-    <ClCompile Include="..\mupdf\source\html\html-layout.c" />
+    <ClCompile Include="..\mupdf\source\html\html-doc.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
+    <ClCompile Include="..\mupdf\source\html\html-font.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
+    <ClCompile Include="..\mupdf\source\html\html-layout.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\html\html-outline.c" />
-    <ClCompile Include="..\mupdf\source\html\html-parse.c" />
+    <ClCompile Include="..\mupdf\source\html\html-parse.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\html\md.c" />
     <ClCompile Include="..\mupdf\source\html\mobi.c" />
-    <ClCompile Include="..\mupdf\source\html\office.c" />
+    <ClCompile Include="..\mupdf\source\html\office.c">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\html\story-writer.c" />
     <ClCompile Include="..\mupdf\source\html\txt.c" />
     <ClCompile Include="..\mupdf\source\html\xml-dom.c" />

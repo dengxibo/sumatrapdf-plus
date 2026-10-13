@@ -359,6 +359,11 @@ typedef struct
 	int page_run_n;
 } fz_html_tree;
 
+typedef struct {
+	const char *id;
+	float y;
+} fz_html_id_slot;
+
 struct fz_html_s
 {
 	/* fz_html is derived from fz_html_tree, so must start with that. */
@@ -373,6 +378,15 @@ struct fz_html_s
 	/* SumatraPDF: FB2 title-info author + annotation (pool-allocated). NULL if absent. */
 	char *author;
 	char *subject;
+	/* Printed Word TOC extracted from toc-styled HYPERLINK fields. Pool-allocated. */
+	char **printed_toc_title;
+	char **printed_toc_uri;
+	int *printed_toc_level;
+	int printed_toc_n;
+	/* id → y, rebuilt after layout so outline/link lookup is not a full tree walk per entry. */
+	fz_html_id_slot *id_tab;
+	int id_tab_cap;
+	float id_tab_b;
 };
 
 typedef enum

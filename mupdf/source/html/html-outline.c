@@ -200,9 +200,147 @@ find_box_target(fz_html_box *box, const char *id)
 	return -1;
 }
 
+static unsigned
+html_id_hash(const char *s)
+{
+	unsigned h = 5381;
+	if (!s)
+		return h;
+	while (*s)
+		h = ((h << 5) + h) + (unsigned char)*s++;
+	return h;
+}
+
+static void
+html_id_index_add(fz_html *html, const char *id, float y)
+{
+	unsigned mask, h;
+
+	if (!html || !html->id_tab || html->id_tab_cap < 2 || !id || !id[0])
+		return;
+	mask = (unsigned)html->id_tab_cap - 1;
+	h = html_id_hash(id) & mask;
+	while (html->id_tab[h].id)
+	{
+		if (!strcmp(html->id_tab[h].id, id))
+			return;
+		h = (h + 1) & mask;
+	}
+	html->id_tab[h].id = id;
+	html->id_tab[h].y = y;
+}
+
+static void
+html_id_index_walk(fz_context *ctx, fz_html *html, fz_html_box *box)
+{
+	while (box)
+	{
+		if (box->id && box->id[0])
+		{
+			float y = -1;
+			if (box->type == BOX_FLOW)
+				y = find_flow_target(box->u.flow.head, box->id);
+			if (y < 0)
+			{
+				fz_html_flow *flow = find_first_content(box);
+				if (flow)
+					y = flow->y;
+				else
+					y = box->s.layout.y;
+			}
+			html_id_index_add(html, box->id, y);
+		}
+		if (box->type == BOX_FLOW)
+		{
+			fz_html_flow *flow;
+			for (flow = box->u.flow.head; flow; flow = flow->next)
+			{
+				if (flow->box && flow->box->id && flow->box != box)
+					html_id_index_add(html, flow->box->id, flow->y);
+			}
+		}
+		else if (box->down)
+			html_id_index_walk(ctx, html, box->down);
+		box = box->next;
+	}
+}
+
+static int
+html_id_count(fz_html_box *box)
+{
+	int n = 0;
+	while (box)
+	{
+		if (box->id && box->id[0])
+			n++;
+		if (box->type == BOX_FLOW)
+		{
+			fz_html_flow *flow;
+			for (flow = box->u.flow.head; flow; flow = flow->next)
+				if (flow->box && flow->box->id && flow->box != box)
+					n++;
+		}
+		else if (box->down)
+			n += html_id_count(box->down);
+		box = box->next;
+	}
+	return n;
+}
+
+static void
+html_id_index_build(fz_context *ctx, fz_html *html)
+{
+	int n, cap;
+	float b;
+
+	if (!html || !html->tree.root)
+		return;
+	b = html->tree.root->s.layout.b;
+	if (html->id_tab && html->id_tab_b == b && b > 0)
+		return;
+	fz_free(ctx, html->id_tab);
+	html->id_tab = NULL;
+	html->id_tab_cap = 0;
+	n = html_id_count(html->tree.root);
+	cap = 16;
+	while (cap < n * 2 + 8)
+		cap *= 2;
+	html->id_tab = fz_calloc(ctx, cap, sizeof(fz_html_id_slot));
+	html->id_tab_cap = cap;
+	html_id_index_walk(ctx, html, html->tree.root);
+	html->id_tab_b = b;
+}
+
+static float
+html_id_index_lookup(fz_html *html, const char *id)
+{
+	unsigned mask, h;
+	if (!html->id_tab || !id)
+		return -1;
+	mask = (unsigned)html->id_tab_cap - 1;
+	h = html_id_hash(id) & mask;
+	while (html->id_tab[h].id)
+	{
+		if (!strcmp(html->id_tab[h].id, id))
+			return html->id_tab[h].y;
+		h = (h + 1) & mask;
+	}
+	return -1;
+}
+
 float
 fz_find_html_target(fz_context *ctx, fz_html *html, const char *id)
 {
+	float y;
+	if (!html || !id)
+		return -1;
+	if (html->tree.root && html->tree.root->s.layout.b > 0)
+	{
+		html_id_index_build(ctx, html);
+		y = html_id_index_lookup(html, id);
+		if (y >= 0)
+			return y;
+	}
 	return find_box_target(html->tree.root, id);
 }
 
@@ -627,10 +765,74 @@ load_html_outline(fz_context *ctx, struct outline_parser *x, fz_html_box *box)
 	}
 }
 
+static fz_outline *
+load_printed_toc_outline(fz_context *ctx, fz_html *html)
+{
+	fz_outline *head = NULL;
+	fz_outline **tail[10];
+	fz_outline **down[10];
+	int level[10];
+	int current = 0;
+	int i;
+
+	tail[0] = &head;
+	down[0] = NULL;
+	level[0] = 99;
+
+	for (i = 0; i < html->printed_toc_n; i++)
+	{
+		fz_outline *node;
+		int heading = html->printed_toc_level[i];
+		if (heading < 1)
+			heading = 1;
+		if (heading > 9)
+			heading = 9;
+		node = fz_new_outline(ctx);
+		fz_try(ctx)
+		{
+			node->title = Memento_label(fz_strdup(ctx, html->printed_toc_title[i]), "outline_title");
+			node->uri = Memento_label(fz_strdup(ctx, html->printed_toc_uri[i]), "outline_uri");
+			node->is_open = 1;
+		}
+		fz_catch(ctx)
+		{
+			fz_free(ctx, node);
+			fz_rethrow(ctx);
+		}
+		if (level[current] < heading && current < 9)
+		{
+			tail[current + 1] = down[current];
+			current += 1;
+		}
+		else
+		{
+			while (current > 0 && level[current] > heading)
+				current -= 1;
+			if (level[current] < heading && current < 9)
+			{
+				tail[current + 1] = down[current];
+				current += 1;
+			}
+		}
+		level[current] = heading;
+		if (!tail[current])
+		{
+			fz_drop_outline(ctx, node);
+			continue;
+		}
+		*(tail[current]) = node;
+		tail[current] = &node->next;
+		down[current] = &node->down;
+	}
+	return head;
+}
+
 fz_outline *
 fz_load_html_outline(fz_context *ctx, fz_html *html)
 {
 	struct outline_parser state;
+	if (html && html->printed_toc_n >= 4)
+		return load_printed_toc_outline(ctx, html);
 	state.html = html;
 	state.cat = NULL;
 	state.head = NULL;

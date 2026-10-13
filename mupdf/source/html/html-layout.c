@@ -3316,6 +3316,8 @@ void fz_layout_html(fz_context* ctx, fz_html* html, float w, float h, float em) 
      * nothing to do. */
     if (html->layout_w == w && html->layout_h == h && html->layout_em == em) return;
 
+    html->id_tab_b = -1; /* y positions change; rebuild the id index on the next lookup */
+
     html->page_margin[T] = fz_from_css_number(html->tree.root->style->margin[T], em, em, 0);
     html->page_margin[B] = fz_from_css_number(html->tree.root->style->margin[B], em, em, 0);
     html->page_margin[L] = fz_from_css_number(html->tree.root->style->margin[L], em, em, 0);

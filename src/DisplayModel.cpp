@@ -1241,6 +1241,10 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
         }
         if (updateUi && !tabSwitchLayoutSyncPending && (growAll || PagesNeedLayoutSync(this))) {
             ApplyPagesUiUpdateIfNeeded(this, growAll);
+        } else if (updateUi && !tabSwitchLayoutSyncPending && cb) {
+            // Pages are already positioned. Still publish the canvas, or a
+            // document that was fully laid out on the first pass never gets a bar.
+            cb->UpdateScrollbars(canvasSize);
         }
         return;
     }

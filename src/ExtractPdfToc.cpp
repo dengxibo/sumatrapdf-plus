@@ -1758,6 +1758,10 @@ static HeadingMarker ParseHeadingMarker(const char* s) {
                     n = DigitValue(look);
                     continue;
                 }
+                // "1.2." / "1.2.1." — the closing dot belongs to the section number.
+                if (dots >= 1) {
+                    break;
+                }
                 i = save;
                 break;
             }
@@ -2024,7 +2028,10 @@ static void ParseHeadingNumbering(const char* s, ParsedNumbering* out) {
                 continue;
             }
             out->hadTrailingDot = true;
-            i = save;
+            // Keep the closing dot on "1.2." / "1.2.1.". A lone "1." stays a list marker.
+            if (out->nComp < 2) {
+                i = save;
+            }
             break;
         }
         i = save;
