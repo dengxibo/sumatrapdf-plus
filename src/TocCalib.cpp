@@ -7120,8 +7120,7 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
     TocCalibDrawShaftArrow(hdc, x1, x2, arrowY, head, ink);
 }
 
-void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, MainWindow* win, bool selected) {
-    (void)selected;
+void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, MainWindow* win, COLORREF rowBg) {
     WindowTab* tab = win ? win->CurrentTab() : nullptr;
     TocCalibSession* s = tab ? tab->tocCalib : nullptr;
     DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
@@ -7168,6 +7167,12 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
         pdfText = L"PDF";
     }
     TocCalibSpinLayout L = TocCalibMakeLayout(hwnd, rcRow, false);
+    // Own the entire column strip, including rounded corners and gaps. Native
+    // labels and search highlights may have painted underneath it already.
+    RECT strip = rcRow;
+    strip.left = std::max(0, (int)L.prField.left - DpiScale(hwnd, 4));
+    ScopedGdiObj<HBRUSH> stripBrush(CreateSolidBrush(rowBg));
+    FillRect(hdc, &strip, stripBrush);
     TocCalibDrawIconBtn(hdc, hwnd, L.locate, TbIcon::MapPin, true);
     TocCalibDrawIconBtn(hdc, hwnd, L.associate, TbIcon::Link, true);
     TocCalibDrawIconBtn(hdc, hwnd, L.merge, TbIcon::MergeUp, true);

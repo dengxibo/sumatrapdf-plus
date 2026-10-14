@@ -3508,7 +3508,11 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 !TocIsEditingItem(win, hItem)) {
                 RECT rcRow{};
                 if (TreeView_GetItemRect(ev->treeView->hwnd, hItem, &rcRow, FALSE)) {
-                    TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, isSelected);
+                    COLORREF rowBg = isSelected ? TocSelectionBgColor()
+                                     : TocDrawRowIsHot(ev->treeView->hwnd, hItem, cd)
+                                         ? TocHotTrackBgColor()
+                                         : SidebarBackgroundColor(ev->treeView->bgColor);
+                    TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, rowBg);
                 }
             }
             ev->result = CDRF_DODEFAULT;
@@ -3574,7 +3578,11 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             !TocIsEditingItem(win, hItem)) {
             RECT rcRow{};
             if (TreeView_GetItemRect(ev->treeView->hwnd, hItem, &rcRow, FALSE)) {
-                TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, isSelected);
+                COLORREF rowBg = isSelected ? TocSelectionBgColor()
+                                 : TocDrawRowIsHot(ev->treeView->hwnd, hItem, cd)
+                                     ? TocHotTrackBgColor()
+                                     : SidebarBackgroundColor(ev->treeView->bgColor);
+                TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, rowBg);
             }
         }
         ev->result = CDRF_DODEFAULT;
