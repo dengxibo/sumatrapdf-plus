@@ -2,6 +2,11 @@
 
 ## next
 
+## 3.7.50 (2026-10-14)
+
+- 修复目录校准右侧控件间隙透出标题和搜索高亮的问题；整列绘制不透明背景，并保持选中与悬停颜色一致。
+  Paint an opaque background across the TOC calibration column strip so labels and search highlights cannot bleed through control gaps, preserving selection and hover colors.
+
 ## 3.7.49 (2026-10-14)
 
 - 从正文生成目录支持选择 API 或网页版 AI，记住上次选择并允许切换；API 结果自动导入，失败时可重试或主动切换网页版。
