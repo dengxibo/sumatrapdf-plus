@@ -2541,12 +2541,22 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
         }
     }
     ApplyRememberedPdfDrawStyle(annot);
-    RememberPdfDrawStyle(annot);
-    UpdateAnnotationsList(tab->editAnnotsWindow);
-    if (type == AnnotationType::Stamp || type == AnnotationType::FreeText || AnnotationsSidebarIsShowing(tab)) {
-        SetSelectedAnnotation(tab, annot);
+    if (type == AnnotationType::Square || type == AnnotationType::Circle) {
+        // The initial appearance used the default border. Recompute its inset
+        // from the final width instead of retaining that temporary /RD.
+        SetRect(annot, GetRect(annot), true);
     }
+    RememberPdfDrawStyle(annot);
+    // Sidebar updates can paint synchronously. Install the final appearance
+    // before selecting the new mark, so no intermediate frame loses it.
     MainWindowRerenderAnnotationChange(win, pageNo, annot);
+    UpdateAnnotationsList(tab->editAnnotsWindow);
+    if (type == AnnotationType::Line || type == AnnotationType::Ink || type == AnnotationType::Square ||
+        type == AnnotationType::Circle) {
+        SetSelectedAnnotation(tab, nullptr, false, EditAnnotFocus::Default, true);
+    } else if (type == AnnotationType::Stamp || type == AnnotationType::FreeText || AnnotationsSidebarIsShowing(tab)) {
+        SetSelectedAnnotation(tab, annot, true, EditAnnotFocus::Default, true);
+    }
     ToolbarUpdateStateForWindow(win, true);
     ReleaseAnnotCreateToolIfUnlocked(win);
     if (type == AnnotationType::FreeText) {

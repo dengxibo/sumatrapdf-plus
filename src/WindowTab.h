@@ -127,9 +127,9 @@ struct WindowTab {
     struct PdfMarkupOverlayAnnot {
         int pageNo = 0;
         Annotation* annot = nullptr;
-        HBITMAP stampBitmap = nullptr;
-        float stampZoom = 0.f;
-        int stampRotation = 0;
+        HBITMAP appearanceBitmap = nullptr;
+        float appearanceZoom = 0.f;
+        int appearanceRotation = 0;
     };
     Vec<PdfMarkupOverlayAnnot> pdfMarkupOverlays;
 

@@ -91,7 +91,7 @@ struct AnnotCreateArgs {
 int PageNo(Annotation*);
 RectF GetBounds(Annotation*);
 RectF GetRect(Annotation*);
-void SetRect(Annotation*, RectF);
+void SetRect(Annotation*, RectF, bool resetRectDiff = false);
 // The annotation by itself, at the page zoom. 32bpp top-down BGRA, premultiplied
 // alpha. Caller DeleteObject. nullptr if it cannot be drawn quickly.
 HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotation);

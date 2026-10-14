@@ -129,7 +129,7 @@ void RemovePdfMarkupOverlayAnnot(WindowTab* tab, Annotation* annot) {
     }
     for (int i = tab->pdfMarkupOverlays.size() - 1; i >= 0; i--) {
         if (tab->pdfMarkupOverlays.at(i).annot == annot) {
-            DeleteObject(tab->pdfMarkupOverlays.at(i).stampBitmap);
+            DeleteObject(tab->pdfMarkupOverlays.at(i).appearanceBitmap);
             tab->pdfMarkupOverlays.RemoveAt(i);
         }
     }
@@ -144,7 +144,7 @@ void ClearPdfMarkupOverlayForPage(WindowTab* tab, int pageNo) {
     }
     for (int i = tab->pdfMarkupOverlays.size() - 1; i >= 0; i--) {
         if (tab->pdfMarkupOverlays.at(i).pageNo == pageNo) {
-            DeleteObject(tab->pdfMarkupOverlays.at(i).stampBitmap);
+            DeleteObject(tab->pdfMarkupOverlays.at(i).appearanceBitmap);
             tab->pdfMarkupOverlays.RemoveAt(i);
         }
     }
@@ -155,7 +155,7 @@ void ClearPdfMarkupOverlays(WindowTab* tab) {
         return;
     }
     for (auto& entry : tab->pdfMarkupOverlays) {
-        DeleteObject(entry.stampBitmap);
+        DeleteObject(entry.appearanceBitmap);
     }
     tab->pdfMarkupOverlays.Reset();
     DiscardFreeTextOverlayCover();
@@ -429,21 +429,21 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
         if (entry.pageNo != pageNo || !entry.annot) {
             continue;
         }
-        if (entry.annot->type == AnnotationType::Stamp) {
+        if (entry.annot->type == AnnotationType::Stamp || entry.appearanceBitmap) {
             float zoom = dm->GetZoomSafe(pageNo);
             int rotation = dm->GetRotation();
-            if (!entry.stampBitmap || entry.stampZoom != zoom || entry.stampRotation != rotation) {
-                DeleteObject(entry.stampBitmap);
-                entry.stampBitmap = RenderAnnotationPreviewBitmap(entry.annot, zoom, rotation);
-                entry.stampZoom = zoom;
-                entry.stampRotation = rotation;
+            if (!entry.appearanceBitmap || entry.appearanceZoom != zoom || entry.appearanceRotation != rotation) {
+                DeleteObject(entry.appearanceBitmap);
+                entry.appearanceBitmap = RenderAnnotationPreviewBitmap(entry.annot, zoom, rotation);
+                entry.appearanceZoom = zoom;
+                entry.appearanceRotation = rotation;
             }
             BITMAP bm{};
-            if (entry.stampBitmap && GetObject(entry.stampBitmap, sizeof(bm), &bm)) {
+            if (entry.appearanceBitmap && GetObject(entry.appearanceBitmap, sizeof(bm), &bm)) {
                 Rect screen = dm->CvtToScreen(pageNo, GetRect(entry.annot));
                 HDC mem = CreateCompatibleDC(hdc);
                 if (mem) {
-                    HGDIOBJ old = SelectObject(mem, entry.stampBitmap);
+                    HGDIOBJ old = SelectObject(mem, entry.appearanceBitmap);
                     BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
                     AlphaBlend(hdc, screen.x + (screen.dx - bm.bmWidth) / 2, screen.y + (screen.dy - bm.bmHeight) / 2,
                                bm.bmWidth, bm.bmHeight, mem, 0, 0, bm.bmWidth, bm.bmHeight, blend);
@@ -2776,7 +2776,7 @@ static void ButtonEmbedAttachment(EditAnnotationsWindow* ew) {
     MessageBoxNYI(ew->hwnd);
 }
 
-void SetSelectedAnnotation(WindowTab* tab, Annotation* annot, bool isNew, EditAnnotFocus focus) {
+void SetSelectedAnnotation(WindowTab* tab, Annotation* annot, bool isNew, EditAnnotFocus focus, bool repaintOnly) {
     // Leaving this free text for another annotation commits the page editor
     // first, so the Note still has what was just typed.
     if (annot != tab->selectedAnnotation && IsEditingFreeTextInPlace(tab->win)) {
@@ -2790,7 +2790,11 @@ void SetSelectedAnnotation(WindowTab* tab, Annotation* annot, bool isNew, EditAn
     MainWindow* win = tab->win;
     auto ew = tab->editAnnotsWindow;
     if (annot == tab->selectedAnnotation) {
-        MainWindowRerender(win);
+        if (repaintOnly) {
+            InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        } else {
+            MainWindowRerender(win);
+        }
         if (ew) {
             UpdateUIForSelectedAnnotation(ew, annot, isNew, focus);
         }
@@ -2813,7 +2817,11 @@ void SetSelectedAnnotation(WindowTab* tab, Annotation* annot, bool isNew, EditAn
             HwndMakeVisible(ew->hwnd);
         }
     }
-    MainWindowRerender(win);
+    if (repaintOnly) {
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    } else {
+        MainWindowRerender(win);
+    }
     ToolbarUpdateStateForWindow(win, false);
 }
 

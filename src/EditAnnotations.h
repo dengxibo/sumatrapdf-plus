@@ -23,7 +23,8 @@ bool AnnotationsSidebarIsShowing(WindowTab* tab);
 void SyncEditAnnotationsSidebar(MainWindow* win, bool show);
 bool CloseAndDeleteEditAnnotationsWindow(WindowTab*);
 void DeleteAnnotationAndUpdateUI(WindowTab*, Annotation*);
-void SetSelectedAnnotation(WindowTab*, Annotation*, bool isNew = false, EditAnnotFocus focus = EditAnnotFocus::Default);
+void SetSelectedAnnotation(WindowTab*, Annotation*, bool isNew = false, EditAnnotFocus focus = EditAnnotFocus::Default,
+                           bool repaintOnly = false);
 void UpdateAnnotationsList(EditAnnotationsWindow*);
 void NotifyAnnotationsChanged(EditAnnotationsWindow*);
 void RefreshEditAnnotationsWindowsTheme();

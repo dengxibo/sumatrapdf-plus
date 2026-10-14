@@ -2,6 +2,14 @@
 
 ## next
 
+## 3.7.52 (2026-10-15)
+
+- PDF 直线、任意线、方框和圆形绘制完成后不再自动选中或显示编辑外框；点击批注仍可选中编辑。
+  Leave completed PDF lines, ink, rectangles and ellipses unselected without edit frames; click an annotation to select and edit it.
+
+- PDF 批注松开鼠标后使用正式外观缓存过渡，避免整窗擦除重绘；新建圆形、方框按最终线宽重新计算边缘内缩，减少落下时的位置跳变。
+  Use cached final PDF appearances during the page-render transition without erasing the whole window, and recompute new ellipse/rectangle insets from their final stroke widths.
+
 ## 3.7.51 (2026-10-15)
 
 - 修复自由文本所选 Windows 字体无法嵌入 PDF 外观的问题。

@@ -286,9 +286,9 @@ static AnnotationType DrawStyleTypeFromName(const char* name) {
         return AnnotationType::Unknown;
     }
     AnnotationType types[] = {
-        AnnotationType::Text,       AnnotationType::FreeText, AnnotationType::Line,           AnnotationType::Square,
-        AnnotationType::Circle,     AnnotationType::Highlight, AnnotationType::Underline,     AnnotationType::Squiggly,
-        AnnotationType::StrikeOut,  AnnotationType::Stamp,    AnnotationType::Caret,         AnnotationType::Ink,
+        AnnotationType::Text,           AnnotationType::FreeText,  AnnotationType::Line,      AnnotationType::Square,
+        AnnotationType::Circle,         AnnotationType::Highlight, AnnotationType::Underline, AnnotationType::Squiggly,
+        AnnotationType::StrikeOut,      AnnotationType::Stamp,     AnnotationType::Caret,     AnnotationType::Ink,
         AnnotationType::FileAttachment, AnnotationType::Sound,
     };
     for (AnnotationType type : types) {
@@ -1153,7 +1153,7 @@ bool AnnotationContentsEqual(Annotation* annot, const char* text) {
     return str::Eq(s, text);
 }
 
-void SetRect(Annotation* annot, RectF r) {
+void SetRect(Annotation* annot, RectF r, bool resetRectDiff) {
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
     if (!a) {
@@ -1167,6 +1167,9 @@ void SetRect(Annotation* annot, RectF r) {
         ScopedCritSec cs(&e->docLock);
         fz_rect rc = ToFzRect(r);
         fz_try(ctx) {
+            if (resetRectDiff && (annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle)) {
+                pdf_dict_del(ctx, pdf_annot_obj(ctx, a), PDF_NAME(RD));
+            }
             if (annot->type == AnnotationType::Line) {
                 // Keep the original diagonal / arrow direction. Mapping both ends
                 // through a normalized rect (x0,y0)->(x1,y1) mirrors '/' into '\'.
@@ -2514,7 +2517,8 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                 const char* daFont = IsBaseFreeTextFont(presetFont) ? presetFont : "Helv";
                 pdf_set_annot_default_appearance(ctx, annot, daFont, (float)fontSize, nCol, fcol);
                 if (!str::Eq(presetFont, daFont)) {
-                    pdf_dict_puts_drop(ctx, pdf_annot_obj(ctx, annot), "SumatraFont", pdf_new_text_string(ctx, presetFont));
+                    pdf_dict_puts_drop(ctx, pdf_annot_obj(ctx, annot), "SumatraFont",
+                                       pdf_new_text_string(ctx, presetFont));
                 }
                 {
                     pdf_document* doc = epdf->pdfdoc;

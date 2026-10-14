@@ -5792,14 +5792,16 @@ static bool AnnotationWantsPendingOverlay(Annotation* annot) {
     }
 }
 
-static void CachePendingStampPreview(WindowTab* tab, WindowTab::PdfMarkupOverlayAnnot& entry) {
+static void CachePendingAnnotationPreview(WindowTab* tab, WindowTab::PdfMarkupOverlayAnnot& entry) {
     DisplayModel* dm = tab->AsFixed();
-    if (!dm || entry.annot->type != AnnotationType::Stamp) {
+    AnnotationType type = entry.annot->type;
+    if (!dm || (type != AnnotationType::Stamp && type != AnnotationType::Line && type != AnnotationType::Ink &&
+                type != AnnotationType::Square && type != AnnotationType::Circle)) {
         return;
     }
-    entry.stampZoom = dm->GetZoomSafe(entry.pageNo);
-    entry.stampRotation = dm->GetRotation();
-    entry.stampBitmap = RenderAnnotationPreviewBitmap(entry.annot, entry.stampZoom, entry.stampRotation);
+    entry.appearanceZoom = dm->GetZoomSafe(entry.pageNo);
+    entry.appearanceRotation = dm->GetRotation();
+    entry.appearanceBitmap = RenderAnnotationPreviewBitmap(entry.annot, entry.appearanceZoom, entry.appearanceRotation);
 }
 
 static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
@@ -5809,14 +5811,14 @@ static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
     for (auto& entry : tab->pdfMarkupOverlays) {
         if (entry.annot == annot) {
             entry.pageNo = pageNo;
-            DeleteObject(entry.stampBitmap);
-            entry.stampBitmap = nullptr;
-            CachePendingStampPreview(tab, entry);
+            DeleteObject(entry.appearanceBitmap);
+            entry.appearanceBitmap = nullptr;
+            CachePendingAnnotationPreview(tab, entry);
             return;
         }
     }
     WindowTab::PdfMarkupOverlayAnnot entry{pageNo, annot};
-    CachePendingStampPreview(tab, entry);
+    CachePendingAnnotationPreview(tab, entry);
     tab->pdfMarkupOverlays.Append(entry);
 }
 
@@ -5844,11 +5846,9 @@ void MainWindowRerenderAnnotationChange(MainWindow* win, int pageNo, Annotation*
         gRenderCache->CancelRendering(dm);
     }
     dm->RenderVisibleParts();
-    if (win->annotationBeingResized || win->annotResizePreview) {
-        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
-    } else {
-        win->RedrawAll(true);
-    }
+    // A canvas update does not require erasing and synchronously repainting
+    // every child window. Keep the old page visible until its new tile arrives.
+    InvalidateRect(win->hwndCanvas, nullptr, FALSE);
 }
 
 static void RerenderEverything() {
