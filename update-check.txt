@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.51
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.51/SumatraPDF-Plus.exe
-Notes: Improve annotation resize previews, immediate stamp display, Shift drawing constraints and PDF/EPUB stroke-width consistency; fix PDF free-text font embedding. Optional Edge SAPI fix DLLs remain available.
-NotesZh: 优化批注缩放预览、图章即时显示、Shift 绘图约束及 PDF/EPUB 线宽一致性；修复 PDF 自由文本字体嵌入。发布页继续提供可选的 Edge 联网语音 SAPI 修复 DLL。
+Latest: 3.7.52
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.52/SumatraPDF-Plus.exe
+Notes: Stabilize PDF annotation placement with cached final appearances and fewer refreshes; leave completed lines, ink, rectangles and ellipses without edit frames.
+NotesZh: 优化 PDF 批注落下时的外观过渡和刷新，减少抖动；直线、任意线、方框和圆形绘制完成后不显示编辑外框。
