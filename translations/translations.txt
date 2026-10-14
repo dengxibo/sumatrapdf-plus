@@ -30112,7 +30112,7 @@ uz:Chop etish diapazoni
 vn:Giới hạn vùng in
 :Printed page
 br:Página impressa
-cn:印刷页码
+cn:印刷页
 de:Gedruckte Seite
 es:Página impresa
 fr:Page imprimée

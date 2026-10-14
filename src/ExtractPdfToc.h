@@ -95,6 +95,7 @@ void EngineMupdfFreePageLines(Vec<EngineMupdfPageLine>& lines);
 bool EngineMupdfCollectPageLines(EngineBase* engine, int pageNo, Vec<EngineMupdfPageLine>& linesOut);
 bool EngineMupdfHasStoredOutline(EngineBase* engine);
 bool EngineMupdfReplacePdfToc(EngineBase* engine, Vec<ExtractedTocItem*>& roots, char** errorOut);
+void EngineMupdfRestorePrintedTocMetadata(EngineBase* engine, Vec<ExtractedTocItem*>& roots);
 
 // Text-layer ScanLine collection for one page (shared with the second-pass
 // body-anchor resolution in ExtractBookToc.cpp).

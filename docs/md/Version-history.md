@@ -2,6 +2,14 @@
 
 ## next
 
+## 3.7.53 (2026-10-15)
+
+- 目录校准使用靠下的半边右箭头，与偏移文字等宽；编辑中的页码输入框跟随右侧列定位。“印刷页”占位文字进入编辑后隐藏。
+  Align half-arrows with offset text, keep page editors anchored to their columns, and hide the printed-page placeholder while editing.
+
+- 保存提取目录时保留印刷页码及特殊页码标签，重新编辑或重开 PDF 后恢复；书签编辑、移动和重排也保留这些信息。
+  Persist extracted printed page numbers and labels in PDF outlines, restore them when editing or reopening, and preserve them across bookmark edits and reordering.
+
 ## 3.7.52 (2026-10-15)
 
 - PDF 直线、任意线、方框和圆形绘制完成后不再自动选中或显示编辑外框；点击批注仍可选中编辑。

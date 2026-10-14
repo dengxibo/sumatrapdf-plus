@@ -6991,13 +6991,11 @@ static void TocCalibDrawShaftArrow(HDC hdc, int x1, int x2, int y, int head, COL
     if (x2 <= x1 || head < 2) {
         return;
     }
-    int headUp = head / 2;
-    int headDn = head - headUp;
+    int headUp = std::max(2, head / 2);
     HPEN pen = CreatePen(PS_SOLID, 1, color);
     HPEN old = (HPEN)SelectObject(hdc, pen);
     TocCalibStroke(hdc, x1, y, x2, y, color);
-    TocCalibStroke(hdc, x2 - head, y - headUp, x2, y, color);
-    TocCalibStroke(hdc, x2, y, x2 - head, y + headDn, color);
+    TocCalibStroke(hdc, x2, y, x2 - head, y - headUp, color);
     SelectObject(hdc, old);
     DeleteObject(pen);
 }
@@ -7024,7 +7022,7 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
     if (rowH < 4) {
         return;
     }
-    int inset = DpiScale(hwnd, 5);
+    int inset = std::max(1, DpiScale(hwnd, 1));
     int x1 = col.left + inset;
     int x2 = col.right - inset;
     int head = (x2 - x1) / 5;
@@ -7034,8 +7032,7 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
     if (head > 5) {
         head = 5;
     }
-    int headUp = head / 2;
-    int headDn = head - headUp;
+    int headUp = std::max(2, head / 2);
     TEXTMETRIC tm{};
     int ascent = rowH * 2 / 3;
     if (GetTextMetrics(hdc, &tm) && tm.tmAscent > 0) {
@@ -7050,8 +7047,8 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
     if (block < rowH) {
         textTop = row.top + (rowH - block) / 2;
     }
-    // Keep the whole arrowhead, including the lower stroke, inside the row.
-    int limit = row.bottom - headDn - 1;
+    // Reserve a consistent lower margin for the half-arrow's shaft.
+    int limit = row.bottom - std::max(2, DpiScale(hwnd, 3));
     int baseline = textTop + ascent;
     int arrowY = baseline + gap + headUp;
     if (arrowY > limit) {
@@ -7068,6 +7065,8 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
     if (arrowY - headUp < baseline + 1 && baseline + 1 + headUp <= limit) {
         arrowY = baseline + 1 + headUp;
     }
+    // Keep the shaft on the same lower baseline with or without an offset.
+    arrowY = limit;
     COLORREF ink = TocCalibOffsetInk(emphasize && offset && offset[0]);
     SetBkMode(hdc, TRANSPARENT);
     if (offset && offset[0]) {
@@ -7108,6 +7107,13 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
                     }
                 }
             }
+        }
+        // Measure after selecting the fitted font so the arrow spans exactly
+        // the displayed offset, including multi-digit values such as +118.
+        if (GetTextExtentPoint32W(hdc, offset, len, &sz) && sz.cx > 0) {
+            int width = std::min(sz.cx, col.right - col.left);
+            x1 = col.left + (col.right - col.left - width) / 2;
+            x2 = x1 + width - 1;
         }
         DrawTextW(hdc, offset, len, &offRc, DT_SINGLELINE | DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP);
         if (prevFont) {
@@ -7161,12 +7167,24 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
         pdfEmpty = false;
     }
     if (prEmpty) {
-        prText = _TRW("Print");
+        prText = _TRW("Printed page");
     }
     if (pdfEmpty) {
         pdfText = L"PDF";
     }
     TocCalibSpinLayout L = TocCalibMakeLayout(hwnd, rcRow, false);
+    if (TocCalibEditingField(win, item, gCalibPageEdit.printed)) {
+        // The edit is a tree child: resizing/scrolling the tree can move it
+        // independently of the right-anchored columns. Follow the current row.
+        RECT target = gCalibPageEdit.printed ? L.prField : L.pdfField;
+        RECT current{};
+        GetWindowRect(gCalibPageEdit.hwnd, &current);
+        MapWindowPoints(nullptr, hwnd, (POINT*)&current, 2);
+        if (!EqualRect(&current, &target)) {
+            SetWindowPos(gCalibPageEdit.hwnd, nullptr, target.left, target.top, target.right - target.left,
+                         target.bottom - target.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
     // Own the entire column strip, including rounded corners and gaps. Native
     // labels and search highlights may have painted underneath it already.
     RECT strip = rcRow;
@@ -7784,8 +7802,9 @@ static void TocCalibBeginPageEdit(MainWindow* win, TocItem* item, const RECT& fi
     if (font) {
         SetWindowFont(h, font, TRUE);
     }
-    const WCHAR* cue = printed ? _TRW("Printed page") : _TRW("PDF page");
-    SendMessageW(h, EM_SETCUEBANNER, TRUE, (LPARAM)cue);
+    if (!printed) {
+        SendMessageW(h, EM_SETCUEBANNER, TRUE, (LPARAM)_TRW("PDF page"));
+    }
     TocCalibRow* row = TocCalibRowForTocItem(win, item);
     if (!row) {
         TocCalibRebind(win);
@@ -8936,6 +8955,7 @@ bool StartTocCalibAsync(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBa
     TocCalibSession* s = tab->tocCalib;
     TocTree* cur = tab->ctrl ? tab->ctrl->GetToc() : nullptr;
     TocCalibCloneOutline(cur, s->backup);
+    EngineMupdfRestorePrintedTocMetadata(engine, s->backup);
     // Begin the TOC transaction: remember the engine's dirty flag so Cancel
     // can restore it (same as StartTocCalib).
     s->baselineModifiedToc = EngineMupdfIsPdfTocModified(engine);
@@ -8982,6 +9002,7 @@ bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* e
     TocCalibWriteFlowDebug(win, tab->tocCalib, "session before outline rewrite");
     TocTree* cur = tab->ctrl ? tab->ctrl->GetToc() : nullptr;
     TocCalibCloneOutline(cur, tab->tocCalib->backup);
+    EngineMupdfRestorePrintedTocMetadata(engine, tab->tocCalib->backup);
     // Begin the TOC transaction: remember the engine's dirty flag so Cancel
     // can restore it. The extracted outline below is committed to the PDF
     // model only as a working preview (Save/Cancel decides its fate).
@@ -9029,6 +9050,7 @@ bool StartTocCalibFromExisting(MainWindow* win) {
     }
     Vec<ExtractedTocItem*> roots;
     TocCalibCloneOutline(cur, roots);
+    EngineMupdfRestorePrintedTocMetadata(engine, roots);
     if (roots.Size() < 1) {
         return false;
     }

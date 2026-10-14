@@ -28,6 +28,8 @@ enum class PdfTocDropPos {
 struct PdfTocEditNode {
     char* title = nullptr;
     char* uri = nullptr;
+    int printedPage = 0;
+    char* printedLabel = nullptr;
     bool isOpen = false;
     int flags = 0;
     int r = 0;

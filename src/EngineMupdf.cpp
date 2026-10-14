@@ -14392,6 +14392,33 @@ static void CapturePdfTocEditNodes(fz_outline* outline, Vec<PdfTocEditNode*>& no
     }
 }
 
+static void PdfTocPrintedMetadata(fz_context* ctx, pdf_obj* first, Vec<PdfTocEditNode*>& nodes, bool write) {
+    pdf_obj* obj = first;
+    for (PdfTocEditNode* node : nodes) {
+        if (!pdf_is_dict(ctx, obj)) {
+            break;
+        }
+        if (write) {
+            if (node->printedPage != 0) {
+                pdf_dict_puts_drop(ctx, obj, "SumatraPrintedPage", pdf_new_int(ctx, node->printedPage));
+            }
+            if (!str::IsEmpty(node->printedLabel)) {
+                pdf_dict_puts_drop(ctx, obj, "SumatraPrintedLabel", pdf_new_text_string(ctx, node->printedLabel));
+            }
+        } else {
+            node->printedPage = pdf_to_int(ctx, pdf_dict_gets(ctx, obj, "SumatraPrintedPage"));
+            str::ReplaceWithCopy(&node->printedLabel,
+                                 pdf_to_text_string(ctx, pdf_dict_gets(ctx, obj, "SumatraPrintedLabel")));
+        }
+        PdfTocPrintedMetadata(ctx, pdf_dict_get(ctx, obj, PDF_NAME(First)), node->children, write);
+        obj = pdf_dict_get(ctx, obj, PDF_NAME(Next));
+    }
+}
+
+static pdf_obj* PdfTocFirstObject(fz_context* ctx, pdf_document* doc) {
+    return pdf_dict_getp(ctx, pdf_trailer(ctx, doc), "Root/Outlines/First");
+}
+
 static void InsertPdfTocEditNode(fz_context* ctx, fz_outline_iterator* iter, PdfTocEditNode* node) {
     fz_outline_item item{};
     item.title = node->title;
@@ -14432,6 +14459,7 @@ static void RewritePdfTocFromModel(fz_context* ctx, pdf_document* doc, Vec<PdfTo
             InsertPdfTocEditNode(ctx, iter, node);
             fz_outline_iterator_next(ctx, iter);
         }
+        PdfTocPrintedMetadata(ctx, PdfTocFirstObject(ctx, doc), roots, true);
     }
     fz_always(ctx) {
         fz_drop_outline_iterator(ctx, iter);
@@ -14649,6 +14677,7 @@ bool EngineMupdfEditPdfToc(EngineBase* engine, PdfTocEditAction action, const Ve
     ScopedCritSec scope(&e->docLock);
     fz_try(ctx) {
         CapturePdfTocEditNodes(e->outline, roots);
+        PdfTocPrintedMetadata(ctx, PdfTocFirstObject(ctx, e->pdfdoc), roots, false);
         if (!ApplyPdfTocEditToModel(roots, action, path, title, uri, resultPathOut)) {
             bool moveNoop = action == PdfTocEditAction::MoveUp || action == PdfTocEditAction::MoveDown ||
                             action == PdfTocEditAction::Promote || action == PdfTocEditAction::Demote;
@@ -14741,6 +14770,7 @@ bool EngineMupdfEditPdfTocMany(EngineBase* engine, PdfTocEditAction action, cons
     ScopedCritSec scope(&e->docLock);
     fz_try(ctx) {
         CapturePdfTocEditNodes(e->outline, roots);
+        PdfTocPrintedMetadata(ctx, PdfTocFirstObject(ctx, e->pdfdoc), roots, false);
         bool applied = false;
         switch (action) {
             case PdfTocEditAction::Delete:
@@ -14830,6 +14860,7 @@ bool EngineMupdfMovePdfTocItems(EngineBase* engine, const Vec<PdfTocPath>& srcPa
     ScopedCritSec scope(&e->docLock);
     fz_try(ctx) {
         CapturePdfTocEditNodes(e->outline, roots);
+        PdfTocPrintedMetadata(ctx, PdfTocFirstObject(ctx, e->pdfdoc), roots, false);
         if (!PdfTocEditMoveMany(roots, srcPaths, destPath, pos, resultPathsOut)) {
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "invalid PDF table of contents move");
         }
@@ -14872,6 +14903,8 @@ static PdfTocEditNode* PdfTocNodeFromExtracted(EngineBase* engine, ExtractedTocI
     }
     node->title = str::Dup(shown ? shown : "");
     if (src) {
+        node->printedPage = src->printedPage;
+        node->printedLabel = str::Dup(src->printedLabel);
         node->uri = EngineMupdfFormatPdfTocTarget(engine, src->pageNo, src->x, src->y);
         node->isOpen = src->level <= 2;
         for (ExtractedTocItem* child : src->children) {
@@ -14879,6 +14912,35 @@ static PdfTocEditNode* PdfTocNodeFromExtracted(EngineBase* engine, ExtractedTocI
         }
     }
     return node;
+}
+
+static void RestorePrintedTocItems(fz_context* ctx, pdf_obj* first, Vec<ExtractedTocItem*>& roots) {
+    pdf_obj* obj = first;
+    for (ExtractedTocItem* item : roots) {
+        if (!pdf_is_dict(ctx, obj)) {
+            break;
+        }
+        item->printedPage = pdf_to_int(ctx, pdf_dict_gets(ctx, obj, "SumatraPrintedPage"));
+        str::ReplaceWithCopy(&item->printedLabel,
+                             pdf_to_text_string(ctx, pdf_dict_gets(ctx, obj, "SumatraPrintedLabel")));
+        RestorePrintedTocItems(ctx, pdf_dict_get(ctx, obj, PDF_NAME(First)), item->children);
+        obj = pdf_dict_get(ctx, obj, PDF_NAME(Next));
+    }
+}
+
+void EngineMupdfRestorePrintedTocMetadata(EngineBase* engine, Vec<ExtractedTocItem*>& roots) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc) {
+        return;
+    }
+    auto ctx = e->Ctx();
+    ScopedCritSec scope(&e->docLock);
+    fz_try(ctx) {
+        RestorePrintedTocItems(ctx, PdfTocFirstObject(ctx, e->pdfdoc), roots);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
 }
 
 bool EngineMupdfReplacePdfToc(EngineBase* engine, Vec<ExtractedTocItem*>& roots, char** errorOut) {

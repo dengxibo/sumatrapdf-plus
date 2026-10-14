@@ -7,6 +7,7 @@
 PdfTocEditNode::~PdfTocEditNode() {
     str::Free(title);
     str::Free(uri);
+    str::Free(printedLabel);
     for (PdfTocEditNode* child : children) {
         delete child;
     }
