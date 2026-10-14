@@ -2,6 +2,14 @@
 
 ## next
 
+## 3.7.49 (2026-10-14)
+
+- 从正文生成目录支持选择 API 或网页版 AI，记住上次选择并允许切换；API 结果自动导入，失败时可重试或主动切换网页版。
+  Body TOC generation offers API or Web AI, remembers the chosen method, imports API replies automatically, and lets users retry or switch to Web AI after failure.
+
+- 统一四个主题下目录校准的印刷页码和 PDF 页码圆角输入框，避免进入编辑时残留黑色直角边框；倾斜校正角度输入框及箭头对齐标尺横线。
+  Unify rounded TOC calibration fields across all four themes, initialize inline edits before showing them, and align the deskew angle field and spinner to the slider track.
+
 ## 3.7.48 (2026-10-14)
 
 - 修复调整页面、选项与字体搜索框的重复边框及聚焦圆角；OCR 模型路径与运行库版本字符串改为独立拷贝，避免临时内存回收后的失效访问。

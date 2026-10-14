@@ -47515,3 +47515,47 @@ tw:繼續
 :Recognize selected pages
 cn:识别选中的页面
 tw:辨識選取的頁面
+
+:API · Change…
+cn:API · 切换…
+tw:API · 切換…
+
+:Web AI · Change…
+cn:网页版 AI · 切换…
+tw:網頁版 AI · 切換…
+
+:Configure API…
+cn:配置 API…
+tw:設定 API…
+
+:Choose how to generate the TOC
+cn:选择目录生成方式
+tw:選擇目錄產生方式
+
+:API imports the reply automatically. Web AI requires copying the reply.\nYour choice is remembered.
+cn:API 会自动导入结果；网页版 AI 需要复制回复。\n程序会记住您的选择。
+tw:API 會自動匯入結果；網頁版 AI 需要複製回覆。\n程式會記住您的選擇。
+
+:No API is configured. Use Web AI or configure an API first.\nYour choice is remembered.
+cn:尚未配置 API，可使用网页版 AI 或先配置 API。\n程序会记住您的选择。
+tw:尚未設定 API，可使用網頁版 AI 或先設定 API。\n程式會記住您的選擇。
+
+:Generating body TOC via API
+cn:通过 API 从正文生成目录
+tw:透過 API 從正文產生目錄
+
+:The heading candidates are sent to the configured API.\r\nThe TOC is imported automatically when the reply arrives.
+cn:标题候选将发送至已配置的 API。\r\n收到回复后自动导入目录。
+tw:標題候選將傳送至已設定的 API。\r\n收到回覆後自動匯入目錄。
+
+:The body TOC API request failed.
+cn:正文目录 API 请求失败。
+tw:正文目錄 API 請求失敗。
+
+:Switch to Web AI
+cn:切换到网页版 AI
+tw:切換至網頁版 AI
+
+:Opening the AI page…
+cn:正在打开 AI 网页…
+tw:正在開啟 AI 網頁…

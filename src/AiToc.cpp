@@ -117,9 +117,8 @@ struct AiTocBodyScanWork {
     }
 };
 
-// Text-only AI round (no page images): opens the chat browser, pastes the
-// candidate-digest prompt and submits. The AI reply comes back through the
-// same clipboard listener as the printed-TOC flow.
+// Text-only AI round: API replies are imported directly; Web AI replies use
+// the clipboard listener shared with the printed-TOC flow.
 struct AiTocBodySendWork {
     EngineBase* engine = nullptr;
     HWND mainHwnd = nullptr;
@@ -129,12 +128,21 @@ struct AiTocBodySendWork {
     char* prompt = nullptr;
     HWND browser = nullptr;
     const char* error = nullptr;
+    bool useApi = false;
+    AiTocApiConfig cfg;
+    char* reply = nullptr;
+    char* apiError = nullptr;
 
     ~AiTocBodySendWork() {
         if (engine) {
             engine->Release();
         }
         str::Free(prompt);
+        str::Free(reply);
+        str::Free(apiError);
+        str::Free((char*)cfg.baseUrl);
+        str::Free((char*)cfg.key);
+        str::Free((char*)cfg.model);
     }
 };
 
@@ -220,6 +228,8 @@ struct AiTocDialog {
     // "从正文生成目录" fallback button, shown only when no printed TOC
     // pages were detected.
     HWND bodyBtn = nullptr;
+    HWND bodyMethod = nullptr;
+    bool bodyUseApi = false;
     HWND thumbnailPane = nullptr;
     // Lightweight three-stage hint row under the caption:
     // "准备内容 → AI 处理 → 导入目录". Shared by both source modes; only the
@@ -311,6 +321,7 @@ struct AiTocDialog {
     AiTocBodyScanWork* bodyScanWork = nullptr;
     AiTocBodySendWork* bodySendWork = nullptr;
     TocStructureScanResult* bodyScan = nullptr;
+    EngineBase* bodyEngine = nullptr; // keeps the cached scan's borrowed engine alive
     // Cached body prompt (Structure Digest + instructions) so 重新发送 can
     // submit the very same data without re-scanning the document.
     char* bodyPrompt = nullptr;
@@ -437,6 +448,7 @@ static RenderedBitmap* RenderAiTocThumbnail(EngineBase* engine, int pageNo);
 static void AiTocLayoutThumbnails(AiTocDialog* dlg);
 static void AiTocRenderVisibleThumbnails(AiTocDialog* dlg);
 static void AiTocApplyStateFonts(AiTocDialog* dlg);
+static void AiTocBodyApiFailed(AiTocDialog* dlg, const char* error);
 static void AiTocLayoutControls(AiTocDialog* dlg);
 static int AiTocS(AiTocDialog* dlg, int v);
 
@@ -785,6 +797,7 @@ static void AiTocStartApiRecognition(AiTocDialog* dlg, const Vec<int>& pages, En
     }
     AiTocSnapshotApiConfig(&w->cfg);
     dlg->mode = AiTocSourceMode::PrintedToc;
+    dlg->bodyMode = false;
     dlg->apiMode = true;
     dlg->waitManualPaste = false;
     dlg->busy = true;
@@ -1029,7 +1042,14 @@ static void AiTocBodySendWorker(AiTocBodySendWork* work) {
             delete work;
         }
     };
-    // Text-only round: put the prompt on the clipboard, open the configured
+    if (work->useApi) {
+        AiTocChatMessage message{"user", work->prompt};
+        if (!AiTocApiChat(work->cfg, &message, 1, 180000, &work->reply, &work->apiError)) {
+            work->error = "The body TOC API request failed.";
+        }
+        return;
+    }
+    // Web round: put the prompt on the clipboard, open the configured
     // chat page, bootstrap a fresh/blank composer with "hi!" (wait for reply),
     // then paste and submit the real prompt.
     if (!CopyTextToClipboard(work->prompt)) {
@@ -1055,6 +1075,41 @@ static void AiTocBodySendWorker(AiTocBodySendWork* work) {
         return;
     }
     work->browser = browser;
+}
+
+// Reuse the cached digest for API retries and an explicit switch to Web AI.
+static void AiTocStartBodySend(AiTocDialog* dlg) {
+    if (!dlg->bodyPrompt || dlg->busy) return;
+    auto* work = new AiTocBodySendWork();
+    work->mainHwnd = dlg->win ? dlg->win->hwndFrame : nullptr;
+    work->owner = dlg->hwnd;
+    work->dialogToken = dlg->token;
+    work->service = AiTocActiveService();
+    work->prompt = str::Dup(dlg->bodyPrompt);
+    work->useApi = dlg->bodyUseApi;
+    if (work->useApi) AiTocSnapshotApiConfig(&work->cfg);
+    dlg->bodySendWork = work;
+    dlg->busy = true;
+    dlg->apiMode = work->useApi;
+    dlg->submitted = work->useApi;
+    dlg->waiting = work->useApi;
+    dlg->bodyMode = true;
+    dlg->waitManualPaste = false;
+    KillTimer(dlg->hwnd, 1);
+    AiTocSetState(dlg, work->useApi ? AiTocUiState::ApiRecognizing : AiTocUiState::SendingToAi);
+    if (work->useApi) {
+        SetWindowTextW(dlg->stateTitle, _TRW("Generating body TOC via API"));
+        SetWindowTextW(dlg->stateDesc, _TRW("The heading candidates are sent to the configured API.\r\n"
+                                            "The TOC is imported automatically when the reply arrives."));
+    }
+    SetWindowTextW(dlg->status, work->useApi ? _TRW("Contacting the API...") : _TRW("Opening the AI page…"));
+    AiTocEnableSendButtons(dlg, FALSE);
+    EnableWindow(dlg->bodyBtn, FALSE);
+    if (dlg->resend) EnableWindow(dlg->resend, FALSE);
+    AiTocApplyStateFonts(dlg);
+    AiTocLayoutControls(dlg);
+    InvalidateRect(dlg->hwnd, nullptr, TRUE);
+    RunAsync(MkFunc0<AiTocBodySendWork>(AiTocBodySendWorker, work), "AiTocBodySend");
 }
 
 static void StartAiBodyStructureScan(AiTocDialog* dlg) {
@@ -1503,20 +1558,7 @@ static void AiTocResendToAi(AiTocDialog* dlg) {
         if (!dlg->bodyPrompt) {
             return;
         }
-        if (dlg->resend) {
-            EnableWindow(dlg->resend, FALSE);
-        }
-        dlg->busy = true;
-        AiTocSetState(dlg, AiTocUiState::SendingToAi);
-        auto* sendWork = new AiTocBodySendWork();
-        sendWork->mainHwnd = dlg->win ? dlg->win->hwndFrame : nullptr;
-        sendWork->owner = dlg->hwnd;
-        sendWork->dialogToken = dlg->token;
-        sendWork->service = AiTocActiveService();
-        sendWork->prompt = str::Dup(dlg->bodyPrompt);
-        dlg->bodySendWork = sendWork;
-        SetWindowTextW(dlg->status, _TRW("Resending body structure…"));
-        RunAsync(MkFunc0<AiTocBodySendWork>(AiTocBodySendWorker, sendWork), "AiTocBodyResend");
+        AiTocStartBodySend(dlg);
         return;
     }
     if (dlg->work && dlg->work->browser && dlg->work->files.Size() > 0) {
@@ -1799,6 +1841,10 @@ static void AiTocImportDoneCb(bool ok, void* ctx) {
         DestroyWindow(dlg->hwnd);
     } else {
         AiTocHideImportProgress(dlg);
+        if (dlg->apiMode && dlg->bodyMode) {
+            AiTocBodyApiFailed(dlg, _TRA("TOC import failed."));
+            return;
+        }
         SetWindowTextW(dlg->status, _TRW("TOC import failed. Copy the full AI TOC JSON and try again."));
     }
 }
@@ -1940,7 +1986,7 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
 // Body-TOC v2 import: the AI only returns candidate_id + level. Every fact
 // (title, PDF page, bbox) is restored from the local scan; invalid or unknown
 // candidate ids are rejected by ParseBodyTocSelections().
-static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
+static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text, bool reportErrors = true) {
     AiTocSetImportProgress(dlg, _TRW("Importing TOC: parsing the AI reply…"));
     if (!dlg->bodyScan) {
         AiTocHideImportProgress(dlg);
@@ -1949,7 +1995,8 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
     Vec<BodyTocSelection> selections;
     if (!ParseBodyTocSelections(text, *dlg->bodyScan, selections)) {
         AiTocHideImportProgress(dlg);
-        MessageBoxWarning(dlg->hwnd, _TRA("AI returned invalid JSON."), _TRA("AI Recognize Table of Contents"));
+        if (reportErrors)
+            MessageBoxWarning(dlg->hwnd, _TRA("AI returned invalid JSON."), _TRA("AI Recognize Table of Contents"));
         return false;
     }
     AiTocSetImportProgress(dlg, _TRW("Importing TOC: restoring titles and page numbers…"));
@@ -1957,8 +2004,9 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
     if (!BuildBodyTocItems(*dlg->bodyScan, selections, roots)) {
         AiTocHideImportProgress(dlg);
         DeleteExtractedTocItems(roots);
-        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
-                          _TRA("AI Recognize Table of Contents"));
+        if (reportErrors)
+            MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
+                              _TRA("AI Recognize Table of Contents"));
         return false;
     }
     MainWindow* win = dlg->win;
@@ -1969,8 +2017,9 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
     if (roots.Size() == 0 || !dm || dm->GetEngine() != engine) {
         AiTocHideImportProgress(dlg);
         DeleteExtractedTocItems(roots);
-        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
-                          _TRA("AI Recognize Table of Contents"));
+        if (reportErrors)
+            MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
+                              _TRA("AI Recognize Table of Contents"));
         return false;
     }
     // Chunked calibration with live "n / m" progress, same as AiTocImportJson.
@@ -1982,8 +2031,9 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
         }
         delete cb;
         AiTocHideImportProgress(dlg);
-        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
-                          _TRA("AI Recognize Table of Contents"));
+        if (reportErrors)
+            MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
+                              _TRA("AI Recognize Table of Contents"));
         return false;
     }
     logf("AI body TOC: import started selections=%d of candidates=%d\n", selections.Size(),
@@ -2594,7 +2644,7 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
     }
     mt.branchBtnW += AiTocS(dlg, 16);
     mt.bodyBtnW = mt.branchBtnW;
-    int bodyTextW = (mt.w - 2 * mt.m) - (mt.bodyBtnW + AiTocS(dlg, 12));
+    int bodyTextW = mt.w - 2 * mt.m;
     if (bodyTextW < AiTocS(dlg, 80)) {
         bodyTextW = AiTocS(dlg, 80);
     }
@@ -2627,14 +2677,8 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
         y += mt.lineH + AiTocS(dlg, 7);
         mt.bodyDescY = y;
         int descH = mt.bodyDescH > mt.lineH ? mt.bodyDescH : mt.lineH;
-        // Button stays on the right of the description. Center it on the
-        // text block so a wrapped second line is not covered.
-        mt.bodyBtnY = mt.bodyDescY + (descH - mt.btnH) / 2;
-        if (mt.bodyBtnY < mt.bodyDescY) {
-            mt.bodyBtnY = mt.bodyDescY;
-        }
-        int blockH = descH > mt.btnH ? descH : mt.btnH;
-        y += blockH + AiTocS(dlg, 14);
+        mt.bodyBtnY = mt.bodyDescY + descH + AiTocS(dlg, 8);
+        y = mt.bodyBtnY + mt.btnH + AiTocS(dlg, 14);
         mt.statusY = y;
         y += mt.lineH;
         mt.clientH = y + AiTocS(dlg, 20) + footerReserve;
@@ -2967,10 +3011,13 @@ static void AiTocApplyStateFonts(AiTocDialog* dlg) {
 }
 
 static void AiTocApplyFonts(AiTocDialog* dlg) {
-    HWND ctrls[] = {dlg->phasePrep,  dlg->phaseArrow, dlg->phaseAi,   dlg->phaseArrow2, dlg->phaseImport,
-                    dlg->pagesLabel, dlg->pagesEdit,  dlg->status,    dlg->scanCount,   dlg->send,
-                    dlg->resend,     dlg->bodyBtn,    dlg->manualBtn, dlg->stateTitle,  dlg->stateDesc,
-                    dlg->bodyTitle,  dlg->bodyDesc,   dlg->apiBtn,    dlg->aiDetectBtn, dlg->detectProgressCount};
+    HWND ctrls[] = {dlg->phasePrep,   dlg->phaseArrow,  dlg->phaseAi,
+                    dlg->phaseArrow2, dlg->phaseImport, dlg->pagesLabel,
+                    dlg->pagesEdit,   dlg->status,      dlg->scanCount,
+                    dlg->send,        dlg->resend,      dlg->bodyMethod,
+                    dlg->bodyBtn,     dlg->manualBtn,   dlg->stateTitle,
+                    dlg->stateDesc,   dlg->bodyTitle,   dlg->bodyDesc,
+                    dlg->apiBtn,      dlg->aiDetectBtn, dlg->detectProgressCount};
     for (HWND c : ctrls) {
         if (c) SendMessageW(c, WM_SETFONT, (WPARAM)dlg->font, TRUE);
     }
@@ -3098,14 +3145,13 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     ShowWindow(dlg->stateDesc, (fallback || waitingState) ? SW_SHOWNOACTIVATE : SW_HIDE);
     ShowWindow(dlg->bodyTitle, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
     ShowWindow(dlg->bodyDesc, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
+    ShowWindow(dlg->bodyMethod, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
     if (fallback) {
         MoveWindow(dlg->stateTitle, mt.m, mt.stateTitleY, contentW, mt.lineH, TRUE);
         MoveWindow(dlg->stateDesc, mt.m, mt.stateDescY, contentW, mt.lineH * mt.descLines, TRUE);
-        // Body-branch text must NOT extend under its button: later-created
-        // statics sit above the button in z-order and would erase its bottom
-        // edge on the first paint (hover then "fixed" it). Reserve the shared
-        // button column (+gap) so the rects never intersect.
-        int bodyTextW = contentW - (mt.bodyBtnW + AiTocS(dlg, 12));
+        // The description uses the full width; the method and action share
+        // a separate row below it.
+        int bodyTextW = contentW;
         if (bodyTextW < AiTocS(dlg, 80)) {
             bodyTextW = AiTocS(dlg, 80);
         }
@@ -3131,9 +3177,12 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
             MoveWindow(dlg->detectProgressCount, mt.m + progressW + gap, mt.manualBtnY + (mt.btnH - mt.lineH) / 2,
                        countW, mt.lineH, TRUE);
         }
-        // 从正文生成目录: a little wider than its label, vertically centered
-        // with a small downward offset from its description (text left,
-        // action right).
+        // Keep the current method and the generation action on one row.
+        if (dlg->bodyMethod) {
+            int methodW =
+                std::min(AiTocMeasureButtonWidth(dlg, dlg->bodyMethod), contentW - mt.bodyBtnW - AiTocS(dlg, 12));
+            MoveWindow(dlg->bodyMethod, mt.m, mt.bodyBtnY, methodW, mt.btnH, TRUE);
+        }
         if (dlg->bodyBtn) {
             MoveWindow(dlg->bodyBtn, mt.w - mt.m - mt.bodyBtnW, mt.bodyBtnY, mt.bodyBtnW, mt.btnH, TRUE);
             ShowWindow(dlg->bodyBtn, SW_SHOWNOACTIVATE);
@@ -3742,6 +3791,97 @@ static void AiTocShowApiConfigNotice(HWND owner) {
     CreateAppDialogBox(IDD_DIALOG_AI_TOC_NOTICE, owner, AiTocNoticeProc, (LPARAM)&data);
 }
 
+static bool AiTocPreferredBodyApi() {
+    const char* saved = gGlobalPrefs ? gGlobalPrefs->aiTocBodyProvider : nullptr;
+    if (str::EqI(saved, "web")) return false;
+    if (str::EqI(saved, "api")) return true;
+    return AiTocApiConfigured();
+}
+
+static void AiTocUpdateBodyMethod(AiTocDialog* dlg) {
+    SetWindowTextW(dlg->bodyMethod, dlg->bodyUseApi ? _TRW("API · Change…") : _TRW("Web AI · Change…"));
+}
+
+static void AiTocRememberBodyMethod(AiTocDialog* dlg, bool api) {
+    dlg->bodyUseApi = api;
+    if (gGlobalPrefs) {
+        str::ReplaceWithCopy(&gGlobalPrefs->aiTocBodyProvider, api ? "api" : "web");
+        SaveSettings();
+    }
+    AiTocUpdateBodyMethod(dlg);
+}
+
+static bool AiTocChooseBodyMethod(AiTocDialog* dlg) {
+    for (;;) {
+        bool configured = AiTocApiConfigured();
+        TASKDIALOG_BUTTON radios[] = {{100, _TRW("API")}, {101, _TRW("Web AI")}};
+        TASKDIALOG_BUTTON buttons[] = {{IDOK, _TRW("Continue")}, {102, _TRW("Configure API…")}};
+        TASKDIALOGCONFIG config{};
+        config.cbSize = sizeof(config);
+        config.hwndParent = dlg->hwnd;
+        config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+        if (trans::IsCurrLangRtl()) config.dwFlags |= TDF_RTL_LAYOUT;
+        config.pszWindowTitle = _TRW("Generate TOC From Body");
+        config.pszMainInstruction = _TRW("Choose how to generate the TOC");
+        config.pszContent =
+            configured
+                ? _TRW(
+                      "API imports the reply automatically. Web AI requires copying the reply.\nYour choice is "
+                      "remembered.")
+                : _TRW("No API is configured. Use Web AI or configure an API first.\nYour choice is remembered.");
+        config.cRadioButtons = dimof(radios);
+        config.pRadioButtons = radios;
+        config.nDefaultRadioButton = configured && dlg->bodyUseApi ? 100 : 101;
+        config.cButtons = dimof(buttons);
+        config.pButtons = buttons;
+        config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+        config.nDefaultButton = IDOK;
+        int button = 0, radio = 0;
+        if (FAILED(AppTaskDialogIndirect(&config, &button, &radio, nullptr))) return false;
+        if (button == 102 || (button == IDOK && radio == 100 && !configured)) {
+            ShowOptionsDialogAtPage(dlg->win, kSettingsPageAi);
+            if (!configured && AiTocApiConfigured()) dlg->bodyUseApi = true;
+            continue;
+        }
+        if (button != IDOK || (radio != 100 && radio != 101)) return false;
+        AiTocRememberBodyMethod(dlg, radio == 100);
+        AiTocLayoutControls(dlg);
+        return true;
+    }
+}
+
+static void AiTocBodyApiFailed(AiTocDialog* dlg, const char* error) {
+    dlg->busy = dlg->submitted = dlg->waiting = dlg->apiMode = dlg->importing = false;
+    dlg->bodyMode = false;
+    AiTocSetState(dlg, AiTocUiState::ChooseFallback);
+    AiTocApplyFallbackTexts(dlg);
+    EnableWindow(dlg->bodyBtn, TRUE);
+    AiTocEnableSendButtons(dlg, TRUE);
+    EnableWindow(dlg->pagesEdit, TRUE);
+    SetWindowTextW(dlg->status, _TRW("The body TOC API request failed."));
+    AiTocLayoutControls(dlg);
+    InvalidateRect(dlg->hwnd, nullptr, TRUE);
+    TASKDIALOG_BUTTON buttons[] = {{IDRETRY, _TRW("Try again")}, {100, _TRW("Switch to Web AI")}};
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hwndParent = dlg->hwnd;
+    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+    if (trans::IsCurrLangRtl()) config.dwFlags |= TDF_RTL_LAYOUT;
+    config.pszWindowTitle = _TRW("Generate TOC From Body");
+    config.pszMainInstruction = _TRW("The body TOC API request failed.");
+    config.pszContent = ToWStrTemp(error ? error : _TRA("The AI reply contains no importable TOC items."));
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.cButtons = dimof(buttons);
+    config.pButtons = buttons;
+    config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+    config.nDefaultButton = IDRETRY;
+    int button = 0;
+    if (SUCCEEDED(AppTaskDialogIndirect(&config, &button, nullptr, nullptr))) {
+        if (button == 100) AiTocRememberBodyMethod(dlg, false);
+        if (button == IDRETRY || button == 100) AiTocStartBodySend(dlg);
+    }
+}
+
 static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     AiTocDialog* dlg = nullptr;
     if (msg == WM_CREATE) {
@@ -3926,34 +4066,17 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         }
         // Hand the scan to the dialog and build the text-only AI round.
         delete dlg->bodyScan;
+        if (dlg->bodyEngine) dlg->bodyEngine->Release();
+        dlg->bodyEngine = work->engine;
+        work->engine = nullptr;
         dlg->bodyScan = scan;
         work->scan = nullptr;
-        EngineBase* engine = work->engine;
-        engine->AddRef(); // ownership passes to sendWork; acquire before deleting work
         delete work;
-
         AutoFreeStr digest(BuildBodyTocDigest(*dlg->bodyScan));
-        auto* sendWork = new AiTocBodySendWork();
-        sendWork->engine = engine;
-        sendWork->mainHwnd = dlg->win ? dlg->win->hwndFrame : nullptr;
-        sendWork->owner = hwnd;
-        sendWork->dialogToken = dlg->token;
-        sendWork->service = AiTocActiveService();
-        sendWork->prompt = BuildBodyTocPrompt(dlg->bodyScan->totalPages, digest);
-        // [重新发送] must be able to resubmit the very same prompt without
-        // re-scanning: the dialog keeps its own copy (the worker's prompt is
-        // freed with the work item).
-        dlg->bodyPrompt = str::Dup(sendWork->prompt);
-        dlg->bodySendWork = sendWork;
-        dlg->busy = true;
+        str::Free(dlg->bodyPrompt);
+        dlg->bodyPrompt = BuildBodyTocPrompt(dlg->bodyScan->totalPages, digest);
         logf("[AITOC] Body digest generated: candidates=%d\n", candidateCount);
-        AiTocSetState(dlg, AiTocUiState::SendingToAi);
-        SetWindowTextW(dlg->status,
-                       ToWStrTemp(str::FormatTemp(_TRA("Scan finished: %d likely headings found. Opening the AI page…"),
-                                                  candidateCount)));
-        AiTocLayoutControls(dlg);
-        InvalidateRect(hwnd, nullptr, TRUE);
-        RunAsync(MkFunc0<AiTocBodySendWork>(AiTocBodySendWorker, sendWork), "AiTocBodySend");
+        AiTocStartBodySend(dlg);
         return 0;
     }
     if (msg == kMsgAiTocBodySent) {
@@ -3963,11 +4086,29 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             return 0;
         }
         dlg->bodySendWork = nullptr;
+        if (work->useApi) {
+            AutoFreeStr error(str::Dup(work->apiError));
+            char* reply = work->reply;
+            work->reply = nullptr;
+            delete work;
+            AutoFreeStr ownedReply(reply);
+            dlg->busy = false;
+            // Accept code fences just as the clipboard import does.
+            char* start = reply ? strchr(reply, '{') : nullptr;
+            char* end = reply ? strrchr(reply, '}') : nullptr;
+            if (start && end && end >= start) {
+                end[1] = 0;
+                if (IsBodyTocJsonCandidate(start) && AiTocImportBodyJson(dlg, start, false)) return 0;
+            }
+            AiTocBodyApiFailed(dlg, error);
+            return 0;
+        }
         const char* error = work->error;
         bool browserOpen = work->browser != nullptr;
         delete work;
         if (error && !browserOpen) {
             dlg->busy = false;
+            dlg->bodyMode = false;
             AiTocSetState(dlg, AiTocUiState::ChooseFallback);
             EnableWindow(dlg->bodyBtn, TRUE);
             AiTocEnableSendButtons(dlg, TRUE);
@@ -4046,7 +4187,16 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     }
     if (msg == WM_COMMAND && LOWORD(wp) == 1002 && HIWORD(wp) == BN_CLICKED && !dlg->busy && !dlg->submitted &&
         !dlg->bodyScanning) {
+        const char* saved = gGlobalPrefs ? gGlobalPrefs->aiTocBodyProvider : nullptr;
+        if ((!str::EqI(saved, "api") && !str::EqI(saved, "web")) || (dlg->bodyUseApi && !AiTocApiConfigured())) {
+            if (!AiTocChooseBodyMethod(dlg)) return 0;
+        }
         StartAiBodyStructureScan(dlg);
+        return 0;
+    }
+    if (msg == WM_COMMAND && LOWORD(wp) == 1007 && HIWORD(wp) == BN_CLICKED && !dlg->busy && !dlg->submitted &&
+        !dlg->bodyScanning) {
+        AiTocChooseBodyMethod(dlg);
         return 0;
     }
     if (msg == WM_COMMAND && LOWORD(wp) == 1003 && HIWORD(wp) == BN_CLICKED) {
@@ -4183,6 +4333,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         delete dlg->detectWork;
         // bodyScanWork / bodySendWork outlive the dialog and self-delete.
         delete dlg->bodyScan;
+        if (dlg->bodyEngine) dlg->bodyEngine->Release();
         str::Free(dlg->bodyPrompt);
         DeleteObject(dlg->backgroundBrush);
         DeleteObject(dlg->controlBrush);
@@ -4347,6 +4498,11 @@ void StartAiTocProofOfConcept(MainWindow* win) {
                                    hwnd, (HMENU)1002, h, nullptr);
     SendMessageW(dlg->bodyBtn, WM_SETFONT, (WPARAM)dlg->font, TRUE);
     ShowWindow(dlg->bodyBtn, SW_HIDE);
+    dlg->bodyUseApi = AiTocPreferredBodyApi();
+    dlg->bodyMethod = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd,
+                                      (HMENU)1007, h, nullptr);
+    SendMessageW(dlg->bodyMethod, WM_SETFONT, (WPARAM)dlg->font, TRUE);
+    AiTocUpdateBodyMethod(dlg);
     // [重新发送] on the unified waiting page: resubmits the cached payload
     // (confirmed printed pages or the body Structure Digest prompt) without
     // re-running detection or the whole-document scan.

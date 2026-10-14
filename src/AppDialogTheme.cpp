@@ -230,11 +230,18 @@ static void PaintWarmEditChrome(HWND hwnd, HDC dc) {
     if (rc.right <= rc.left || rc.bottom <= rc.top) {
         return;
     }
-    COLORREF page = WarmComboPageColor(hwnd);
-    COLORREF border = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), GetFocus() == hwnd ? 0 : -20)
-                                            : AccentColor(page, GetFocus() == hwnd ? 56 : 32);
-    COLORREF fill = ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : ThemeWindowControlBackgroundColor();
-    if (!IsWindowEnabled(hwnd)) {
+    AppDialogPaintEditFrame(hwnd, dc, rc, WarmComboPageColor(hwnd), IsWindowEnabled(hwnd), GetFocus() == hwnd);
+}
+
+COLORREF AppDialogEditBackgroundColor() {
+    return ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : ThemeWindowControlBackgroundColor();
+}
+
+void AppDialogPaintEditFrame(HWND hwnd, HDC dc, const RECT& rc, COLORREF page, bool enabled, bool focused) {
+    COLORREF border = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), focused ? 0 : -20)
+                                            : AccentColor(page, focused ? 56 : 32);
+    COLORREF fill = AppDialogEditBackgroundColor();
+    if (!enabled) {
         fill = page;
     }
     {
@@ -323,6 +330,10 @@ static void InstallWarmEdit(HWND hwnd) {
     SendMessageW(hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad, pad));
 }
 
+void AppDialogStyleEdit(HWND hwnd) {
+    InstallWarmEdit(hwnd);
+}
+
 static BOOL CALLBACK SyncWarmPushButton(HWND child, LPARAM warm) {
     // Dropdown faces share one painter in all four themes, including White.
     // Theme tokens supply the colors; only push-button treatment is Warm-only.
@@ -382,6 +393,9 @@ static COLORREF WarmComboPageColor(HWND hwnd) {
         return page;
     }
     WCHAR cls[64]{};
+    if (GetClassNameW(parent, cls, dimof(cls)) > 0 && str::EqI(cls, WC_TREEVIEWW)) {
+        return ThemeSidebarBackgroundColor();
+    }
     if (GetClassNameW(parent, cls, dimof(cls)) > 0 && str::EqI(cls, L"SumatraWgDefaultWinClass")) {
         page = ThemeWindowControlBackgroundColor();
     }

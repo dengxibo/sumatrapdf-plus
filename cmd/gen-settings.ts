@@ -1009,6 +1009,7 @@ const globalPrefs: Field[] = [
   mkField("AiTocApiModel", Str, "", "AI table of contents model"),
   mkField("AiTocApiProfiles", Str, "", "saved AI table of contents API profiles (JSON)"),
   mkField("AiTocApiConcurrency", Int, 4, "maximum simultaneous AI table of contents requests (1-8)"),
+  mkField("AiTocBodyProvider", Str, "", "last chosen body TOC AI method: api/web; empty asks on first use"),
   setVersion(
     mkField(
       "AiChatUseDeepSeekInsteadOfDoubao",

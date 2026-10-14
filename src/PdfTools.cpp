@@ -2394,9 +2394,14 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi, bool fitCli
     int editW = PdfRotatePx(82, dpi), spinW = PdfRotatePx(18, dpi);
     int groupX = x + sideW - editW - spinW;
     int editH = HwndMeasureText(hwnd, "Xg", dlg->hFont).dy + PdfRotatePx(6, dpi);
-    int editY = fixedY + (rowH - editH) / 2;
-    dlg->angleGroupRc = {groupX, editY, groupX + editW, editY + editH};
     PdfRotatePagesMoveChild(dlg->hwndSlider, x, fixedY, sideW - editW - spinW - gap, rowH);
+    // The native track sits above the slider window's vertical midpoint.
+    // Align the field and spinner to the actual track, including at higher DPI.
+    RECT channel{};
+    SendMessageW(dlg->hwndSlider, TBM_GETCHANNELRECT, 0, (LPARAM)&channel);
+    int trackY = channel.bottom > channel.top ? (channel.top + channel.bottom) / 2 : rowH / 2;
+    int editY = fixedY + trackY - editH / 2;
+    dlg->angleGroupRc = {groupX, editY, groupX + editW, editY + editH};
     int inset = std::max(1, PdfRotatePx(2, dpi));
     PdfRotatePagesMoveChild(dlg->hwndAngleEdit, groupX + inset, editY + inset, editW - inset * 2, editH - inset * 2);
     PdfRotatePagesMoveChild(dlg->hwndAngleSpin, groupX + editW, editY, spinW, editH);

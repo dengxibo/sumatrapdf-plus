@@ -595,6 +595,8 @@ struct GlobalPrefs {
     char* aiTocApiProfiles;
     // maximum simultaneous AI table of contents requests (1-8)
     int aiTocApiConcurrency;
+    // last chosen body TOC AI method: api/web; empty asks on first use
+    char* aiTocBodyProvider;
     // deprecated: use AiChatProvider instead; if true and AiChatProvider
     // is not in settings, migrates to deepseek
     bool aiChatUseDeepSeekInsteadOfDoubao;
@@ -1132,8 +1134,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-41.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-41.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-49.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-49.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1183,6 +1185,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, aiTocApiModel), SettingType::String, (intptr_t)"", nullptr},
     {offsetof(GlobalPrefs, aiTocApiProfiles), SettingType::String, (intptr_t)"", nullptr},
     {offsetof(GlobalPrefs, aiTocApiConcurrency), SettingType::Int, 4, nullptr},
+    {offsetof(GlobalPrefs, aiTocBodyProvider), SettingType::String, (intptr_t)"", nullptr},
     {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false, "已弃用，请用 AiChatProvider"},
     {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true, "显示 Ask AI 入口"},
     {offsetof(GlobalPrefs, enableInlineTranslate), SettingType::Bool, true, "显示划词翻译入口"},
@@ -1295,26 +1298,26 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 140, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 141, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
     "ion\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons"
     "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0OcrAutoSave\0OcrDeskew\0"
     "OcrFullDocumentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiTocApiBaseUrl\0AiTocApiKey\0AiTocApiModel"
-    "\0AiTocApiProfiles\0AiTocApiConcurrency\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0EnableInlineTranslate\0Tra"
-    "nslateVolcAccessKey\0TranslateVolcSecretKey\0TranslateTargetMode\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage"
-    "\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0WheelScrollLines\0FastScrollOverScrollbar\0PreventSl"
-    "eepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0Doc"
-    "umentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAli"
-    "as\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI"
-    "\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fulls"
-    "creen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAlo"
-    "udSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoice"
-    "Zh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0Narrati"
-    "onUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0W"
-    "indowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdate"
-    "CheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "\0AiTocApiProfiles\0AiTocApiConcurrency\0AiTocBodyProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0EnableI"
+    "nlineTranslate\0TranslateVolcAccessKey\0TranslateVolcSecretKey\0TranslateTargetMode\0ShowFavorites\0ShowToc\0ShowL"
+    "inks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0WheelScrollLines\0FastScrollOverS"
+    "crollbar\0PreventSleepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0Doc"
+    "umentColorMode\0DocumentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontS"
+    "ize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0Fix"
+    "edPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0Print"
+    "erDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSp"
+    "eakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAl"
+    "oudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloud"
+    "AutoFollow\0NarrationUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguag"
+    "e\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdate"
+    "Check\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

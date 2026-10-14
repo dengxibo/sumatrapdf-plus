@@ -177,6 +177,9 @@ AiTocApiProfiles =
 ; maximum simultaneous AI table of contents requests (1-8)
 AiTocApiConcurrency = 4
 
+; last chosen body TOC AI method: api/web; empty asks on first use
+AiTocBodyProvider =
+
 ; deprecated: use AiChatProvider instead; if true and AiChatProvider is not in
 ; settings, migrates to deepseek (introduced in version 3.7)
 AiChatUseDeepSeekInsteadOfDoubao = false

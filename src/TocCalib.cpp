@@ -6914,26 +6914,17 @@ static COLORREF TocCalibBlend(COLORREF a, COLORREF b, int bPct) {
                ch(GetBValue(a), GetBValue(b), aPct, bPct));
 }
 
-static void TocCalibDrawPageField(HDC hdc, const RECT& rc, const WCHAR* text, bool empty, bool editing, bool enabled,
-                                  bool muted) {
+static void TocCalibDrawPageField(HWND hwnd, HDC hdc, const RECT& rc, const WCHAR* text, bool empty, bool editing,
+                                  bool enabled) {
     if (rc.right <= rc.left || rc.bottom <= rc.top || editing) {
         return;
     }
-    COLORREF bg = ThemeFindEditBackgroundColor();
-    if (muted) {
-        COLORREF side = 0;
-        COLORREF sideTxt = 0;
-        ThemeSidebarColors(side, sideTxt);
-        bg = TocCalibBlend(bg, side, 42);
+    COLORREF page = GetPixel(hdc, rc.left, rc.top);
+    if (page == CLR_INVALID) {
+        page = ThemeSidebarBackgroundColor();
     }
+    AppDialogPaintEditFrame(hwnd, hdc, rc, page, enabled, false);
     COLORREF txt = (!enabled || empty) ? ThemeWindowTextDisabledColor() : ThemeWindowTextColor();
-    COLORREF bd = ThemeInspectorSeparatorColor();
-    HBRUSH br = CreateSolidBrush(bg);
-    FillRect(hdc, &rc, br);
-    DeleteObject(br);
-    HBRUSH bdBr = CreateSolidBrush(bd);
-    FrameRect(hdc, &rc, bdBr);
-    DeleteObject(bdBr);
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, txt);
     RECT inner = rc;
@@ -7196,9 +7187,9 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
         offText = offBuf;
         offBreak = TocCalibOffsetBreaks(s, row, off);
     }
-    TocCalibDrawPageField(hdc, L.prField, prText, prEmpty, TocCalibEditingField(win, item, true), true, false);
+    TocCalibDrawPageField(hwnd, hdc, L.prField, prText, prEmpty, TocCalibEditingField(win, item, true), true);
     TocCalibDrawOffsetArrow(hdc, hwnd, L.arrow, rcRow, offText, offBreak);
-    TocCalibDrawPageField(hdc, L.pdfField, pdfText, pdfEmpty, TocCalibEditingField(win, item, false), true, true);
+    TocCalibDrawPageField(hwnd, hdc, L.pdfField, pdfText, pdfEmpty, TocCalibEditingField(win, item, false), true);
 }
 
 enum class TocCalibHit {
@@ -7698,7 +7689,7 @@ bool TocCalibColorPageEdit(HWND edit, HDC hdc, HBRUSH* brOut) {
     if (!edit || edit != gCalibPageEdit.hwnd || !hdc || !brOut) {
         return false;
     }
-    COLORREF bg = ThemeFindEditBackgroundColor();
+    COLORREF bg = AppDialogEditBackgroundColor();
     SetBkColor(hdc, bg);
     SetTextColor(hdc, ThemeWindowTextColor());
     static HBRUSH br = nullptr;
@@ -7776,9 +7767,11 @@ static void TocCalibBeginPageEdit(MainWindow* win, TocItem* item, const RECT& fi
     if (rc.right - rc.left < 8 || rc.bottom - rc.top < 8) {
         return;
     }
-    HWND h = CreateWindowExW(0, WC_EDITW, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_CENTER | ES_AUTOHSCROLL, rc.left,
-                             rc.top, rc.right - rc.left, rc.bottom - rc.top, parent, nullptr, GetModuleHandle(nullptr),
-                             nullptr);
+    // Initialize the rounded chrome before exposing the edit: a visible native
+    // border can otherwise leave its square frame behind when styles change.
+    HWND h =
+        CreateWindowExW(0, WC_EDITW, L"", WS_CHILD | ES_CENTER | ES_AUTOHSCROLL, rc.left, rc.top, rc.right - rc.left,
+                        rc.bottom - rc.top, parent, nullptr, GetModuleHandle(nullptr), nullptr);
     if (!h) {
         return;
     }
@@ -7818,8 +7811,11 @@ static void TocCalibBeginPageEdit(MainWindow* win, TocItem* item, const RECT& fi
     gCalibPageEdit.tocId = item->id;
     gCalibPageEdit.printed = printed;
     gCalibPageEdit.prev = (WNDPROC)SetWindowLongPtrW(h, GWLP_WNDPROC, (LONG_PTR)TocCalibPageEditProc);
+    AppDialogStyleEdit(h);
     SendMessageW(h, EM_SETSEL, 0, -1);
+    ShowWindow(h, SW_SHOWNA);
     SetFocus(h);
+    RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_UPDATENOW);
 }
 
 static int TocCalibNextVisibleTocId(MainWindow* win, int tocId) {
