@@ -134,6 +134,10 @@ fz_load_html_font(fz_context *ctx, fz_html_font_set *set,
 		font = fz_load_system_font(ctx, family, is_bold, is_italic, 0);
 		if (font)
 		{
+			/* HTML uses this selected face's own metrics, so it can be embedded
+			 * in PDF free-text appearances rather than treated as a substitute.
+			 */
+			font->flags.ft_substitute = 0;
 			fz_try(ctx)
 				fz_add_html_font_face(ctx, set, family, is_bold, is_italic, 0, "<system>", font);
 			fz_always(ctx)

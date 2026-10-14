@@ -915,7 +915,7 @@ static void ThumbStartAction(SidebarThumbsWnd* t, int action, int at) {
     EndFreeTextInPlaceEditForTab(tab, true);
     CloseAndDeleteEditAnnotationsWindow(tab);
     tab->selectedAnnotation = nullptr;
-    tab->pdfMarkupOverlays.Clear();
+    ClearPdfMarkupOverlays(tab);
     t->win->DeleteToolTip();
     t->busy = true;
     t->generation++;

@@ -2222,7 +2222,7 @@ static void PdfRotatePagesDoIt(PdfRotatePagesDialog* dlg) {
     CloseAndDeleteEditAnnotationsWindow(tab);
     tab->selectedAnnotation = nullptr;
     tab->didScrollToSelectedAnnotation = false;
-    tab->pdfMarkupOverlays.Clear();
+    ClearPdfMarkupOverlays(tab);
     win->DeleteToolTip();
 
     auto* job = new PdfRotateApplyJob;

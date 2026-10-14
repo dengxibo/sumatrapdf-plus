@@ -82,6 +82,7 @@ WindowTab::~WindowTab() {
     if (gMostRecentlyOpenedDoc == ctrl) {
         gMostRecentlyOpenedDoc = nullptr;
     }
+    ClearPdfMarkupOverlays(this);
     delete ctrl;
     str::FreePtr(&filePath);
     str::FreePtr(&frameTitle);

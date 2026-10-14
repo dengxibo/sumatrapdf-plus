@@ -1080,6 +1080,40 @@ bool IsDragDistance(int x1, int x2, int y1, int y2) {
 // Forward declaration
 static RectF CalculateResizedRect(MainWindow* win, int x, int y);
 static RectF CalculateResizedEbookRect(MainWindow* win, int x, int y);
+
+static Point ConstrainAnnotationEnd(Point start, Point end, AnnotationType type) {
+    if (!IsShiftPressed()) {
+        return end;
+    }
+    int dx = end.x - start.x;
+    int dy = end.y - start.y;
+    if (type == AnnotationType::Line) {
+        if (abs(dx) >= abs(dy)) {
+            end.y = start.y;
+        } else {
+            end.x = start.x;
+        }
+    } else if (type == AnnotationType::Square || type == AnnotationType::Circle) {
+        int side = std::max(abs(dx), abs(dy));
+        end.x = start.x + (dx < 0 ? -side : side);
+        end.y = start.y + (dy < 0 ? -side : side);
+    }
+    return end;
+}
+
+static RectF ConstrainAnnotationResize(RectF bounds, RectF orig, AnnotationType type, bool left, bool right, bool top,
+                                       bool bottom) {
+    if (!IsShiftPressed() || (type != AnnotationType::Square && type != AnnotationType::Circle)) {
+        return bounds;
+    }
+    bool horizontal = left || right;
+    bool vertical = top || bottom;
+    float side = horizontal && vertical ? std::max(bounds.dx, bounds.dy) : horizontal ? bounds.dx : bounds.dy;
+    bounds.x = left ? orig.x + orig.dx - side : right ? orig.x : orig.x + (orig.dx - side) / 2.f;
+    bounds.y = top ? orig.y + orig.dy - side : bottom ? orig.y : orig.y + (orig.dy - side) / 2.f;
+    bounds.dx = bounds.dy = side;
+    return bounds;
+}
 static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotation, Point pt);
 
 static void PumpAnnotationResizeRender(MainWindow* win);
@@ -1366,8 +1400,10 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
         case MouseAction::CreatingAnnotation: {
             win->annotationUnderCursor = nullptr;
             if (win->annotCreateToolCmd != CmdCreateAnnotInk) {
-                win->selectionRect.dx = x - win->selectionRect.x;
-                win->selectionRect.dy = y - win->selectionRect.y;
+                Point end = ConstrainAnnotationEnd(win->annotCreateDragStart, {x, y},
+                                                   CmdIdToAnnotationType(win->annotCreateToolCmd));
+                win->selectionRect.dx = end.x - win->selectionRect.x;
+                win->selectionRect.dy = end.y - win->selectionRect.y;
             }
             if (win->annotCreateToolCmd == CmdCreateAnnotInk) {
                 int pageNo = dm->GetPageNoByPoint(win->annotCreateDragStart);
@@ -1401,11 +1437,9 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
                     EbookAnnotationGetPageBounds(win->CurrentTab(), dm, ebookAnnotation, &pageNo, &ignored);
                     RectF bounds = CalculateResizedEbookRect(win, x, y);
                     EbookAnnotationSetPageBounds(win->CurrentTab(), dm, ebookAnnotation, pageNo, bounds, false);
-                    win->annotResizeSerial++;
                     // Do not RedrawAll: that erases every child, and a slow dark-mode
                     // page render leaves the blank frame on screen.
                     InvalidateRect(win->hwndCanvas, nullptr, FALSE);
-                    PumpAnnotationResizeRender(win);
                 } else {
                     DragAnnotationMove(win, x, y, nullptr);
                 }
@@ -1421,7 +1455,12 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
 
                     // Calculate and apply the new rectangle based on current mouse position
                     RectF newRect = CalculateResizedRect(win, x, y);
-                    SetRect(annot, newRect);
+                    if (win->annotResizePreview) {
+                        // Resize the cached preview; update the PDF only on release.
+                        annot->bounds = newRect;
+                    } else {
+                        SetRect(annot, newRect);
+                    }
                     // Do not RedrawAll: that erases every child, and a slow dark-mode
                     // page render leaves the blank frame on screen.
                     InvalidateRect(win->hwndCanvas, nullptr, FALSE);
@@ -1539,7 +1578,8 @@ static RectF CalculateResizedEbookRect(MainWindow* win, int x, int y) {
     if (moveBottom) {
         bounds.dy = std::max(minSize, orig.dy + deltaY);
     }
-    return bounds;
+    return ConstrainAnnotationResize(bounds, orig, EbookAnnotationGetType(annotation), moveLeft, moveRight, moveTop,
+                                     moveBottom);
 }
 
 static void StartEbookAnnotationResize(MainWindow* win, EbookAnnotation* annotation, Point pt, ResizeHandle handle) {
@@ -1707,6 +1747,8 @@ static RectF CalculateResizedRect(MainWindow* win, int x, int y) {
         }
         r.dy = minSize;
     }
+
+    r = ConstrainAnnotationResize(r, orig, annot->type, moveLeft, moveRight, moveTop, moveBottom);
 
     // A handwritten signature stays in proportion. Stretching one side alone
     // turns the writing into a smear, so the other side follows.
@@ -2030,13 +2072,10 @@ static void BeginAnnotResizePreview(MainWindow* win, Annotation* annot) {
     win->annotResizeShapeRect = screen;
     win->annotResizePreview = true;
     win->annotResizePreviewAnnot = annot;
+    RemovePdfMarkupOverlayAnnot(win->CurrentTab(), annot);
     if (gRenderCache) {
         gRenderCache->CancelRendering(dm);
     }
-}
-
-static bool SameRect(Rect a, Rect b) {
-    return a.x == b.x && a.y == b.y && a.dx == b.dx && a.dy == b.dy;
 }
 
 static void PaintAnnotationResizePreview(MainWindow* win, HDC hdc, DisplayModel* dm) {
@@ -2062,8 +2101,13 @@ static void PaintAnnotationResizePreview(MainWindow* win, HDC hdc, DisplayModel*
     if (screen.IsEmpty()) {
         return;
     }
-    // Move reuses the bitmap from mouse-down. Resize rebuilds it when the frame changes.
-    if (!win->annotResizeShape || (!win->annotMovePreview && !SameRect(win->annotResizeShapeRect, screen))) {
+    // Reuse the mouse-down bitmap for shapes, including ink and stamps. Generating
+    // a new appearance and rasterizing it in each paint blocks mouse processing.
+    if (!win->annotMovePreview && annot->type == AnnotationType::FreeText && dm->GetRotation() == 0) {
+        PaintPdfFreeTextResizePreview(hdc, dm, annot);
+        return;
+    }
+    if (!win->annotResizeShape) {
         HBITMAP fresh = RenderAnnotationPreviewBitmap(annot, dm->GetZoomSafe(pageNo), dm->GetRotation());
         if (fresh) {
             if (win->annotResizeShape) {
@@ -2089,9 +2133,15 @@ static void PaintAnnotationResizePreview(MainWindow* win, HDC hdc, DisplayModel*
     bf.BlendOp = AC_SRC_OVER;
     bf.SourceConstantAlpha = 255;
     bf.AlphaFormat = AC_SRC_ALPHA;
-    int x = screen.x + (screen.dx - bm.bmWidth) / 2;
-    int y = screen.y + (screen.dy - bm.bmHeight) / 2;
-    AlphaBlend(hdc, x, y, bm.bmWidth, bm.bmHeight, mem, 0, 0, bm.bmWidth, bm.bmHeight, bf);
+    int width = bm.bmWidth;
+    int height = bm.bmHeight;
+    if (!win->annotMovePreview && !win->annotResizeShapeRect.IsEmpty()) {
+        width = std::max(1, MulDiv(width, screen.dx, win->annotResizeShapeRect.dx));
+        height = std::max(1, MulDiv(height, screen.dy, win->annotResizeShapeRect.dy));
+    }
+    int x = screen.x + (screen.dx - width) / 2;
+    int y = screen.y + (screen.dy - height) / 2;
+    AlphaBlend(hdc, x, y, width, height, mem, 0, 0, bm.bmWidth, bm.bmHeight, bf);
     SelectObject(mem, old);
     DeleteDC(mem);
 }
@@ -2120,6 +2170,9 @@ static bool StopAnnotationResize(MainWindow* win, int x, int y, bool aborted) {
 
     Annotation* annot = win->annotationBeingDragged;
     bool preview = win->annotResizePreview;
+    if (annot && preview && !aborted) {
+        annot->bounds = CalculateResizedRect(win, x, y);
+    }
     win->annotationBeingResized = false;
     win->annotationBeingDragged = nullptr;
     win->annotResizeFlight = false;
@@ -2133,7 +2186,7 @@ static bool StopAnnotationResize(MainWindow* win, int x, int y, bool aborted) {
 
     if (aborted || !annot) {
         if (annot && preview) {
-            SetRect(annot, win->annotationOriginalRect);
+            annot->bounds = win->annotationOriginalRect;
         }
         ClearAnnotResizePreview(win);
         if (annot && preview) {
@@ -2142,9 +2195,13 @@ static bool StopAnnotationResize(MainWindow* win, int x, int y, bool aborted) {
         return true;
     }
 
-    // The annotation has already been updated during mouse move,
-    // just notify and update toolbar. Keep the live shape until that
-    // page render is the one on screen.
+    // Line endpoints and ink points still refer to the original rectangle.
+    // Restore it before SetRect maps them into the final preview rectangle.
+    if (preview) {
+        RectF finalRect = GetRect(annot);
+        annot->bounds = win->annotationOriginalRect;
+        SetRect(annot, finalRect);
+    }
     if (annot->type == AnnotationType::FreeText) {
         RectF r = GetRect(annot);
         RememberFreeTextPreset(nullptr, 0, r.dx, r.dy);
@@ -2170,34 +2227,29 @@ static Rect NormalizeScreenRect(Point a, Point b) {
 // The rubber-band is a fixed screen stroke. The saved annotation is in PDF
 // points, so the same 1pt default becomes a thicker line once the page is
 // zoomed. Store the width that lands at this screen thickness.
-static float kAnnotPreviewStrokePx = 2.f;
-
 static float PreviewStrokePoints(DisplayModel* dm, int pageNo) {
     float zoom = dm ? dm->GetZoomReal(pageNo) : 1.f;
     return NewStrokeWidthPoints(zoom);
 }
 
-// Screen inset of the stroke center for a square or circle. PDF keeps that
-// center 0.5pt inside the drag rect when the border width changes. Ebook
-// strokes are centered half a line-width inside the rect.
-static float PreviewShapeCenterInset(MainWindow* win, DisplayModel* dm, bool ebook) {
+static float PreviewShapeStrokePx(MainWindow* win, DisplayModel* dm, bool ebook, AnnotationType type) {
     if (ebook) {
-        float stroke = (float)std::max(1, DpiScale(win->hwndFrame, 2));
-        return stroke / 2.f;
+        int border = EbookAnnotationCreationBorderWidth(type);
+        int pixels = DpiScale(win->hwndFrame, 2 * border);
+        if (type == AnnotationType::Line || type == AnnotationType::Ink) {
+            pixels = std::max(1, pixels);
+        }
+        return (float)pixels;
     }
     int pageNo = dm ? dm->GetPageNoByPoint(win->annotCreateDragStart) : 0;
-    float zoom = (dm && dm->ValidPageNo(pageNo)) ? dm->GetZoomReal(pageNo) : 1.f;
+    float zoom = dm && dm->ValidPageNo(pageNo) ? dm->GetZoomReal(pageNo) : 1.f;
     if (zoom < 0.05f) {
         zoom = 1.f;
     }
-    return 0.5f * zoom;
-}
-
-static float PreviewShapeStrokePx(MainWindow* win, bool ebook) {
-    if (ebook) {
-        return (float)std::max(1, DpiScale(win->hwndFrame, 2));
-    }
-    return kAnnotPreviewStrokePx;
+    AnnotDrawStyle style;
+    float points = FindAnnotDrawStyle(type, &style) && (style.flags & kDrawStyleBorder) ? style.border
+                                                                                        : NewStrokeWidthPoints(zoom);
+    return std::max(0.5f, points * zoom);
 }
 
 static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) {
@@ -2219,7 +2271,7 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
         rgb = RGB(40, 120, 220);
     } else if (stroked) {
         rgb = ebook ? GetDefaultEbookPointAnnotationColor(type) : RGB(255, 0, 0);
-        strokePx = PreviewShapeStrokePx(win, ebook);
+        strokePx = PreviewShapeStrokePx(win, dm, ebook, type);
     }
     u8 r, g, b;
     UnpackColor(rgb, r, g, b);
@@ -2232,7 +2284,10 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
         pen.SetEndCap(Gdiplus::LineCapRound);
         pen.SetLineJoin(Gdiplus::LineJoinRound);
     }
-    float shapeInset = stroked ? PreviewShapeCenterInset(win, dm, ebook) : strokePx / 2.f;
+    float shapeInset = strokePx / 2.f;
+    if (stroked && strokePx <= 0.f) {
+        return;
+    }
 
     if (cmdId == CmdCreateAnnotText) {
         return;
@@ -2411,6 +2466,8 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     if (!tab || !dm) {
         return;
     }
+    endCanvas =
+        ConstrainAnnotationEnd(win->annotCreateDragStart, endCanvas, CmdIdToAnnotationType(win->annotCreateToolCmd));
     if (EbookAnnotationsSupported(tab)) {
         FinishEbookAnnotCreateDrag(win, tab, dm, endCanvas);
         return;

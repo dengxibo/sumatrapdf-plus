@@ -66,6 +66,7 @@ bool EbookAnnotationSetFreeTextBorderWidth(WindowTab* tab, EbookAnnotation* anno
 bool EbookAnnotationSetFreeTextBackground(WindowTab* tab, EbookAnnotation* annotation, bool transparent,
                                           COLORREF color);
 int EbookAnnotationGetBorderWidth(EbookAnnotation* annotation);
+int EbookAnnotationCreationBorderWidth(AnnotationType type);
 int EbookAnnotationGetLineStart(EbookAnnotation* annotation);
 int EbookAnnotationGetLineEnd(EbookAnnotation* annotation);
 bool EbookAnnotationGetInteriorColor(EbookAnnotation* annotation, COLORREF* colorOut);

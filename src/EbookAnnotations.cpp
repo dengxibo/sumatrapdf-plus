@@ -836,6 +836,14 @@ static int DrawStyleBorderPx(float points) {
     return std::clamp((int)(points + 0.5f), 0, 12);
 }
 
+int EbookAnnotationCreationBorderWidth(AnnotationType type) {
+    AnnotDrawStyle style;
+    if (FindAnnotDrawStyle(type, &style) && (style.flags & kDrawStyleBorder)) {
+        return DrawStyleBorderPx(style.border);
+    }
+    return 1;
+}
+
 void AdoptEbookDrawStyle(EbookAnnotation* annotation) {
     AnnotDrawStyle style;
     if (!annotation || !FindAnnotDrawStyle(annotation->type, &style)) {

@@ -2,6 +2,26 @@
 
 ## next
 
+## 3.7.51 (2026-10-15)
+
+- 修复自由文本所选 Windows 字体无法嵌入 PDF 外观的问题。
+  Allow selected Windows fonts to be embedded in PDF free-text appearances.
+
+- EPUB 直线、任意线、圆形和方框的绘制预览读取记住的线宽，并使用与最终显示相同的取整、DPI 缩放和最小线宽。
+  Match EPUB drawing previews to remembered stroke widths using the same rounding, DPI scaling, and minimum width as the final annotations.
+
+- PDF 直线、任意线、圆形和方框的绘制预览使用与完成后相同的线宽，并按线宽对齐圆形和方框边缘。
+  Match PDF line, ink, ellipse, and rectangle preview widths to their final annotation widths and align shape edges with the stroke width.
+
+- 图章落下后立即显示缓存预览，不再只显示空选框等待整页渲染。
+  Show a cached stamp preview immediately after placement while the page renders in the background.
+
+- 优化批注拖动缩放：PDF 矩形、椭圆、直线、印章和手写批注复用缓存预览，松开鼠标后才更新正式外观；EPUB 缩放不再重复请求整页渲染。
+  Reuse cached previews while resizing PDF shapes, lines, stamps, and ink, commit appearances on release, and avoid unnecessary page renders while resizing EPUB annotations.
+
+- 绘制批注时按住 Shift，直线保持水平或竖直，矩形和椭圆保持正方形和正圆；调整矩形和椭圆尺寸时也支持 Shift 等宽高约束。
+  Hold Shift when drawing annotations to constrain lines horizontally or vertically and rectangles or ellipses to squares or circles; Shift also keeps equal width and height when resizing rectangles and ellipses.
+
 ## 3.7.50 (2026-10-14)
 
 - 修复目录校准右侧控件间隙透出标题和搜索高亮的问题；整列绘制不透明背景，并保持选中与悬停颜色一致。

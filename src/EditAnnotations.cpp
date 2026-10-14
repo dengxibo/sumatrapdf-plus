@@ -129,6 +129,7 @@ void RemovePdfMarkupOverlayAnnot(WindowTab* tab, Annotation* annot) {
     }
     for (int i = tab->pdfMarkupOverlays.size() - 1; i >= 0; i--) {
         if (tab->pdfMarkupOverlays.at(i).annot == annot) {
+            DeleteObject(tab->pdfMarkupOverlays.at(i).stampBitmap);
             tab->pdfMarkupOverlays.RemoveAt(i);
         }
     }
@@ -143,9 +144,21 @@ void ClearPdfMarkupOverlayForPage(WindowTab* tab, int pageNo) {
     }
     for (int i = tab->pdfMarkupOverlays.size() - 1; i >= 0; i--) {
         if (tab->pdfMarkupOverlays.at(i).pageNo == pageNo) {
+            DeleteObject(tab->pdfMarkupOverlays.at(i).stampBitmap);
             tab->pdfMarkupOverlays.RemoveAt(i);
         }
     }
+}
+
+void ClearPdfMarkupOverlays(WindowTab* tab) {
+    if (!tab) {
+        return;
+    }
+    for (auto& entry : tab->pdfMarkupOverlays) {
+        DeleteObject(entry.stampBitmap);
+    }
+    tab->pdfMarkupOverlays.Reset();
+    DiscardFreeTextOverlayCover();
 }
 
 // Same 6pt corner as pdf_write_square_appearance() and the drag preview.
@@ -299,8 +312,9 @@ static void FillOuterBorderBand(HDC hdc, const RECT& outer, int px, COLORREF col
     DeleteObject(brush);
 }
 
-static void PaintPdfFreeTextOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annotation* annot) {
-    Rect screen = dm->CvtToScreen(pageNo, GetBounds(annot));
+static void PaintPdfFreeTextOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annotation* annot,
+                                    bool resizePreview = false) {
+    Rect screen = dm->CvtToScreen(pageNo, resizePreview ? GetRect(annot) : GetBounds(annot));
     if (screen.dx < 2 || screen.dy < 2) {
         return;
     }
@@ -318,7 +332,7 @@ static void PaintPdfFreeTextOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annot
         HBRUSH brush = CreateSolidBrush(bg);
         FillRect(hdc, &rc, brush);
         DeleteObject(brush);
-    } else {
+    } else if (!resizePreview) {
         RectF bounds = GetBounds(annot);
         if (!gFreeTextOverlayCover.bmp || gFreeTextOverlayCover.annot != annot ||
             !SameFreeTextCoverBounds(gFreeTextOverlayCover.bounds, bounds)) {
@@ -403,12 +417,40 @@ static void PaintPdfFreeTextOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annot
     DeleteObject(font);
 }
 
+void PaintPdfFreeTextResizePreview(HDC hdc, DisplayModel* dm, Annotation* annot) {
+    PaintPdfFreeTextOverlay(hdc, dm, annot->pageNo, annot, true);
+}
+
 void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo) {
     if (!tab || tab->hideAnnotations || !dm || !dm->PageVisible(pageNo) || tab->pdfMarkupOverlays.empty()) {
         return;
     }
     for (auto& entry : tab->pdfMarkupOverlays) {
         if (entry.pageNo != pageNo || !entry.annot) {
+            continue;
+        }
+        if (entry.annot->type == AnnotationType::Stamp) {
+            float zoom = dm->GetZoomSafe(pageNo);
+            int rotation = dm->GetRotation();
+            if (!entry.stampBitmap || entry.stampZoom != zoom || entry.stampRotation != rotation) {
+                DeleteObject(entry.stampBitmap);
+                entry.stampBitmap = RenderAnnotationPreviewBitmap(entry.annot, zoom, rotation);
+                entry.stampZoom = zoom;
+                entry.stampRotation = rotation;
+            }
+            BITMAP bm{};
+            if (entry.stampBitmap && GetObject(entry.stampBitmap, sizeof(bm), &bm)) {
+                Rect screen = dm->CvtToScreen(pageNo, GetRect(entry.annot));
+                HDC mem = CreateCompatibleDC(hdc);
+                if (mem) {
+                    HGDIOBJ old = SelectObject(mem, entry.stampBitmap);
+                    BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+                    AlphaBlend(hdc, screen.x + (screen.dx - bm.bmWidth) / 2, screen.y + (screen.dy - bm.bmHeight) / 2,
+                               bm.bmWidth, bm.bmHeight, mem, 0, 0, bm.bmWidth, bm.bmHeight, blend);
+                    SelectObject(mem, old);
+                    DeleteDC(mem);
+                }
+            }
             continue;
         }
         if (entry.annot->type == AnnotationType::FreeText) {

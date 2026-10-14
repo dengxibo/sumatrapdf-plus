@@ -1955,7 +1955,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     // Overlay entries and selected annotations borrow pointers from the old
     // engine. Clear them before layout can pump WM_PAINT with the new controller.
     EndFreeTextInPlaceEditForTab(tab, true);
-    tab->pdfMarkupOverlays.Reset();
+    ClearPdfMarkupOverlays(tab);
     tab->selectedAnnotation = nullptr;
     tab->selectedEbookAnnotation = nullptr;
     DocController* prevCtrl = win->ctrl;
@@ -5785,10 +5785,21 @@ static bool AnnotationWantsPendingOverlay(Annotation* annot) {
         case AnnotationType::Square:
         case AnnotationType::Circle:
         case AnnotationType::FreeText:
+        case AnnotationType::Stamp:
             return true;
         default:
             return false;
     }
+}
+
+static void CachePendingStampPreview(WindowTab* tab, WindowTab::PdfMarkupOverlayAnnot& entry) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm || entry.annot->type != AnnotationType::Stamp) {
+        return;
+    }
+    entry.stampZoom = dm->GetZoomSafe(entry.pageNo);
+    entry.stampRotation = dm->GetRotation();
+    entry.stampBitmap = RenderAnnotationPreviewBitmap(entry.annot, entry.stampZoom, entry.stampRotation);
 }
 
 static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
@@ -5798,10 +5809,15 @@ static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
     for (auto& entry : tab->pdfMarkupOverlays) {
         if (entry.annot == annot) {
             entry.pageNo = pageNo;
+            DeleteObject(entry.stampBitmap);
+            entry.stampBitmap = nullptr;
+            CachePendingStampPreview(tab, entry);
             return;
         }
     }
-    tab->pdfMarkupOverlays.Append({pageNo, annot});
+    WindowTab::PdfMarkupOverlayAnnot entry{pageNo, annot};
+    CachePendingStampPreview(tab, entry);
+    tab->pdfMarkupOverlays.Append(entry);
 }
 
 void MarkPdfAnnotationStandIn(WindowTab* tab, Annotation* annot) {
@@ -12904,7 +12920,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 if (engine) {
                     engine->hideAnnotations = tab->hideAnnotations;
                 }
-                tab->pdfMarkupOverlays.Reset();
+                ClearPdfMarkupOverlays(tab);
                 MainWindowRerender(win);
                 if (DisplayModel* fixed = win->AsFixed()) {
                     fixed->RenderVisibleParts();
@@ -12919,7 +12935,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 if (engine) {
                     engine->hideAnnotations = false;
                 }
-                tab->pdfMarkupOverlays.Reset();
+                ClearPdfMarkupOverlays(tab);
                 MainWindowRerender(win);
                 if (DisplayModel* fixed = win->AsFixed()) {
                     fixed->RenderVisibleParts();
@@ -12934,7 +12950,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 if (engine) {
                     engine->hideAnnotations = true;
                 }
-                tab->pdfMarkupOverlays.Reset();
+                ClearPdfMarkupOverlays(tab);
                 MainWindowRerender(win);
                 if (DisplayModel* fixed = win->AsFixed()) {
                     fixed->RenderVisibleParts();
