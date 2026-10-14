@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.49
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.49/SumatraPDF-Plus.exe
-Notes: Choose and remember API or Web AI for body TOC generation; unify rounded TOC fields and align deskew controls. Optional Edge SAPI fix DLLs are available in the release assets.
-NotesZh: 正文生成目录可选择并记住 API 或网页版，统一目录页码圆角输入框及倾斜校正对齐；发布页提供可选的 Edge 联网语音 SAPI 修复 DLL。
+Latest: 3.7.50
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.50/SumatraPDF-Plus.exe
+Notes: Fix TOC labels and search highlights bleeding through calibration control gaps when narrowing the sidebar. Includes body TOC provider selection and optional Edge SAPI fix DLLs.
+NotesZh: 修复侧栏缩窄时目录标题和搜索高亮从右侧校准控件间隙透出的问题；包含正文目录生成方式选择，发布页提供可选的 Edge 联网语音 SAPI 修复 DLL。
