@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.52
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.52/SumatraPDF-Plus.exe
-Notes: Stabilize PDF annotation placement with cached final appearances and fewer refreshes; leave completed lines, ink, rectangles and ellipses without edit frames.
-NotesZh: 优化 PDF 批注落下时的外观过渡和刷新，减少抖动；直线、任意线、方框和圆形绘制完成后不显示编辑外框。
+Latest: 3.7.53
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.53/SumatraPDF-Plus.exe
+Notes: Preserve printed TOC page numbers and labels; anchor inline page editors, refine half-arrows, and shorten the printed-page placeholder.
+NotesZh: 保留提取目录的印刷页码和特殊标签，修复页码编辑框右侧定位，优化半边箭头及印刷页提示。
