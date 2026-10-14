@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.53
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.53/SumatraPDF-Plus.exe
-Notes: Preserve printed TOC page numbers and labels; anchor inline page editors, refine half-arrows, and shorten the printed-page placeholder.
-NotesZh: 保留提取目录的印刷页码和特殊标签，修复页码编辑框右侧定位，优化半边箭头及印刷页提示。
+Latest: 3.7.54
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.54/SumatraPDF-Plus.exe
+Notes: Use a consistent fixed length for TOC calibration half-arrows, independent of offset text, while keeping their lower alignment.
+NotesZh: 目录校准的半边右箭头统一固定长度，不再随偏移文字变化，有无偏移值都保持一致并靠下对齐。
