@@ -12752,6 +12752,8 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 }
                 if (tab->autoOcrOn && win->ctrl) {
                     OcrScheduleForPage(win, win->ctrl->CurrentPageNo());
+                } else if (!tab->autoOcrOn) {
+                    OcrCancelAuto(win);
                 }
             }
             break;
@@ -16957,9 +16959,9 @@ static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
     bool canOcr = engine && OcrEngineKindSupported(engine);
+    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrRegion, ToWStrTemp(_TRA("OCR region")));
     AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrCurrentPage,
                 ToWStrTemp(_TRA("Recognize Current Page")));
-    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrRegion, ToWStrTemp(_TRA("OCR region")));
     AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrDocument,
                 ToWStrTemp(_TRA("Recognize All Scanned Pages (Fast)")));
     AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrReRecognizeAllPages,

@@ -16,7 +16,7 @@ bool OcrEngineKindSupported(EngineBase* engine);
 // scheduling gates all read this; never use it as a feature-availability test.
 bool OcrAutoEnabled(MainWindow* win);
 void ApplyAutoOcrDefaultForTab(WindowTab* tab);
-// When AutoOcrScanPages is on, turn Auto OCR on for a PDF whose sampled pages have no text layer.
+// When AutoOcrScanPages is on, turn Auto OCR on for a PDF whose current page has no text layer.
 // Returns true if this call enabled it.
 bool EnableAutoOcrIfTextlessScanPdf(WindowTab* tab);
 bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk);
@@ -29,12 +29,14 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr = fals
 void OcrEnsurePageTextForSearch(EngineBase* engine, int pageNo);
 void OcrScheduleForPage(MainWindow* win, int pageNo);
 void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref);
+void OcrScheduleSelectedPages(MainWindow* win, const Vec<int>& pages);
 void OcrScheduleDocument(MainWindow* win, bool extractTocIfMissing = false, bool forceOcrAll = false);
 void OcrRerunAllPages(MainWindow* win, bool accurate);
 void OcrSaveSearchablePdfAfterOcr(MainWindow* win, const char* destPath, bool extractTocWhenDone = false);
 bool OcrSaveCachedSearchablePdf(MainWindow* win, const char* destPath);
 void OcrExtractTocAfterDocumentOcr(MainWindow* win);
 void OcrCancelQueued(MainWindow* win, bool quiet = false);
+void OcrCancelAuto(MainWindow* win);
 void OcrCancelForEngine(EngineBase* engine);
 bool OcrHasQueuedJobs();
 bool OcrPageIsPending(EngineBase* engine, int pageNo);

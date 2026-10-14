@@ -225,7 +225,8 @@ static bool IsSingleLineEdit(HWND hwnd) {
 
 static void PaintWarmEditChrome(HWND hwnd, HDC dc) {
     RECT rc{};
-    GetClientRect(hwnd, &rc);
+    GetWindowRect(hwnd, &rc);
+    OffsetRect(&rc, -rc.left, -rc.top);
     if (rc.right <= rc.left || rc.bottom <= rc.top) {
         return;
     }
@@ -249,62 +250,48 @@ static void PaintWarmEditChrome(HWND hwnd, HDC dc) {
     ScopedGdiObj<HPEN> pen(CreatePen(PS_SOLID, 1, border));
     ScopedSelectObject selBr(dc, fillBr);
     ScopedSelectObject selPen(dc, pen);
-    // A 1px non-client ring clips the corner arc, so light themes looked square.
-    // Paint the same rounded face as the combos in the client.
+    // Draw in window coordinates; the text client is excluded by the caller.
     RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, rad, rad);
 }
 
+static void PaintWarmEditFrame(HWND hwnd) {
+    HDC dc = GetWindowDC(hwnd);
+    if (!dc) return;
+    RECT window{};
+    GetWindowRect(hwnd, &window);
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    POINT origin{};
+    ClientToScreen(hwnd, &origin);
+    OffsetRect(&client, origin.x - window.left, origin.y - window.top);
+    ExcludeClipRect(dc, client.left, client.top, client.right, client.bottom);
+    PaintWarmEditChrome(hwnd, dc);
+    ReleaseDC(hwnd, dc);
+}
+
 static LRESULT CALLBACK WarmEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
-    constexpr const wchar_t* kPrinting = L"SumatraWarmEditPrinting";
     switch (msg) {
-        case WM_NCCALCSIZE:
-            // Frame is drawn in the client. A 1px non-client inset made the
-            // corner arc fall outside the visible border in light themes.
-            return DefSubclassProc(hwnd, msg, wp, lp);
-        case WM_NCPAINT:
-            return 0;
-        case WM_ERASEBKGND:
-            PaintWarmEditChrome(hwnd, (HDC)wp);
-            return 1;
-        case WM_PAINT: {
-            if (GetPropW(hwnd, kPrinting)) {
-                break;
-            }
-            PAINTSTRUCT ps{};
-            HDC hdc = BeginPaint(hwnd, &ps);
-            PaintWarmEditChrome(hwnd, hdc);
-            RECT rc{};
-            GetClientRect(hwnd, &rc);
-            int rad = DpiScale(hwnd, 8);
-            int h = rc.bottom - rc.top;
-            if (rad > h - 2) {
-                rad = std::max(2, h - 2);
-            }
-            RECT inner = rc;
-            InflateRect(&inner, -2, -2);
-            int innerRad = std::max(2, rad - 2);
-            if (inner.right > inner.left && inner.bottom > inner.top) {
-                HRGN rgn =
-                    CreateRoundRectRgn(inner.left, inner.top, inner.right + 1, inner.bottom + 1, innerRad, innerRad);
-                int saved = SaveDC(hdc);
-                SelectClipRgn(hdc, rgn);
-                SetPropW(hwnd, kPrinting, (HANDLE)1);
-                SendMessageW(hwnd, WM_PRINTCLIENT, (WPARAM)hdc, PRF_CLIENT);
-                RemovePropW(hwnd, kPrinting);
-                RestoreDC(hdc, saved);
-                DeleteObject(rgn);
-            }
-            EndPaint(hwnd, &ps);
+        case WM_NCCALCSIZE: {
+            // Native text, selection and caret drawing must stay off the rim.
+            RECT* rc = wp ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
+            // Reserve the whole corner radius horizontally; a thin vertical
+            // rim keeps compact single-line fields tall enough for their font.
+            InflateRect(rc, -std::max(4, DpiScale(hwnd, 4)), -std::max(1, DpiScale(hwnd, 1)));
             return 0;
         }
+        case WM_NCPAINT:
+            PaintWarmEditFrame(hwnd);
+            return 0;
         case WM_SETFOCUS:
         case WM_KILLFOCUS:
-        case WM_ENABLE:
-            InvalidateRect(hwnd, nullptr, FALSE);
-            break;
+        case WM_ENABLE: {
+            LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+            PaintWarmEditFrame(hwnd);
+            return result;
+        }
         case WM_NCDESTROY:
             RemoveWindowSubclass(hwnd, WarmEditProc, id);
-            return DefSubclassProc(hwnd, msg, wp, lp);
+            break;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -313,19 +300,26 @@ static void InstallWarmEdit(HWND hwnd) {
     if (!IsSingleLineEdit(hwnd)) {
         return;
     }
+    // Our non-client painter owns the frame, including after theme refresh.
+    DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(hwnd);
+    SetWindowTheme(hwnd, L"", L"");
     LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     ex &= ~(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE);
     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
     LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
     style &= ~WS_BORDER;
     SetWindowLongPtrW(hwnd, GWL_STYLE, style);
-    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    if (!GetPropW(hwnd, L"SumatraWarmEdit")) {
+
+    if (GetPropW(hwnd, L"SumatraWarmEdit")) {
+        RemoveWindowSubclass(hwnd, WarmEditProc, kWarmEditSubclassId);
+        SetWindowSubclass(hwnd, WarmEditProc, kWarmEditSubclassId, 0);
+    } else {
         if (SetWindowSubclass(hwnd, WarmEditProc, kWarmEditSubclassId, 0)) {
             SetPropW(hwnd, L"SumatraWarmEdit", (HANDLE)1);
         }
     }
-    int pad = DpiScale(hwnd, 6);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    int pad = DpiScale(hwnd, 3);
     SendMessageW(hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad, pad));
 }
 
@@ -438,8 +432,9 @@ static bool DesiredComboEditRect(HWND combo, RECT* out) {
     }
     // Same closed face as a dropdown list. The edit fills only the text, and
     // stops where that list's text stops, so it cannot cover the chevron.
+    // Keep the edit outside the rounded corner, including at fractional DPI.
     int inset = std::max(2, DpiScale(combo, 2));
-    out->left = inset;
+    out->left = std::max(3, DpiScale(combo, 5));
     out->top = inset;
     out->right = face.textRight;
     out->bottom = (int)info.rcButton.bottom - inset;
@@ -523,19 +518,15 @@ static void AlignComboEditText(HWND hwnd) {
 
 static void WarmComboClosedFaceRect(HWND hwnd, RECT* out) {
     GetClientRect(hwnd, out);
-    // Settings layout sizes ComboBox windows to their dropped height and clips
-    // the closed face with SetWindowRgn. Paint only that face, not the tall
-    // client, or hover redraws look like the control is shaking.
-    // Use the button's outer edge. rcItem follows an inset edit and would
-    // pull the rounded face inward, which clips the left corner.
+    if (out->bottom <= DpiScale(hwnd, 48)) return;
+    // Some layouts retain the dropped height and clip the window to its face.
     COMBOBOXINFO info{sizeof(info)};
-    if (!GetComboBoxInfo(hwnd, &info) || info.rcButton.right <= 0 || info.rcButton.bottom <= 0) {
-        return;
+    if (GetComboBoxInfo(hwnd, &info) && info.rcButton.bottom > 0) {
+        out->bottom = info.rcButton.bottom + 1;
     }
-    out->left = 0;
-    out->top = 0;
-    out->right = info.rcButton.right;
-    out->bottom = info.rcButton.bottom;
+}
+void AppDialogComboClosedFaceRect(HWND combo, RECT* rect) {
+    WarmComboClosedFaceRect(combo, rect);
 }
 
 static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
@@ -658,6 +649,10 @@ static void PaintWarmCombo(HWND hwnd, HDC hdc, bool hot) {
 static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
     auto* st = (WarmComboState*)data;
     switch (msg) {
+        case WM_NCCALCSIZE:
+            // The rounded client face is the only frame. Do not reserve the
+            // native combo's square non-client rim around it.
+            return 0;
         case WM_SIZE:
         case WM_SETFONT:
         case WM_THEMECHANGED:
@@ -935,6 +930,13 @@ static void InstallWarmCombo(HWND hwnd) {
     if (!IsDropDownList(hwnd)) {
         return;
     }
+    // Only the closed-face painter owns the frame. Native styles can leave
+    // a square rim outside its rounded stroke, even with WM_NCPAINT handled.
+    DarkMode::removeComboBoxCtrlSubclass(hwnd);
+    SetWindowTheme(hwnd, L"", L"");
+    SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) & ~WS_BORDER);
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE,
+                      GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & ~(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE));
     AlignComboEditText(hwnd);
     if (auto* existing = (WarmComboState*)GetPropW(hwnd, kWarmComboProp)) {
         // Theme refresh may have put another painter above us. Reinstall at
@@ -954,6 +956,7 @@ static void InstallWarmCombo(HWND hwnd) {
         return;
     }
     SetPropW(hwnd, kWarmComboProp, (HANDLE)st);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     InvalidateRect(hwnd, nullptr, TRUE);
 }
 

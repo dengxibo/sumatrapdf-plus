@@ -1086,12 +1086,8 @@ static void FontPickerApplyControlTheme(FontPickerWnd* p) {
         }
         // A themed EDIT ignores WM_CTLCOLOREDIT and paints COLOR_WINDOW, which
         // is white on Warm. An empty theme lets the field brush show through.
-        // Dark chrome keeps the theme so the box matches the other dialogs.
-        if (ThemeUsesDarkChrome()) {
-            if (DynSetWindowTheme) {
-                DynSetWindowTheme(p->hwndSearch, nullptr, nullptr);
-            }
-        } else if (DynSetWindowTheme) {
+        // The shared edit painter supplies the frame in every theme.
+        if (DynSetWindowTheme) {
             DynSetWindowTheme(p->hwndSearch, L"", L"");
         }
     }
@@ -1273,36 +1269,6 @@ static void FontPickerScrollList(FontPickerWnd* p, int lines) {
 
 static LRESULT CALLBACK FontPickerSearchProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     auto* p = (FontPickerWnd*)GetWindowLongPtr(GetParent(hwnd), GWLP_USERDATA);
-    if (p && p->prevSearchProc && msg == WM_NCCALCSIZE) {
-        LRESULT result = CallWindowProcW(p->prevSearchProc, hwnd, msg, wp, lp);
-        RECT* client = wp ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
-        int textH = HwndMeasureText(hwnd, "Ag", p->uiFont).dy;
-        int available = client->bottom - client->top;
-        if (textH > 0 && available > textH) {
-            client->top += (available - textH) / 2;
-            client->bottom = client->top + textH;
-        }
-        return result;
-    }
-    if (p && msg == WM_NCPAINT) {
-        HDC dc = GetWindowDC(hwnd);
-        if (dc) {
-            RECT window{};
-            GetWindowRect(hwnd, &window);
-            RECT client{};
-            GetClientRect(hwnd, &client);
-            POINT origin{};
-            ClientToScreen(hwnd, &origin);
-            OffsetRect(&client, origin.x - window.left, origin.y - window.top);
-            ExcludeClipRect(dc, client.left, client.top, client.right, client.bottom);
-            RECT frame{0, 0, window.right - window.left, window.bottom - window.top};
-            FillRect(dc, &frame, p->ctrlBrush);
-            ScopedGdiObj<HBRUSH> border(CreateSolidBrush(ThemeInspectorSeparatorColor()));
-            FrameRect(dc, &frame, border);
-            ReleaseDC(hwnd, dc);
-        }
-        return 0;
-    }
     if (p && msg == WM_KEYDOWN) {
         if (wp == VK_DOWN) {
             FontPickerMoveSel(p, 1);

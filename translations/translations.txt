@@ -43892,3 +43892,6 @@ tw:重試
 :Continue
 cn:继续
 tw:繼續
+:Recognize selected pages
+cn:识别选中的页面
+tw:辨識選取的頁面

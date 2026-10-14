@@ -3362,34 +3362,6 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
                       DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(paintDc, font);
             PdfRotatePaintPreview(dlg, paintDc);
-            Rect pageField(dlg->previewPageRc.left, dlg->previewPageRc.top,
-                           dlg->previewPageRc.right - dlg->previewPageRc.left,
-                           dlg->previewPageRc.bottom - dlg->previewPageRc.top);
-            COLORREF fieldColor = ThemeChromeBackgroundColor();
-            int arc = DpiScale(hwnd, 8);
-            FillFloatingPopupRoundedRect(paintDc, pageField, arc, fieldColor);
-            StrokeFloatingPopupRoundedRect(paintDc, pageField, arc,
-                                           AccentColor(fieldColor, GetFocus() == dlg->hwndPreviewPage ? 72 : 36));
-
-            // A recessed edit frame: shaded top/left, lit bottom/right.
-            RECT field = dlg->angleGroupRc;
-            FillRect(paintDc, &field, dlg->ctrlBrush);
-            COLORREF base = ThemeWindowControlBackgroundColor();
-            COLORREF shade = ThemeWindowTextDisabledColor();
-            COLORREF light = RGB(std::min(255, (int)GetRValue(base) + 18), std::min(255, (int)GetGValue(base) + 18),
-                                 std::min(255, (int)GetBValue(base) + 18));
-            HPEN topEdge = CreatePen(PS_SOLID, 1, shade);
-            HPEN bottomEdge = CreatePen(PS_SOLID, 1, light);
-            HGDIOBJ previous = SelectObject(paintDc, topEdge);
-            MoveToEx(paintDc, field.left, field.bottom - 1, nullptr);
-            LineTo(paintDc, field.left, field.top);
-            LineTo(paintDc, field.right - 1, field.top);
-            SelectObject(paintDc, bottomEdge);
-            LineTo(paintDc, field.right - 1, field.bottom - 1);
-            LineTo(paintDc, field.left, field.bottom - 1);
-            SelectObject(paintDc, previous);
-            DeleteObject(topEdge);
-            DeleteObject(bottomEdge);
             int savedDc = SaveDC(paintDc);
             IntersectClipRect(paintDc, dlg->sidebarRc.left, dlg->sidebarRc.top, dlg->sidebarRc.right,
                               dlg->sidebarRc.bottom);

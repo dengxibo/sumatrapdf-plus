@@ -72,6 +72,8 @@ bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int*
 
 // How many pages we OCR at once (1–4). Same count as ONNX session slots.
 int OcrInferenceSlotCount();
+// Stop and join the idle session cleanup callback before application teardown.
+void OcrStopIdleCleanup();
 
 // Shared ONNX Runtime (same DLL, env, and session options as OCR).
 // Face landmarks use this instead of a second runtime. Safe to call when OCR

@@ -616,7 +616,8 @@ enum ThumbPageAction {
     ThumbInsertBefore,
     ThumbInsertAfter,
     ThumbPasteImage,
-    ThumbExtract
+    ThumbExtract,
+    ThumbOcr
 };
 
 static UINT PageClipboardFormat() {
@@ -962,6 +963,9 @@ static void ThumbContextMenu(SidebarThumbsWnd* t, LPARAM lp) {
     bool canImage = editable && (IsClipboardFormatAvailable(CF_DIB) || IsClipboardFormatAvailable(CF_DIBV5));
     AppendMenuW(menu, MF_STRING | (canImage ? 0 : MF_GRAYED), ThumbPasteImage, _TRW("Insert clipboard image after"));
     AppendMenuW(menu, enabled, ThumbExtract, _TRW("Extract selected pages…"));
+    EngineBase* engine = t->win->CurrentTab()->GetEngine();
+    AppendMenuW(menu, MF_STRING | (OcrEngineKindSupported(engine) ? 0 : MF_GRAYED), ThumbOcr,
+                _TRW("Recognize selected pages"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, enabled, ThumbDelete, _TRW("Delete pages\tDelete"));
     AppendMenuW(menu, MF_STRING | (EngineMupdfCanUndoPageOrder(t->win->CurrentTab()->GetEngine()) ? 0 : MF_GRAYED),
@@ -972,7 +976,15 @@ static void ThumbContextMenu(SidebarThumbsWnd* t, LPARAM lp) {
     int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, t->win->hwndFrame, nullptr);
     FreeMenuOwnerDrawInfoData(menu);
     DestroyMenu(menu);
-    if (command) ThumbStartAction(t, command);
+    if (command == ThumbOcr) {
+        if (t->selected.IsEmpty()) {
+            OcrScheduleForPage(t->win, t->win->ctrl->CurrentPageNo(), true);
+        } else {
+            OcrScheduleSelectedPages(t->win, t->selected);
+        }
+    } else if (command) {
+        ThumbStartAction(t, command);
+    }
 }
 
 bool SidebarThumbsHandleKey(MSG& msg) {

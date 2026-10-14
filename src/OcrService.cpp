@@ -229,29 +229,8 @@ bool EnableAutoOcrIfTextlessScanPdf(WindowTab* tab) {
         return false;
     }
     int cur = dm->CurrentPageNo();
-    int sample[3] = {cur > 0 ? cur : 1, 1, n};
-    bool saw = false;
-    for (int i = 0; i < 3; i++) {
-        int pageNo = sample[i];
-        if (pageNo < 1 || pageNo > n) {
-            continue;
-        }
-        bool dup = false;
-        for (int j = 0; j < i; j++) {
-            if (sample[j] == pageNo) {
-                dup = true;
-                break;
-            }
-        }
-        if (dup) {
-            continue;
-        }
-        saw = true;
-        if (!OcrPageLooksScanned(engine, pageNo)) {
-            return false;
-        }
-    }
-    if (!saw) {
+    int pageNo = cur > 0 ? cur : 1;
+    if (pageNo > n || !OcrPageLooksScanned(engine, pageNo)) {
         return false;
     }
     tab->autoOcrOn = true;
@@ -2850,6 +2829,7 @@ struct OcrDoneUi {
     bool documentJob = false;
     bool regionJob = false;
     bool showStatus = false;
+    bool prefetchNext = false;
     RectF clipRect;
     char* regionText = nullptr;
     // T6 (result committed) snapshot for the T6->T7 UI-apply latency log
@@ -3091,6 +3071,8 @@ static void OcrApplyRegionResult(OcrDoneUi* d) {
     ScheduleRepaint(win, 0);
 }
 
+static void OcrQueueAutoNearby(EngineBase* engine, HWND hwnd, int centerPage);
+
 static void OcrFinishUi(OcrDoneUi* d) {
     LONG liveSeq = InterlockedCompareExchange(&gOcrCancelSeq, 0, 0);
     if (d->cancelSeq != liveSeq) {
@@ -3108,6 +3090,13 @@ static void OcrFinishUi(OcrDoneUi* d) {
             // Refresh cached excerpts after existing OCR completes; this does
             // not request recognition or change annotation selection.
             NotifyAnnotationsChanged(tab->editAnnotsWindow);
+        }
+    }
+    if (d->prefetchNext) {
+        MainWindow* win = FindMainWindowByHwnd(d->hwndCanvas);
+        DisplayModel* dm = win ? win->AsFixed() : nullptr;
+        if (dm && dm->GetEngine() == d->engine && OcrAutoEnabled(win) && dm->CurrentPageNo() == d->pageNo) {
+            OcrQueueAutoNearby(d->engine, d->hwndCanvas, d->pageNo);
         }
     }
     if (d->documentJob) {
@@ -3412,9 +3401,6 @@ static void OcrWorker() {
             }
         } else {
             ok = OcrRecognizeEnginePage(job->engine, job->pageNo, job->forceOcr, job->op, job->tQueued);
-            if (!job->documentJob && !job->regionJob && job->autoJob) {
-                OcrQueueAutoNearby(job->engine, job->hwndCanvas, job->pageNo);
-            }
         }
         if (job->prio >= kOcrPrioPrefetch) {
             InterlockedExchange(&gPrefetchRunning, 0);
@@ -3428,6 +3414,7 @@ static void OcrWorker() {
         done->documentJob = job->documentJob;
         done->regionJob = job->regionJob;
         done->showStatus = job->showStatus;
+        done->prefetchNext = job->autoJob && job->prio == kOcrPrioCurrent;
         done->clipRect = job->clipRect;
         done->regionText = regionTextCopy;
         done->tCommitted = TimeGet();
@@ -3629,7 +3616,8 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
     StartOcrWorkerIfNeeded();
 }
 
-static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperation op) {
+static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperation op,
+                                  const Vec<int>* selectedPages = nullptr) {
     if (!win) {
         return -1;
     }
@@ -3661,7 +3649,10 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperat
     }
     Vec<int> pageNos;
     Vec<u8> forceFlags;
-    for (int pageNo = 1; pageNo <= n; pageNo++) {
+    int count = selectedPages ? selectedPages->Size() : n;
+    for (int i = 0; i < count; i++) {
+        int pageNo = selectedPages ? (*selectedPages)[i] : i + 1;
+        if (pageNo < 1 || pageNo > n || (selectedPages && pageNos.Contains(pageNo))) continue;
         bool forceOcr = false;
         if (forceUncached) {
             pageNos.Append(pageNo);
@@ -3695,21 +3686,31 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperat
         gQueue.Append(job);
         queued++;
     }
-    gQueueLock.Unlock();
     if (queued == 0) {
+        gQueueLock.Unlock();
         return 0;
     }
     if (gOcrDocEngine != engine) {
         gOcrDocDone = 0;
         gOcrDocTotal = 0;
         OcrResetDocTiming();
+        if (selectedPages) gOcrKeepPageGeometry = true;
     }
     gOcrDocEngine = engine;
     gOcrDocHwnd = win->hwndCanvas;
     gOcrDocTotal += queued;
+    gQueueLock.Unlock();
     OcrShowDocumentProgress(win->hwndCanvas);
     StartOcrWorkerIfNeeded();
     return queued;
+}
+
+void OcrScheduleSelectedPages(MainWindow* win, const Vec<int>& pages) {
+    if (pages.Size() == 1) {
+        OcrScheduleForPage(win, pages[0], true);
+    } else if (!pages.IsEmpty()) {
+        OcrQueueUnscannedPages(win, true, OcrOperation::CurrentPage, &pages);
+    }
 }
 
 // This is deliberately a second, tiny document batch. The first batch has
@@ -3931,6 +3932,20 @@ bool OcrHasQueuedJobs() {
     return has || InterlockedCompareExchange(&gWorkersAlive, 0, 0) != 0;
 }
 
+void OcrCancelAuto(MainWindow* win) {
+    EngineBase* engine = win && win->AsFixed() ? win->AsFixed()->GetEngine() : nullptr;
+    if (!engine) return;
+    gQueueLock.Lock();
+    for (int i = gQueue.Size() - 1; i >= 0; i--) {
+        auto* job = (OcrJob*)gQueue[i];
+        if (job->engine != engine || !job->autoJob) continue;
+        gQueue.RemoveAt(i);
+        job->engine->Release();
+        delete job;
+    }
+    gQueueLock.Unlock();
+}
+
 void OcrCancelQueued(MainWindow* win, bool quiet) {
     HWND hwnd = win ? win->hwndCanvas : nullptr;
     LONG prevSeq = InterlockedCompareExchange(&gOcrCancelSeq, 0, 0);
@@ -4144,7 +4159,8 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
             }
         }
     }
-    const char* dir = outDir && outDir[0] ? outDir : "c:\\src\\sumatrapdf\\_ocr_bench";
+    AutoFreeStr benchDir(str::Dup(outDir && outDir[0] ? outDir : "c:\\src\\sumatrapdf\\_ocr_bench"));
+    const char* dir = benchDir.Get();
     dir::CreateAll(dir);
     if (!OcrModelsAvailable()) {
         logf("OCR bench: models not available: %s\n", OcrLastError() ? OcrLastError() : OcrModelsMissingHint());
@@ -4175,6 +4191,8 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
     double sumRec[3]{};
     double sumText[3]{};
     int nOk[3]{};
+    StrBuilder pageTimes;
+    pageTimes.Append("phase,profile,page,inference_ms,ok\n");
 
     for (int pi = 0; pi < 3; pi++) {
         StrBuilder allText;
@@ -4199,7 +4217,10 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
             Vec<OcrBox> boxes;
             OcrPageTiming timing{};
             timing.rasterizeMs = rasterMs;
+            LARGE_INTEGER tInference = TimeGet();
             bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profiles[pi], &timing);
+            pageTimes.AppendFmt("%s,%s,%d,%.2f,%d\n", pageNo == firstPage ? "first" : "warm", names[pi], pageNo,
+                                TimeSinceInMs(tInference), ok ? 1 : 0);
             if (pi == 1) {
                 // dump det boxes + raster once (small profile) for alignment work
                 OcrDumpPageBoxes(pageNo, rgb, w, h, stride, boxes);
@@ -4259,6 +4280,47 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
     TempStr sumPath = path::JoinTemp(dir, "summary.csv");
     OcrWriteUtf8File(sumPath, sum.CStr());
     logf("OCR bench wrote %s\n", sumPath);
+    char idleBuf[16]{};
+    GetEnvironmentVariableA("SUMATRA_OCR_BENCH_IDLE_SECONDS", idleBuf, dimof(idleBuf));
+    int idleSeconds = limitValue(atoi(idleBuf), 0, 120);
+    bool resumeOk = true;
+    auto probeFirstPage = [&](const char* phase) {
+        for (int pi = 0; pi < 3; pi++) {
+            RenderedBitmap* bmp = RenderPageForOcr(engine, firstPage);
+            int w = 0, h = 0, stride = 0;
+            u8* rgb = bmp ? CopyBitmapToRgb(bmp->GetBitmap(), &w, &h, &stride) : nullptr;
+            delete bmp;
+            Vec<OcrBox> boxes;
+            LARGE_INTEGER tInference = TimeGet();
+            bool ok = rgb && OcrRecognizeRgb(rgb, w, h, stride, boxes, profiles[pi]);
+            double elapsed = TimeSinceInMs(tInference);
+            char* text = OcrBoxesJoinText(boxes);
+            ByteSlice expected =
+                file::ReadFile(path::JoinTemp(dir, str::FormatTemp("%s_p%02d.txt", names[pi], firstPage)));
+            bool sameText = expected && text && expected.size() == str::Len(text) &&
+                            memcmp(expected.data(), text, expected.size()) == 0;
+            resumeOk &= ok && sameText;
+            pageTimes.AppendFmt("%s,%s,%d,%.2f,%d\n", phase, names[pi], firstPage, elapsed, ok && sameText ? 1 : 0);
+            expected.Free();
+            str::Free(text);
+            FreeOcrBoxes(boxes);
+            free(rgb);
+        }
+    };
+    if (idleSeconds > 0) {
+        probeFirstPage("before_idle");
+        OcrWriteUtf8File(path::JoinTemp(dir, "idle-start.txt"), "Waiting for idle cleanup\n");
+        // Reproduce the message loop's temporary-pool reset before sessions
+        // are reclaimed and reloaded. Profile model paths must survive it.
+        ResetTempAllocator();
+        Sleep((DWORD)idleSeconds * 1000);
+        OcrWriteUtf8File(path::JoinTemp(dir, "idle-end.txt"), "Resuming OCR\n");
+        probeFirstPage("resume");
+    }
+    OcrWriteUtf8File(path::JoinTemp(dir, "page-times.csv"), pageTimes.CStr());
     SafeEngineRelease(&engine);
-    return 0;
+    for (int pi = 0; pi < 3; pi++) {
+        if (nOk[pi] != maxPages) return 1;
+    }
+    return resumeOk ? 0 : 1;
 }

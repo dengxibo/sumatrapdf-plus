@@ -1350,10 +1350,7 @@ static void LayoutSettingsViewport(HWND hwnd, int pos, bool fromScroll = false) 
         r.y -= gSettingsScrollPos;
         // A combo's visible rectangle excludes its drop-down list. Moving it
         // with that height would also shrink the list, so only resize groups.
-        UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW;
-        if (!scrollOnly) {
-            flags |= SWP_NOCOPYBITS;
-        }
+        UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS;
         if (!IsSettingsGroup(item.hwnd) && r.dx == WindowRect(item.hwnd).dx) {
             flags |= SWP_NOSIZE;
         }
@@ -1389,9 +1386,10 @@ static void LayoutSettingsViewport(HWND hwnd, int pos, bool fromScroll = false) 
     // Scrolling only changes the content viewport and its scrollbar. Leave the
     // stationary navigation/footer out of the erase pass to avoid flicker.
     RECT repaint{gSettingsViewport.x, gSettingsViewport.y, client.dx, gSettingsViewport.Bottom()};
-    UINT redraw = RDW_INVALIDATE | RDW_ALLCHILDREN;
-    if (!scrollOnly) {
-        redraw |= RDW_ERASE;
+    // Transparent labels and group boxes need the old position erased too.
+    UINT redraw = RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN;
+    if (scrollOnly) {
+        redraw |= RDW_UPDATENOW;
     }
     RedrawWindow(hwnd, scrollOnly ? &repaint : nullptr, nullptr, redraw);
 }
@@ -1450,12 +1448,13 @@ static void InitSettingsViewport(HWND hwnd) {
             height = dropped.bottom - dropped.top;
             // Window rect includes the dropped list. Clip the scroll region to
             // the closed face, or the unthemed frame paints over the next row.
-            COMBOBOXINFO info{sizeof(info)};
-            if (GetComboBoxInfo(child, &info)) {
+            RECT faceRect{};
+            AppDialogComboClosedFaceRect(child, &faceRect);
+            if (faceRect.bottom > 0) {
                 POINT origin{0, 0};
                 ClientToScreen(child, &origin);
                 RECT windowRc = ToRECT(WindowRect(child));
-                int face = (origin.y - windowRc.top) + std::max(info.rcItem.bottom, info.rcButton.bottom);
+                int face = (origin.y - windowRc.top) + faceRect.bottom;
                 if (face > 0 && face < r.dy) {
                     r.dy = face;
                 }

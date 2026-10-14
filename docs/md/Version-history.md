@@ -2,6 +2,21 @@
 
 ## next
 
+## 3.7.48 (2026-10-14)
+
+- 修复调整页面、选项与字体搜索框的重复边框及聚焦圆角；OCR 模型路径与运行库版本字符串改为独立拷贝，避免临时内存回收后的失效访问。
+  Fix duplicate dialog borders and focused field corners; independently own OCR model paths and runtime version strings so temporary-pool reclamation cannot invalidate them.
+
+- 文档右键菜单加入「识别当前页」，工具栏 OCR 菜单和右键菜单都将其放在「框选识别」后；缩略图多页识别共用批量 OCR 进度条。
+  Add current-page OCR after region OCR in the document context menu and toolbar dropdown; selected-thumbnail batches reuse OCR progress.
+
+- 修复选项对话框滚动后的文字残影、重叠，调整可输入下拉框的左侧圆角间距及闭合区域裁剪。
+  Fix stale text and overlapping controls after scrolling Options; align editable dropdown corner padding and face clipping.
+- 自动 OCR 仅预取下一页，关闭时移除待执行的自动任务；自动启用按当前扫描页判断，缩略图右键菜单支持识别选中的页面。
+  Auto OCR prefetches one page without chaining through the document, cancels queued automatic work when disabled, checks the current scanned page, and supports recognizing selected thumbnails.
+- OCR 保留连续识别时的内存池加速，空闲 30 秒后在后台释放模型会话；修复多槽位会话名称的共享所有权，并释放加载失败的模型会话。
+  OCR keeps inference arenas for consecutive pages and releases model sessions after 30 seconds idle; fix shared IO-name ownership across slots and clean up partially loaded sessions.
+
 ## 3.7.47 (2026-10-14)
 
 - 选项对话框里可输入的下拉框（树字体、默认缩放、西文/中日韩字体）箭头与其他下拉框一样完整；浅色主题的单行输入框改为圆角。滚轮滚到尽头不再带动整页抖动。

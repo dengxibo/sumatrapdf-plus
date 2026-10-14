@@ -43,6 +43,7 @@ void AppDialogUseStandardControls(HWND hwnd, bool registerForTheme = true);
 void AppDialogSyncWarmPushButtons(HWND hwnd);
 // Keep a CBS_DROPDOWN edit inside the rounded face so it does not cover the left stroke.
 void AppDialogInsetComboEdit(HWND combo);
+void AppDialogComboClosedFaceRect(HWND combo, RECT* rect);
 
 // Theme only the vertical scrollbar (Ask AI / InlineTranslate pattern). Keeps a
 // blank or custom list face for Warm cream CTLCOLOR while adapting White /

@@ -823,6 +823,10 @@ static MenuDef menuDefContext[] = {
         CmdOcrRegion,
     },
     {
+        _TRN("Recognize Current Page"),
+        CmdOcrCurrentPage,
+    },
+    {
         _TRN("Deskew &Page"),
         CmdDeskewPage,
     },

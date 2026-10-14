@@ -128,6 +128,10 @@ struct OcrProfileState {
 };
 
 static OcrProfileState gProfiles[kOcrProfileCount];
+static HANDLE gOcrIdleTimer = nullptr;
+static bool gOcrIdleStopped = false;
+static ULONGLONG gOcrLastUse = 0;
+static constexpr DWORD kOcrIdleMs = 30000;
 static char* gSharedClsPath = nullptr;
 
 static const char* kClsNames[] = {"cls.onnx", "ch_ppocr_mobile_v2.0_cls_infer.onnx",
@@ -542,12 +546,13 @@ static bool CopyBundleIoNames(const OcrOrtBundle* src, OcrOrtBundle* dst) {
     if (!src || !dst || !src->detIn || !src->detOut || !src->recIn || !src->recOut) {
         return false;
     }
-    str::ReplacePtr(&dst->detIn, src->detIn);
-    str::ReplacePtr(&dst->detOut, src->detOut);
-    str::ReplacePtr(&dst->recIn, src->recIn);
-    str::ReplacePtr(&dst->recOut, src->recOut);
-    str::ReplacePtr(&dst->clsIn, src->clsIn);
-    str::ReplacePtr(&dst->clsOut, src->clsOut);
+    // Each slot releases its names independently during idle reclamation.
+    str::ReplaceWithCopy(&dst->detIn, src->detIn);
+    str::ReplaceWithCopy(&dst->detOut, src->detOut);
+    str::ReplaceWithCopy(&dst->recIn, src->recIn);
+    str::ReplaceWithCopy(&dst->recOut, src->recOut);
+    str::ReplaceWithCopy(&dst->clsIn, src->clsIn);
+    str::ReplaceWithCopy(&dst->clsOut, src->clsOut);
     return dst->detIn && dst->detOut && dst->recIn && dst->recOut;
 }
 
@@ -573,6 +578,44 @@ static bool CacheSessionNames(OcrOrtBundle* b, int* recClassCount) {
     return b->detIn && b->detOut && b->recIn && b->recOut;
 }
 
+static void ClearBundleLocked(OcrOrtBundle* b) {
+    if (b->det) gApi->ReleaseSession(b->det);
+    if (b->rec) gApi->ReleaseSession(b->rec);
+    if (b->cls) gApi->ReleaseSession(b->cls);
+    str::Free(b->detIn);
+    str::Free(b->detOut);
+    str::Free(b->recIn);
+    str::Free(b->recOut);
+    str::Free(b->clsIn);
+    str::Free(b->clsOut);
+    *b = {};
+}
+
+static void CALLBACK ReleaseIdleOcrSessions(void*, BOOLEAN) {
+    gOcrLock.Lock();
+    bool busy = false;
+    for (const auto& profile : gProfiles) {
+        for (bool slotBusy : profile.slotBusy) busy |= slotBusy;
+    }
+    if (!busy && gOcrLastUse && GetTickCount64() - gOcrLastUse >= kOcrIdleMs) {
+        for (auto& profile : gProfiles) {
+            for (auto& bundle : profile.bundles) ClearBundleLocked(&bundle);
+        }
+        gOcrLastUse = 0;
+        logf("OcrOnnx: released idle OCR sessions\n");
+    }
+    gOcrLock.Unlock();
+}
+
+void OcrStopIdleCleanup() {
+    gOcrLock.Lock();
+    gOcrIdleStopped = true;
+    HANDLE timer = gOcrIdleTimer;
+    gOcrIdleTimer = nullptr;
+    gOcrLock.Unlock();
+    if (timer) DeleteTimerQueueTimer(nullptr, timer, INVALID_HANDLE_VALUE);
+}
+
 static bool EnsureBundleLocked(OcrProfileState* st, int i) {
     if (!st || i < 0 || i >= st->slotCount) {
         return false;
@@ -591,15 +634,18 @@ static bool EnsureBundleLocked(OcrProfileState* st, int i) {
         b->cls = LoadSession(st->clsPath);
     }
     if (!b->det || !b->rec) {
+        ClearBundleLocked(b);
         return false;
     }
     if (i > 0 && st->bundles[0].detIn) {
         if (!CopyBundleIoNames(&st->bundles[0], b)) {
+            ClearBundleLocked(b);
             return false;
         }
     } else {
         int recClass = 0;
         if (!CacheSessionNames(b, &recClass)) {
+            ClearBundleLocked(b);
             return false;
         }
         st->recClassCount = recClass;
@@ -609,6 +655,10 @@ static bool EnsureBundleLocked(OcrProfileState* st, int i) {
              OcrRecBatchSize());
     }
     logf("OcrOnnx: OCR slot %d session load %.1f ms\n", i + 1, TimeSinceInMs(t0));
+    gOcrLastUse = GetTickCount64();
+    if (!gOcrIdleTimer && !gOcrIdleStopped) {
+        CreateTimerQueueTimer(&gOcrIdleTimer, nullptr, ReleaseIdleOcrSessions, nullptr, 5000, 5000, WT_EXECUTEDEFAULT);
+    }
     return true;
 }
 
@@ -670,6 +720,7 @@ static void ReleaseOcrSlot(OcrProfileState* st, int slot) {
     }
     gOcrLock.Lock();
     st->slotBusy[slot] = false;
+    gOcrLastUse = GetTickCount64();
     gOcrLock.Unlock();
     if (st->slotSem) {
         ReleaseSemaphore(st->slotSem, 1, nullptr);
@@ -741,9 +792,9 @@ static bool FillExact(OcrProfileState* st, const char* dir, const char* det, con
     TempStr detPath = path::JoinTemp(dir, det);
     TempStr recPath = path::JoinTemp(dir, rec);
     TempStr dictPath = path::JoinTemp(dir, dict);
-    str::ReplacePtr(&st->detPath, detPath);
-    str::ReplacePtr(&st->recPath, recPath);
-    str::ReplacePtr(&st->dictPath, dictPath);
+    str::ReplaceWithCopy(&st->detPath, detPath);
+    str::ReplaceWithCopy(&st->recPath, recPath);
+    str::ReplaceWithCopy(&st->dictPath, dictPath);
     st->actual = actual;
     st->resolved = true;
     return true;
@@ -771,9 +822,9 @@ static bool FillGeneric(OcrProfileState* st, const char* dir) {
     if (!detPath) {
         return false;
     }
-    str::ReplacePtr(&st->detPath, detPath);
-    str::ReplacePtr(&st->recPath, path::JoinTemp(dir, "rec.onnx"));
-    str::ReplacePtr(&st->dictPath, path::JoinTemp(dir, "keys.txt"));
+    str::ReplaceWithCopy(&st->detPath, detPath);
+    str::ReplaceWithCopy(&st->recPath, path::JoinTemp(dir, "rec.onnx"));
+    str::ReplaceWithCopy(&st->dictPath, path::JoinTemp(dir, "keys.txt"));
     st->actual = st->requested;
     st->resolved = true;
     logf("OcrOnnx: using generic rec.onnx + keys.txt (will not guess a v6 dict)\n");
@@ -821,9 +872,9 @@ static bool ResolveProfileLocked(OcrProfile requested, OcrProfileState* st, cons
              path::GetBaseNameTemp(st->dictPath));
     }
     TempStr clsPath = FindNamedFileTemp(dir, kClsNames);
-    str::ReplacePtr(&st->clsPath, clsPath);
+    str::ReplaceWithCopy(&st->clsPath, clsPath);
     if (clsPath) {
-        str::ReplacePtr(&gSharedClsPath, clsPath);
+        str::ReplaceWithCopy(&gSharedClsPath, clsPath);
     }
     return true;
 }
@@ -864,7 +915,7 @@ static bool EnsureOrtRuntimeLocked() {
         return InitFail("GetApi missing");
     }
     if (gApiBase->GetVersionString) {
-        str::ReplacePtr(&gOrtVersion, gApiBase->GetVersionString());
+        str::ReplaceWithCopy(&gOrtVersion, gApiBase->GetVersionString());
     }
     gApi = gApiBase->GetApi(ORT_API_VERSION);
     if (!gApi) {
@@ -913,6 +964,23 @@ static bool EnsureOrtRuntimeLocked() {
     st = gApi->SetSessionGraphOptimizationLevel(gOpts, ORT_ENABLE_EXTENDED);
     if (st) {
         OrtFail(st, "SetSessionGraphOptimizationLevel");
+    }
+    // Keep arenas for consecutive pages; idle cleanup releases their sessions.
+    // The override is restricted to the file benchmark for reproducible A/B runs.
+    char benchPdf[MAX_PATH]{};
+    char benchArena[8]{};
+    bool disableArena = GetEnvironmentVariableA("SUMATRA_OCR_BENCH_PDF", benchPdf, dimof(benchPdf)) > 0 &&
+                        GetEnvironmentVariableA("SUMATRA_OCR_BENCH_ARENA", benchArena, dimof(benchArena)) > 0 &&
+                        str::Eq(benchArena, "0");
+    st = disableArena ? gApi->DisableCpuMemArena(gOpts) : gApi->EnableCpuMemArena(gOpts);
+    if (st) {
+        OrtFail(st, "ConfigureCpuMemArena");
+        return InitFail("ConfigureCpuMemArena");
+    }
+    st = disableArena ? gApi->DisableMemPattern(gOpts) : gApi->EnableMemPattern(gOpts);
+    if (st) {
+        OrtFail(st, "ConfigureMemPattern");
+        return InitFail("ConfigureMemPattern");
     }
     st = gApi->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &gMem);
     if (st) {

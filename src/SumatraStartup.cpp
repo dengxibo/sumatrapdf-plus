@@ -767,6 +767,7 @@ static int RunMessageLoop() {
 }
 
 static void ShutdownCommon() {
+    OcrStopIdleCleanup();
     mui::Destroy();
     uitask::Destroy();
     UninstallCrashHandler();
@@ -2076,6 +2077,7 @@ ContinueOpenWindow:
 
 Exit:
     // logf("Exiting with exit code: %d\n", exitCode);
+    OcrStopIdleCleanup();
     UnregisterSettingsForFileChanges();
 
     HandleRedirectedConsoleOnShutdown();
