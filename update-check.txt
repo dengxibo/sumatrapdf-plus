@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.48
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.48/SumatraPDF-Plus.exe
-Notes: Fix dialog borders and focused corners, OCR model-path lifetime and idle memory reclamation; recognize selected thumbnail pages.
-NotesZh: 修复对话框重复边框和聚焦圆角、OCR 模型路径生命周期及空闲内存回收，支持识别缩略图选中页面。
+Latest: 3.7.49
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.49/SumatraPDF-Plus.exe
+Notes: Choose and remember API or Web AI for body TOC generation; unify rounded TOC fields and align deskew controls. Optional Edge SAPI fix DLLs are available in the release assets.
+NotesZh: 正文生成目录可选择并记住 API 或网页版，统一目录页码圆角输入框及倾斜校正对齐；发布页提供可选的 Edge 联网语音 SAPI 修复 DLL。
