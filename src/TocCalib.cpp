@@ -7108,13 +7108,6 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
                 }
             }
         }
-        // Measure after selecting the fitted font so the arrow spans exactly
-        // the displayed offset, including multi-digit values such as +118.
-        if (GetTextExtentPoint32W(hdc, offset, len, &sz) && sz.cx > 0) {
-            int width = std::min(sz.cx, col.right - col.left);
-            x1 = col.left + (col.right - col.left - width) / 2;
-            x2 = x1 + width - 1;
-        }
         DrawTextW(hdc, offset, len, &offRc, DT_SINGLELINE | DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP);
         if (prevFont) {
             SelectObject(hdc, prevFont);

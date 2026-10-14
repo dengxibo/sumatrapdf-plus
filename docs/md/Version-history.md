@@ -2,6 +2,11 @@
 
 ## next
 
+## 3.7.54 (2026-10-15)
+
+- 目录校准的半边右箭头统一使用固定长度，不再随偏移文字宽度变化；有无偏移值均保持相同的长度和靠下位置。
+  Use a consistent fixed length for TOC calibration half-arrows regardless of offset text, keeping their lower alignment.
+
 ## 3.7.53 (2026-10-15)
 
 - 目录校准使用靠下的半边右箭头，与偏移文字等宽；编辑中的页码输入框跟随右侧列定位。“印刷页”占位文字进入编辑后隐藏。
