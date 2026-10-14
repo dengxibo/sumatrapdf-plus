@@ -17,9 +17,9 @@
 
 退出 SumatraPDF 后替换完整安装目录中的 EXE，保留配置、字典、OCR 模型及配套文件。语音 DLL 是可选附件，不是 SumatraPDF 的必需依赖。
 
-### 为什么旧适配器的联网声音可能不能使用？
+### 为什么旧适配器的联网声音不能使用？
 
-NaturalVoiceSAPIAdapter v0.2.9 使用旧的 Sec-MS-GEC v1 校验。edge-tts 的修复提交报告微软联网语音服务改为要求 v2，旧请求可能在 WebSocket 握手时被拒绝并返回 HTTP 403。这与“Edge 可以朗读，而适配器联网声音不能朗读、本地声音正常”的现象相符，不能据此断言 Windows 11 更新导致故障或中国区 IP 被全面封禁。
+微软联网语音服务已升级为 Sec-MS-GEC v2 校验，而 NaturalVoiceSAPIAdapter v0.2.9 仍使用旧的 v1 校验，导致联网请求在 WebSocket 握手时被拒绝并返回 HTTP 403。Edge 已支持新校验，因此仍可朗读；旧适配器的联网声音需要同步更新为 v2，本地声音不受此项联网校验变更影响。本次附带的修复 DLL 已按 v2 更新。
 
 本次附带的两个 DLL 基于 v0.2.9，移植 edge-tts 7.3.0 的 v2 校验；它们是本项目作者提供的非官方修复测试版，并非上游官方新发行版。原固定客户端令牌没有更换，更新的是动态校验算法和版本声明。
 
@@ -54,7 +54,7 @@ SumatraPDF x64 Release 构建通过，0 警告、0 错误；已有 102801 项单
 
 ### Optional Edge online voice fix
 
-The attached ZIP and standalone x64/x86 DLLs are unofficial replacement builds of NaturalVoiceSAPIAdapter v0.2.9, implementing Sec-MS-GEC v2. The old adapter uses v1; upstream edge-tts testing reports that the service now rejects v1 handshakes with HTTP 403. This does not establish a Windows update defect or a blanket regional IP ban. Local voices use a separate path.
+Microsoft's online speech service has upgraded to Sec-MS-GEC v2 validation, while NaturalVoiceSAPIAdapter v0.2.9 still uses v1. Its online requests are therefore rejected during the WebSocket handshake with HTTP 403. Edge already supports the new validation and can still read aloud; the adapter's online voice path must also be updated to v2. Local voices are unaffected by this online validation change. The attached ZIP and standalone x64/x86 DLLs are unofficial replacement builds of v0.2.9 implementing the required v2 validation.
 
 Close all speech applications, back up the original adapter DLLs, and replace `x64/NaturalVoiceSAPIAdapter.dll` and `x86/NaturalVoiceSAPIAdapter.dll` in the existing adapter installation with the matching ZIP files. Keep other dependencies, voice packs and settings. Do not place these DLLs in the SumatraPDF directory. Standalone downloads have architecture suffixes and must be renamed to `NaturalVoiceSAPIAdapter.dll` before replacement. A 32-bit application requires x86 even on 64-bit Windows; a mismatched DLL cannot load. No native ARM64 DLL is provided. An adapter registered from the same folders normally does not need re-registration. Restore the backups to roll back. New users need the complete official installation and dependencies first.
 
