@@ -898,7 +898,6 @@ static const int gSettingsInterfaceControls[] = {IDC_GROUP_APPEARANCE,
                                                  IDC_SHOW_TOOLBAR,
                                                  IDC_SHOW_ANNOT_TOOLBAR_BUTTONS,
                                                  IDC_TABS_MRU,
-                                                 IDC_SEARCH_UI_FLOATING,
                                                  IDC_TAB_FONT_SIZE_LABEL,
                                                  IDC_TAB_FONT_SIZE,
                                                  IDC_TAB_BAR_HEIGHT_LABEL,
@@ -2430,7 +2429,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             CheckDlgButton(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS,
                            prefs->showAnnotToolbarButtons ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_TABS_MRU, prefs->tabsMru ? BST_CHECKED : BST_UNCHECKED);
-            CheckDlgButton(hDlg, IDC_SEARCH_UI_FLOATING, prefs->searchUIFloating ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_SMOOTH_SCROLL, prefs->smoothScroll ? BST_CHECKED : BST_UNCHECKED);
             SetDlgItemInt(hDlg, IDC_WHEEL_SCROLL_LINES, ValidWheelScrollLines(prefs->wheelScrollLines), FALSE);
             CheckDlgButton(hDlg, IDC_SCROLLBAR_SINGLE_PAGE, prefs->scrollbarInSinglePage ? BST_CHECKED : BST_UNCHECKED);
@@ -2716,7 +2714,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_SHOW_TOOLBAR, _TRA("Show the tool&bar"));
             HwndSetDlgItemText(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS, _TRA("Show quick &annotation buttons"));
             HwndSetDlgItemText(hDlg, IDC_TABS_MRU, _TRA("Ctrl+Tab uses most recently used &order"));
-            HwndSetDlgItemText(hDlg, IDC_SEARCH_UI_FLOATING, _TRA("Use the &floating search window"));
             HwndSetDlgItemText(hDlg, IDC_SCROLLBARS_LABEL, _TRA("&Scrollbars:"));
             HwndSetDlgItemText(hDlg, IDC_SMOOTH_SCROLL, _TRA("Use s&mooth scrolling"));
             HwndSetDlgItemText(hDlg, IDC_WHEEL_SCROLL_LINES_LABEL, _TRA("Wheel lines (0 = Windows, 1-100):"));
@@ -3048,7 +3045,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->showAnnotToolbarButtons =
                         (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS));
                     prefs->tabsMru = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_TABS_MRU));
-                    prefs->searchUIFloating = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SEARCH_UI_FLOATING));
                     prefs->smoothScroll = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SMOOTH_SCROLL));
                     prefs->wheelScrollLines = wheelLines;
                     prefs->scrollbarInSinglePage = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SCROLLBAR_SINGLE_PAGE));

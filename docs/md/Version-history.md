@@ -2,6 +2,11 @@
 
 ## next
 
+## 3.7.56 (2026-10-15)
+
+- 移除选项界面中过时的“使用浮动搜索窗口”开关，保留现有详细搜索入口。
+  Remove the obsolete floating search window checkbox from Options while retaining the detailed search controls.
+
 ## 3.7.55 (2026-10-15)
 
 - 目录校准中印刷页与 PDF 页无偏移时只显示箭头，不再显示“+0”。
