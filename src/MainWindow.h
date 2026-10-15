@@ -540,3 +540,6 @@ HWND GetHwndForNotification();
 
 void RelayoutCaption(MainWindow* win);
 void OpenSystemMenu(MainWindow* win);
+
+// Native sidebar scrollbars share a theme class and invalidate their non-client cache.
+void SyncSidebarScrollbarTheme(HWND hwnd);

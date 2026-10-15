@@ -47559,3 +47559,107 @@ tw:切換至網頁版 AI
 :Opening the AI page…
 cn:正在打开 AI 网页…
 tw:正在開啟 AI 網頁…
+
+:General AI API (TOC, translation fallback)
+cn:通用 AI API（目录识别、翻译备用）
+tw:通用 AI API（目錄辨識、翻譯備用）
+
+:General AI API
+cn:通用 AI API
+tw:通用 AI API
+
+:Without Volc keys, or if Volc fails, translation uses the general AI API below.
+cn:未配置火山密钥或火山请求失败时，使用下方通用 AI API 翻译。
+tw:未設定火山金鑰或火山請求失敗時，使用下方通用 AI API 翻譯。
+
+:Default AI conversation
+cn:默认 AI 对话
+tw:預設 AI 對話
+
+:Chat API:
+cn:默认对话 API：
+tw:預設對話 API：
+
+:Chat model:
+cn:默认对话模型：
+tw:預設對話模型：
+
+:Empty model inherits the selected API model.
+cn:模型留空时，使用对应 API 原有的模型。
+tw:模型留空時，使用對應 API 原有的模型。
+
+:Vision test
+cn:视觉测试
+tw:視覺測試
+
+:Vision models recommended for TOC images.
+cn:目录识别建议使用支持视觉与文本生成的模型。
+tw:目錄辨識建議使用支援視覺與文字生成的模型。
+
+:New conversation
+cn:新对话
+tw:新對話
+
+:Clear this conversation and start again?
+cn:清空当前对话并重新开始？
+tw:清空目前對話並重新開始？
+
+:Copy entire reply
+cn:复制整条回复
+tw:複製整則回覆
+
+:Select all
+cn:全选
+tw:全選
+
+:AI settings...
+cn:AI 配置…
+tw:AI 設定…
+
+:No model configured
+cn:尚未配置模型
+tw:尚未設定模型
+
+:Conversation API
+cn:对话 API
+tw:對話 API
+
+:Vision recognition test passed.
+cn:图片识别测试通过。
+tw:圖片辨識測試通過。
+
+:Vision recognition was not verified.
+cn:未能验证图片识别能力。
+tw:未能驗證圖片辨識能力。
+
+:Text generation test passed (vision has not been tested). Model reply: %s
+cn:文本生成测试通过（尚未验证视觉能力）。模型回复：%s
+tw:文字生成測試通過（尚未驗證視覺能力）。模型回覆：%s
+
+:Follow general AI configuration
+cn:跟随通用 AI 配置
+tw:跟隨通用 AI 設定
+
+:%s (saved configuration)
+cn:%s（已保存配置）
+tw:%s（已儲存設定）
+
+:Text generation
+cn:文本生成
+tw:文字生成
+
+:Image recognition
+cn:图片识别
+tw:圖片辨識
+
+:Passed
+cn:通过
+tw:通過
+
+:Failed
+cn:失败
+tw:失敗
+
+:Not verified
+cn:未通过验证
+tw:未通過驗證

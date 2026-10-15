@@ -174,6 +174,12 @@ AiTocApiModel =
 ; saved AI table of contents API profiles (JSON)
 AiTocApiProfiles = 
 
+; default chat API profile; -1 inherits the general AI API
+AiChatApiProfile = -1
+
+; default chat model; empty inherits the selected API model
+AiChatModel =
+
 ; maximum simultaneous AI table of contents requests (1-8)
 AiTocApiConcurrency = 4
 

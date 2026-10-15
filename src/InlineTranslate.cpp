@@ -50,6 +50,7 @@
 #include "SumatraDialogs.h"
 #include "WordLookup.h"
 #include "DarkModeSubclass.h"
+#include "AppDialogTheme.h"
 
 #include <bcrypt.h>
 #include <wininet.h>
@@ -664,6 +665,7 @@ struct ChatTurn {
 enum class PopupHot {
     None,
     Model,
+    NewChat,
     Close,
     Copy,
     Hint,
@@ -675,6 +677,7 @@ struct InlineTranslatePopup {
     MainWindow* win = nullptr;
     HWND hwnd = nullptr;
     HWND hwndTip = nullptr;
+    WCHAR newChatTip[96]{};
     HWND hwndTrans = nullptr;
     HWND hwndChat = nullptr;
     HWND hwndInput = nullptr;
@@ -690,10 +693,6 @@ struct InlineTranslatePopup {
     bool contextOpen = false;   // docked: the context line is expanded
     bool chatFollowTail = true; // reveal the latest question once, then preserve the reading position
     bool chatAdjustingScroll = false;
-    bool chatScrollHot = false;
-    bool chatScrollDrag = false;
-    bool composerScrollHot = false;
-    bool composerScrollDrag = false;
     bool sendDown = false;
     int composerLines = 1;       // docked composer grows from 1 to 5 lines
     char* translation = nullptr; // set once a translation arrived
@@ -702,6 +701,10 @@ struct InlineTranslatePopup {
     const char* srcCode = nullptr; // static
     const char* engine = nullptr;  // static, English, passed to _TRA
     Vec<ChatTurn> turns;
+    bool chatUsesDefault = true;
+    AiTocApiConfig chatCfg{};
+    char* chatProfileName = nullptr;
+    AiChatCancel* cancel = nullptr;
     bool translating = false;
     bool asking = false;
     bool closing = false;
@@ -724,6 +727,7 @@ struct InlineTranslatePopup {
     Rect copyRc{};
     Rect headerRc{};
     Rect modelRc{};
+    Rect newChatRc{};
     Rect contextRc{};
     Rect origRc{};
     Rect transRc{};
@@ -737,20 +741,27 @@ static InlineTranslatePopup* gPopup = nullptr;
 // Ask AI sidebar. Separate from the translate popup so a translation does not
 // wipe the conversation, and so the normal Ask AI path is not the floating window.
 static InlineTranslatePopup* gAsk = nullptr;
-// Session-only override. Never write it back to the shared TOC/API settings.
-static char* gAskModel = nullptr;
-static char* gAskModelProvider = nullptr;
 static bool gAskModelsLoading = false;
 static int gNextPopupGeneration = 1;
 
 struct AiChatState {
     Vec<ChatTurn> turns;
+    bool chatUsesDefault = true;
+    AiTocApiConfig chatCfg{};
+    char* chatProfileName = nullptr;
+    AiChatCancel* cancel = nullptr;
     char* draft = nullptr;
     char* selection = nullptr;
     int contextPage = 0;
     int generation = 0;
     bool asking = false;
     ~AiChatState() {
+        FreeAiCfg(chatCfg);
+        str::Free(chatProfileName);
+        if (cancel) {
+            cancel->Cancel();
+            cancel->Release();
+        }
         for (auto& t : turns) {
             t.Free();
         }
@@ -758,6 +769,32 @@ struct AiChatState {
         str::Free(selection);
     }
 };
+
+static AiTocApiConfig CopyAiCfg(const AiTocApiConfig& source) {
+    AiTocApiConfig cfg = source;
+    cfg.baseUrl = str::Dup(source.baseUrl);
+    cfg.key = str::Dup(source.key);
+    cfg.model = str::Dup(source.model);
+    return cfg;
+}
+static AiTocApiConfig SnapshotChatCfg(char** profileName) {
+    Vec<AiApiProfile> profiles;
+    int active = AiApiLoadProfiles(gGlobalPrefs, profiles);
+    int selected = gGlobalPrefs ? gGlobalPrefs->aiChatApiProfile : -1;
+    bool valid = selected >= -1 && selected < profiles.Size();
+    if (selected < 0 || !valid) selected = active;
+    auto& profile = profiles[selected];
+    AiTocApiConfig source{profile.baseUrl, profile.key, profile.model, profile.concurrency};
+    if (valid && gGlobalPrefs && !str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiChatModel))
+        source.model = gGlobalPrefs->aiChatModel;
+    AiTocApiConfig cfg = CopyAiCfg(source);
+    str::ReplaceWithCopy(profileName, profile.name);
+    for (auto& p : profiles) p.Free();
+    return cfg;
+}
+static void EnsureChatCfg(InlineTranslatePopup* p) {
+    if (!p->chatCfg.baseUrl) p->chatCfg = SnapshotChatCfg(&p->chatProfileName);
+}
 
 static AiChatState* AskState(WindowTab* tab, bool create) {
     if (!tab) {
@@ -790,6 +827,13 @@ static void ClearTurns(InlineTranslatePopup* p) {
 }
 
 static void FreePopupData(InlineTranslatePopup* p) {
+    FreeAiCfg(p->chatCfg);
+    str::FreePtr(&p->chatProfileName);
+    if (p->cancel) {
+        p->cancel->Cancel();
+        p->cancel->Release();
+        p->cancel = nullptr;
+    }
     ClearTurns(p);
     str::FreePtr(&p->selection);
     str::FreePtr(&p->translation);
@@ -1449,6 +1493,8 @@ static void RebuildChatView(InlineTranslatePopup* p) {
         return;
     }
     POINT saved{};
+    CHARRANGE savedSelection{};
+    SendMessageW(p->hwndChat, EM_EXGETSEL, 0, (LPARAM)&savedSelection);
     bool keepPlace = p->docked && !p->chatFollowTail;
     if (keepPlace) {
         SendMessageW(p->hwndChat, EM_GETSCROLLPOS, 0, (LPARAM)&saved);
@@ -1473,6 +1519,7 @@ static void RebuildChatView(InlineTranslatePopup* p) {
     p->chatAdjustingScroll = true;
     SetRichTextRtf(p->hwndChat, doc.sb.Get());
     if (keepPlace) {
+        SendMessageW(p->hwndChat, EM_EXSETSEL, 0, (LPARAM)&savedSelection);
         SendMessageW(p->hwndChat, EM_SETSCROLLPOS, 0, (LPARAM)&saved);
         p->chatScrollPending = false;
     } else {
@@ -1784,7 +1831,8 @@ static void LayoutAskSidebar(InlineTranslatePopup* p) {
     HFONT reading = p->bodyFont ? p->bodyFont : p->font;
     int readLine = FontLineHeight(h, reading);
     int scrollW = GetSystemMetrics(SM_CXVSCROLL);
-    bool aiOk = InlineTranslateAiApiIsConfigured();
+    if (p->docked) EnsureChatCfg(p);
+    bool aiOk = p->docked ? AiTocApiIsConfigured(p->chatCfg) : InlineTranslateAiApiIsConfigured();
     bool showChat = p->turns.Size() > 0 || p->asking;
 
     int headerH = lineH + Px(h, 2);
@@ -2098,9 +2146,8 @@ static void DrawPopupButton(HDC hdc, HWND hwnd, const Rect& r, const char* label
 
 static TempStr HeaderSubtitleTemp(InlineTranslatePopup* p) {
     if (p->mode == PopupMode::AskAi) {
-        bool sameProvider = gGlobalPrefs && str::Eq(gAskModelProvider, gGlobalPrefs->aiTocApiBaseUrl);
-        const char* model =
-            gAskModel && sameProvider ? gAskModel : (gGlobalPrefs ? gGlobalPrefs->aiTocApiModel : nullptr);
+        EnsureChatCfg(p);
+        const char* model = p->chatCfg.model;
         return str::IsEmptyOrWhiteSpace(model) ? nullptr : str::DupTemp(model);
     }
     StrBuilder sb;
@@ -2142,10 +2189,32 @@ static void PaintAskSidebar(InlineTranslatePopup* p, HDC hdcWnd) {
     DrawTextW(hdc, ToWStrTemp(title), -1, &measured, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
     SelectObject(hdc, p->font);
     TempStr model = HeaderSubtitleTemp(p);
+    if (str::IsEmptyOrWhiteSpace(model)) model = str::DupTemp(_TRA("AI settings..."));
     p->modelRc = Rect();
+    int actionDx = Px(h, 24);
+    p->newChatRc = Rect(measured.right + Px(h, 4), titleRc.top, actionDx, RectDy(titleRc));
+    // A simple plus, using the same linear stroke weight as the header icons.
+    RECT newRc = ToRECT(p->newChatRc);
+    if (p->hot == PopupHot::NewChat) {
+        ScopedGdiObj<HBRUSH> hover(CreateSolidBrush(ThemeInspectorHoverBackgroundColor()));
+        FillRect(hdc, &newRc, hover);
+    }
+    SetTextColor(hdc, p->hot == PopupHot::NewChat ? txt : muted);
+    DrawTextW(hdc, L"+", 1, &newRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    if (p->hwndTip) {
+        TOOLINFOW ti{sizeof(ti)};
+        ti.hwnd = h;
+        ti.uId = 2;
+        SendMessageW(p->hwndTip, TTM_DELTOOLW, 0, (LPARAM)&ti);
+        ti.uFlags = TTF_SUBCLASS | TTF_TRANSPARENT;
+        ti.rect = newRc;
+        lstrcpynW(p->newChatTip, ToWStrTemp(_TRA("New conversation")), dimof(p->newChatTip));
+        ti.lpszText = p->newChatTip;
+        SendMessageW(p->hwndTip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+    }
     if (!str::IsEmptyOrWhiteSpace(model)) {
         RECT modelRc = titleRc;
-        modelRc.left = measured.right + Px(h, 12);
+        modelRc.left = p->newChatRc.Right() + Px(h, 4);
         if (modelRc.left < modelRc.right) {
             int modelWidth = HwndMeasureText(h, model, p->font).dx + Px(h, 22);
             modelRc.left = std::max(modelRc.left, modelRc.right - modelWidth);
@@ -2505,12 +2574,19 @@ static void ApplyPopupTheme(InlineTranslatePopup* p) {
             DarkMode::setDarkScrollBar(p->hwndTrans);
         }
     }
-    ApplyEditTheme(p->hwndChat, p->chatIsRich);
-    ApplyEditTheme(p->hwndInput, false);
-    if (p->docked && p->hwndInput && DynSetWindowTheme) {
-        // The composer draws its own border. The themed edit frame would be a second, brighter box.
-        DynSetWindowTheme(p->hwndInput, L"", L"");
-    }
+    if (p->docked) {
+        SyncSidebarScrollbarTheme(p->hwndChat);
+        // Global DarkMode::setChildCtrlsTheme adds WS_BORDER/CLIENTEDGE to
+        // RichEdit on every switch. Restore the intended borderless style
+        // after theming, before rebuilding content and scrollbar geometry.
+        StripEditFrame(p->hwndChat);
+    } else
+        ApplyEditTheme(p->hwndChat, p->chatIsRich);
+    if (p->docked) {
+        StripEditFrame(p->hwndInput);
+        SyncSidebarScrollbarTheme(p->hwndInput);
+    } else
+        ApplyEditTheme(p->hwndInput, false);
     if (p->chatIsRich) {
         // colors live in the RTF color table
         RebuildChatView(p);
@@ -2693,7 +2769,6 @@ static void PositionPopupNear(InlineTranslatePopup* p, Rect anchor, Point fallba
 
 static void OnSendClicked(InlineTranslatePopup* p);
 static void SyncInputHasText(InlineTranslatePopup* p);
-static void PaintQuietScrollbar(HWND hwnd, COLORREF trackCol, bool hot, bool dragging);
 
 // Enter confirms an IME composition. It must not also send the question.
 static bool InputImeComposing(HWND hwnd) {
@@ -2778,40 +2853,6 @@ static LRESULT CALLBACK InputSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
                     ReleaseDC(hwnd, hdc);
                 }
                 return painted;
-            }
-            break;
-        case WM_NCPAINT:
-            if (p && p->docked) {
-                LRESULT painted = DefSubclassProc(hwnd, msg, wp, lp);
-                PaintQuietScrollbar(hwnd, AskComposerFill(), p->composerScrollHot, p->composerScrollDrag);
-                return painted;
-            }
-            break;
-        case WM_NCMOUSEMOVE:
-            if (p && p->docked && wp == HTVSCROLL) {
-                p->composerScrollHot = true;
-                TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE | TME_NONCLIENT, hwnd, 0};
-                TrackMouseEvent(&tme);
-                PaintQuietScrollbar(hwnd, AskComposerFill(), true, p->composerScrollDrag);
-            }
-            break;
-        case WM_NCMOUSELEAVE:
-            if (p && p->docked && p->composerScrollHot) {
-                p->composerScrollHot = false;
-                PaintQuietScrollbar(hwnd, AskComposerFill(), false, p->composerScrollDrag);
-            }
-            break;
-        case WM_NCLBUTTONDOWN:
-            if (p && p->docked && wp == HTVSCROLL) {
-                p->composerScrollDrag = true;
-            }
-            break;
-        case WM_NCLBUTTONUP:
-            if (p && p->composerScrollDrag) {
-                p->composerScrollDrag = false;
-                if (p->docked) {
-                    PaintQuietScrollbar(hwnd, AskComposerFill(), p->composerScrollHot, false);
-                }
             }
             break;
         case WM_SETFOCUS:
@@ -2903,45 +2944,6 @@ static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi) {
     }
 }
 
-static void PaintAwayEditFrame(HWND hwnd, COLORREF bg) {
-    RECT wr{};
-    if (!GetWindowRect(hwnd, &wr)) {
-        return;
-    }
-    RECT cr{};
-    GetClientRect(hwnd, &cr);
-    POINT origin{0, 0};
-    ClientToScreen(hwnd, &origin);
-    int left = origin.x - wr.left;
-    int top = origin.y - wr.top;
-    int ww = wr.right - wr.left;
-    int wh = wr.bottom - wr.top;
-    int right = wr.right - (origin.x + cr.right);
-    int bottom = wr.bottom - (origin.y + cr.bottom);
-    if (left <= 0 && top <= 0 && bottom <= 0) {
-        return;
-    }
-    HDC hdc = GetWindowDC(hwnd);
-    if (!hdc) {
-        return;
-    }
-    HBRUSH br = CreateSolidBrush(bg);
-    if (top > 0) {
-        RECT r{0, 0, ww, top};
-        FillRect(hdc, &r, br);
-    }
-    if (left > 0) {
-        RECT r{0, top > 0 ? top : 0, left, wh - (bottom > 0 ? bottom : 0)};
-        FillRect(hdc, &r, br);
-    }
-    if (bottom > 0) {
-        RECT r{0, wh - bottom, ww - (right > 0 ? right : 0), wh};
-        FillRect(hdc, &r, br);
-    }
-    DeleteObject(br);
-    ReleaseDC(hwnd, hdc);
-}
-
 static void StripEditFrame(HWND hwnd) {
     if (!hwnd) {
         return;
@@ -2955,58 +2957,6 @@ static void StripEditFrame(HWND hwnd) {
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
-// Cover the system track with the sidebar color, then a short thumb.
-// DarkMode_Explorer still paints a light gutter; that reads as a white frame.
-static void PaintQuietScrollbar(HWND hwnd, COLORREF trackCol, bool hot, bool dragging) {
-    SCROLLBARINFO sbi{};
-    sbi.cbSize = sizeof(sbi);
-    if (!GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sbi)) {
-        return;
-    }
-    if (sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE) {
-        return;
-    }
-    RECT wr{};
-    if (!GetWindowRect(hwnd, &wr)) {
-        return;
-    }
-    RECT track = sbi.rcScrollBar;
-    OffsetRect(&track, -wr.left, -wr.top);
-    if (track.right <= track.left || track.bottom <= track.top) {
-        return;
-    }
-    int thumbTop = sbi.xyThumbTop;
-    int thumbBot = sbi.xyThumbBottom;
-    if (thumbBot > sbi.rcScrollBar.bottom + 4 || thumbTop < sbi.rcScrollBar.top - 4) {
-        thumbTop = sbi.rcScrollBar.top + sbi.xyThumbTop;
-        thumbBot = sbi.rcScrollBar.top + sbi.xyThumbBottom;
-    }
-    thumbTop -= wr.top;
-    thumbBot -= wr.top;
-
-    HDC hdc = GetWindowDC(hwnd);
-    if (!hdc) {
-        return;
-    }
-    HBRUSH bgBr = CreateSolidBrush(trackCol);
-    FillRect(hdc, &track, bgBr);
-    DeleteObject(bgBr);
-    if (thumbBot - thumbTop >= 8 && thumbTop >= track.top - 2 && thumbBot <= track.bottom + 2) {
-        int inset = std::max(2, (int)(track.right - track.left) / 4);
-        RECT thumb{track.left + inset, thumbTop + 1, track.right - inset, thumbBot - 1};
-        if (thumb.bottom > thumb.top + 4) {
-            int lift = dragging ? 32 : (hot ? 22 : 14);
-            if (!ThemeUsesDarkChrome()) {
-                lift = dragging ? 24 : (hot ? 16 : 10);
-            }
-            HBRUSH br = CreateSolidBrush(AccentColor(trackCol, lift));
-            FillRect(hdc, &thumb, br);
-            DeleteObject(br);
-        }
-    }
-    ReleaseDC(hwnd, hdc);
-}
-
 static void NoteChatUserScroll(InlineTranslatePopup* p) {
     if (!p || !p->docked || p->chatAdjustingScroll) {
         return;
@@ -3014,39 +2964,71 @@ static void NoteChatUserScroll(InlineTranslatePopup* p) {
     p->chatFollowTail = false;
 }
 
+static void ShowChatContextMenu(InlineTranslatePopup* p, LPARAM lp) {
+    CHARRANGE selection{};
+    SendMessageW(p->hwndChat, EM_EXGETSEL, 0, (LPARAM)&selection);
+    POINT screen{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    POINT client = screen;
+    bool keyboard = screen.x == -1 && screen.y == -1;
+    if (keyboard) {
+        client = {Px(p->hwnd, 12), Px(p->hwnd, 12)};
+        screen = client;
+        ClientToScreen(p->hwndChat, &screen);
+    } else
+        ScreenToClient(p->hwndChat, &client);
+    int cp = keyboard ? selection.cpMin : (int)SendMessageW(p->hwndChat, EM_CHARFROMPOS, 0, (LPARAM)&client);
+    char* reply = nullptr;
+    if (p->chatIsRich && cp >= 0 && cp < RichTextLen(p->hwndChat)) {
+        HWND scratch = CreateWindowExW(0, MSFTEDIT_CLASS, L"", WS_CHILD | ES_MULTILINE, 0, 0, 0, 0, p->hwnd, nullptr,
+                                       GetModuleHandleW(nullptr), nullptr);
+        if (scratch) {
+            for (int i = 0; i < p->turns.Size(); i++) {
+                RtfDoc head;
+                BuildChatRtf(p, head, i + 1);
+                SetRichTextRtf(scratch, head.sb.Get());
+                if (cp < RichTextLen(scratch) + 1) {
+                    if (str::Eq(p->turns[i].role, "assistant")) reply = str::Dup(p->turns[i].content);
+                    break;
+                }
+            }
+            DestroyWindow(scratch);
+        }
+    }
+    char* selectedText = nullptr;
+    if (selection.cpMax > selection.cpMin) {
+        WCHAR* text = AllocArray<WCHAR>(selection.cpMax - selection.cpMin + 1);
+        SendMessageW(p->hwndChat, EM_GETSELTEXT, 0, (LPARAM)text);
+        selectedText = str::Dup(ToUtf8Temp(text));
+        free(text);
+    }
+    HMENU menu = CreatePopupMenu();
+    AppendMenuW(menu, MF_STRING | (selection.cpMin == selection.cpMax ? MF_GRAYED : 0), 1, ToWStrTemp(_TRA("Copy")));
+    AppendMenuW(menu, MF_STRING, 2, ToWStrTemp(_TRA("Select all")));
+    if (reply && *reply) AppendMenuW(menu, MF_STRING, 3, ToWStrTemp(_TRA("Copy entire reply")));
+    MarkMenuOwnerDraw(menu);
+    UINT choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, screen.x, screen.y, 0, p->hwnd, nullptr);
+    FreeMenuOwnerDrawInfoData(menu);
+    DestroyMenu(menu);
+    if (choice == 1 && selectedText)
+        CopyTextToClipboard(selectedText);
+    else if (choice == 2) {
+        CHARRANGE all{0, -1};
+        SendMessageW(p->hwndChat, EM_EXSETSEL, 0, (LPARAM)&all);
+    } else if (choice == 3)
+        CopyTextToClipboard(reply);
+    str::Free(reply);
+    str::Free(selectedText);
+}
+
 static LRESULT CALLBACK ChatSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
     auto* p = (InlineTranslatePopup*)data;
-    if (msg == WM_NCPAINT && p && p->docked) {
-        LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
-        PaintAwayEditFrame(hwnd, ThemeSidebarBackgroundColor());
-        PaintQuietScrollbar(hwnd, ThemeSidebarBackgroundColor(), p->chatScrollHot, p->chatScrollDrag);
-        return r;
-    }
-    if (p && p->docked && msg == WM_NCMOUSEMOVE && wp == HTVSCROLL) {
-        if (!p->chatScrollHot) {
-            p->chatScrollHot = true;
-        }
-        TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE | TME_NONCLIENT, hwnd, 0};
-        TrackMouseEvent(&tme);
-        PaintQuietScrollbar(hwnd, ThemeSidebarBackgroundColor(), true, p->chatScrollDrag);
-    } else if (p && p->docked && msg == WM_NCMOUSELEAVE) {
-        p->chatScrollHot = false;
-        p->chatScrollDrag = false;
-        PaintQuietScrollbar(hwnd, ThemeSidebarBackgroundColor(), false, false);
-    } else if (p && p->docked && msg == WM_NCLBUTTONDOWN && wp == HTVSCROLL) {
-        p->chatScrollDrag = true;
-    } else if (p && p->docked && (msg == WM_NCLBUTTONUP || msg == WM_LBUTTONUP || msg == WM_CAPTURECHANGED)) {
-        if (p->chatScrollDrag) {
-            p->chatScrollDrag = false;
-            PaintQuietScrollbar(hwnd, ThemeSidebarBackgroundColor(), p->chatScrollHot, false);
-        }
+    if (msg == WM_CONTEXTMENU && p && p->docked) {
+        ShowChatContextMenu(p, lp);
+        return 0;
     }
     LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
     if (msg == WM_VSCROLL || msg == WM_MOUSEWHEEL || (msg == WM_KEYDOWN && (wp == VK_PRIOR || wp == VK_NEXT))) {
         NoteChatUserScroll(p);
-        if (p && p->docked) {
-            PaintQuietScrollbar(hwnd, ThemeSidebarBackgroundColor(), p->chatScrollHot, p->chatScrollDrag);
-        }
     }
     if (msg == WM_NCDESTROY) {
         RemoveWindowSubclass(hwnd, ChatSubclassProc, id);
@@ -3095,8 +3077,8 @@ static InlineTranslatePopup* CreatePopup(MainWindow* win, bool docked) {
     HINSTANCE inst = GetModuleHandle(nullptr);
     DWORD roStyle = WS_CHILD | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_NOHIDESEL;
     p->hwndTrans = CreateWindowExW(0, WC_EDITW, L"", roStyle, 0, 0, 0, 0, p->hwnd, nullptr, inst, nullptr);
-    if (!docked && p->hwndTrans) {
-        SetWindowSubclass(p->hwndTrans, TransSubclassProc, kTransSubclassId, (DWORD_PTR)p);
+    if (p->hwndTrans) {
+        if (!docked) SetWindowSubclass(p->hwndTrans, TransSubclassProc, kTransSubclassId, (DWORD_PTR)p);
         p->hwndTip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
                                      CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, p->hwnd, nullptr, inst,
                                      nullptr);
@@ -3142,9 +3124,6 @@ static InlineTranslatePopup* CreatePopup(MainWindow* win, bool docked) {
         int margin = Px(p->hwnd, 2);
         SendMessageW(p->hwndInput, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELONG(margin, margin));
         SetWindowSubclass(p->hwndChat, ChatSubclassProc, kChatSubclassId, (DWORD_PTR)p);
-        if (DynSetWindowTheme && p->hwndInput) {
-            DynSetWindowTheme(p->hwndInput, L"", L"");
-        }
         p->userSized = true;
         p->generation = ++gNextPopupGeneration;
         win->hwndAiSidebar = p->hwnd;
@@ -3321,6 +3300,7 @@ static void StartTranslate(InlineTranslatePopup* p) {
 }
 
 struct AskJob {
+    AiChatCancel* cancel = nullptr;
     int generation = 0;
     WindowTab* tab = nullptr;
     AiTocApiConfig cfg{};
@@ -3330,6 +3310,7 @@ struct AskJob {
     char* error = nullptr;
     ULONGLONG lastProgress = 0;
     void FreeAll() {
+        if (cancel) cancel->Release();
         for (char* s : owned) {
             str::Free(s);
         }
@@ -3399,6 +3380,7 @@ static void AskProgressUi(AskProgress* update) {
 
 static void AskProgressWorker(void* ctx, const char* content) {
     auto* job = (AskJob*)ctx;
+    if (job->cancel && job->cancel->IsCanceled()) return;
     ULONGLONG now = GetTickCount64();
     if (job->lastProgress && now - job->lastProgress < 100) return;
     job->lastProgress = now;
@@ -3453,7 +3435,7 @@ static void AskJobFinished(AskJob* job) {
 
 static void AskJobWorker(AskJob* job) {
     AiTocApiChat(job->cfg, job->msgs.LendData(), job->msgs.Size(), kChatTimeoutMs, &job->result, &job->error,
-                 AskProgressWorker, job);
+                 AskProgressWorker, job, job->cancel);
     uitask::Post(MkFunc0(AskJobFinished, job), "InlineAskAiDone");
 }
 
@@ -3473,11 +3455,15 @@ static void StartAsk(InlineTranslatePopup* p, const char* content, const char* d
     auto* job = new AskJob();
     job->generation = p->generation;
     job->tab = p->boundTab;
-    job->cfg = SnapshotAiCfg();
-    if (p->docked && gAskModel && str::Eq(gAskModelProvider, job->cfg.baseUrl)) {
-        free((void*)job->cfg.model);
-        job->cfg.model = str::Dup(gAskModel);
-    }
+    if (p->docked) {
+        EnsureChatCfg(p);
+        job->cfg = CopyAiCfg(p->chatCfg);
+    } else
+        job->cfg = SnapshotAiCfg();
+    if (p->cancel) p->cancel->Release();
+    p->cancel = new AiChatCancel();
+    job->cancel = p->cancel;
+    job->cancel->AddRef();
     if (p->mode == PopupMode::Translate) {
         // in Ask AI mode the first user turn already carries the selection
         StrBuilder sys;
@@ -3584,66 +3570,145 @@ struct AskModelsRequest {
     }
 };
 
+static void RefreshChatCfg(AiTocApiConfig& cfg, char** name, bool& useDefault) {
+    if (!useDefault) {
+        Vec<AiApiProfile> profiles;
+        AiApiLoadProfiles(gGlobalPrefs, profiles);
+        bool found = false;
+        for (auto& profile : profiles) {
+            if (str::Eq(profile.name, *name) && str::Eq(profile.baseUrl, cfg.baseUrl)) {
+                // Keep this conversation's model, refresh only its own credentials.
+                free((void*)cfg.key);
+                cfg.key = str::Dup(profile.key);
+                cfg.concurrency = profile.concurrency;
+                found = true;
+                break;
+            }
+        }
+        for (auto& profile : profiles) profile.Free();
+        if (found) return;
+        useDefault = true;
+    }
+    FreeAiCfg(cfg);
+    cfg = SnapshotChatCfg(name);
+}
+
+void RefreshAskAiSettings() {
+    if (gAsk) {
+        RefreshChatCfg(gAsk->chatCfg, &gAsk->chatProfileName, gAsk->chatUsesDefault);
+        LayoutPopup(gAsk);
+        InvalidateRect(gAsk->hwnd, nullptr, FALSE);
+    }
+    for (MainWindow* win : gWindows)
+        for (WindowTab* tab : win->Tabs()) {
+            auto* state = (AiChatState*)tab->askAiState;
+            if (state && (!gAsk || gAsk->boundTab != tab))
+                RefreshChatCfg(state->chatCfg, &state->chatProfileName, state->chatUsesDefault);
+        }
+}
+
+static void OpenAskSettings() {
+    MainWindow* win = gAsk ? gAsk->win : nullptr;
+    if (win && IsMainWindowValid(win)) ShowOptionsDialogAtPage(win, kSettingsPageAi);
+}
+
 static void AskModelsReady(AskModelsRequest* request) {
     gAskModelsLoading = false;
+    defer {
+        delete request;
+    };
     InlineTranslatePopup* p = gAsk;
-    if (!p || p->hwnd != request->hwnd || p->generation != request->generation || p->asking) {
-        delete request;
+    if (!p || p->hwnd != request->hwnd || p->generation != request->generation || p->asking ||
+        !str::Eq(request->cfg.baseUrl, p->chatCfg.baseUrl) || !str::Eq(request->cfg.key, p->chatCfg.key))
+        return;
+    if (request->error) {
+        MessageBoxWarning(p->hwnd, request->error, _TRA("Ask AI"));
         return;
     }
-    // Ignore a stale provider response if Settings changed during the fetch.
-    if (!str::Eq(request->cfg.baseUrl, gGlobalPrefs->aiTocApiBaseUrl) ||
-        !str::Eq(request->cfg.key, gGlobalPrefs->aiTocApiKey)) {
-        delete request;
-        return;
+    char* chosen = PickAiModel(p->hwnd, request->models, p->chatCfg.model);
+    if (gAsk == p && p->generation == request->generation && chosen) {
+        free((void*)p->chatCfg.model);
+        p->chatCfg.model = str::Dup(chosen);
+        p->chatUsesDefault = false;
+        LayoutPopup(p);
+        InvalidateRect(p->hwnd, nullptr, FALSE);
     }
-    if (request->error) MessageBoxWarning(p->hwnd, request->error, _TRA("Ask AI"));
+    str::Free(chosen);
+}
+static void AskModelsWorker(AskModelsRequest* request) {
+    AiTocApiFetchModels(request->cfg.baseUrl, request->cfg.key, request->models, &request->error);
+    uitask::Post(MkFunc0(AskModelsReady, request), "AskModelsReady");
+}
+static void ShowAskModels(InlineTranslatePopup* p) {
+    if (!p->docked) return;
+    EnsureChatCfg(p);
     HMENU menu = CreatePopupMenu();
-    AppendMenuW(menu, MF_STRING | (!gAskModel ? MF_CHECKED : 0), 1,
-                ToWStrTemp(str::FormatTemp("%s: %s", _TRA("Default"), request->cfg.model ? request->cfg.model : "")));
-    for (int i = 0; i < request->models.Size(); i++) {
-        AppendMenuW(menu, MF_STRING | (str::Eq(gAskModel, request->models[i]) ? MF_CHECKED : 0), i + 2,
-                    ToWStrTemp(request->models[i]));
-    }
-    POINT origin{p->modelRc.x + p->modelRc.dx, p->modelRc.y + p->modelRc.dy};
+    AppendMenuW(
+        menu, MF_STRING | MF_CHECKED | MF_DISABLED, 1,
+        ToWStrTemp(str::IsEmptyOrWhiteSpace(p->chatCfg.model) ? _TRA("No model configured") : p->chatCfg.model));
+    bool canChoose = !p->asking && !gAskModelsLoading && HasPermission(Perm::InternetAccess) &&
+                     !str::IsEmptyOrWhiteSpace(p->chatCfg.baseUrl) && !str::IsEmptyOrWhiteSpace(p->chatCfg.key);
+    AppendMenuW(menu, MF_STRING | (canChoose ? 0 : MF_GRAYED), 2, ToWStrTemp(_TRA("Choose a model")));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, 3, ToWStrTemp(_TRA("AI settings...")));
+    POINT origin{p->modelRc.Right(), p->modelRc.Bottom()};
     ClientToScreen(p->hwnd, &origin);
-    // Match the main/context menus: one owner-drawn coordinate system in
-    // dark themes, rather than native hover text over the themed overlay.
+    int generation = p->generation;
     MarkMenuOwnerDraw(menu);
     UINT choice =
         TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTALIGN, origin.x, origin.y, 0, p->hwnd, nullptr);
     FreeMenuOwnerDrawInfoData(menu);
     DestroyMenu(menu);
-    if (gAsk == p && p->hwnd == request->hwnd && p->generation == request->generation && choice) {
-        str::FreePtr(&gAskModel);
-        str::FreePtr(&gAskModelProvider);
-        if (choice >= 2 && choice - 2 < (UINT)request->models.Size()) {
-            gAskModel = str::Dup(request->models[(int)choice - 2]);
-            gAskModelProvider = str::Dup(request->cfg.baseUrl);
+    if (gAsk == p && p->generation == generation) {
+        if (choice == 3)
+            uitask::Post(MkFunc0Void(OpenAskSettings), "AskAiSettings");
+        else if (choice == 2 && canChoose) {
+            auto* request = new AskModelsRequest();
+            request->cfg = CopyAiCfg(p->chatCfg);
+            request->hwnd = p->hwnd;
+            request->generation = generation;
+            gAskModelsLoading = true;
+            RunAsync(MkFunc0(AskModelsWorker, request), "AskModels");
         }
-        InvalidateRect(p->hwnd, nullptr, FALSE);
     }
-    delete request;
 }
 
-static void AskModelsWorker(AskModelsRequest* request) {
-    AiTocApiFetchModels(request->cfg.baseUrl, request->cfg.key, request->models, &request->error);
-    uitask::Post(MkFunc0(AskModelsReady, request), "AskModelsReady");
-}
-
-static void ShowAskModels(InlineTranslatePopup* p) {
-    if (!p->docked || p->asking || gAskModelsLoading || !InlineTranslateAiApiIsConfigured() ||
-        !HasPermission(Perm::InternetAccess))
+static void NewAskConversation(InlineTranslatePopup* p) {
+    if (!p || !p->docked) return;
+    if (!p->turns.IsEmpty() &&
+        AppMessageBoxW(p->hwnd, ToWStrTemp(_TRA("Clear this conversation and start again?")),
+                       ToWStrTemp(_TRA("New conversation")), MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
         return;
-    auto request = new AskModelsRequest();
-    request->cfg = SnapshotAiCfg();
-    request->hwnd = p->hwnd;
-    request->generation = p->generation;
-    gAskModelsLoading = true;
-    RunAsync(MkFunc0(AskModelsWorker, request), "AskModels");
+    if (p->cancel) {
+        p->cancel->Cancel();
+        p->cancel->Release();
+        p->cancel = nullptr;
+    }
+    p->generation = ++gNextPopupGeneration;
+    p->asking = false;
+    ClearTurns(p);
+    str::FreePtr(&p->selection);
+    p->sourceSelection = nullptr;
+    p->contextPage = 0;
+    p->contextOpen = false;
+    if (auto* state = AskState(p->boundTab, false)) {
+        state->generation = p->generation;
+        state->asking = false;
+        for (auto& turn : state->turns) turn.Free();
+        state->turns.Reset();
+        str::FreePtr(&state->draft);
+        str::FreePtr(&state->selection);
+    }
+    SetEditTextUtf8(p->hwndInput, "");
+    SyncInputHasText(p);
+    SyncComposerLines(p);
+    p->chatFollowTail = true;
+    PresentChatUpdate(p);
+    SetFocus(p->hwndInput);
 }
 
 static PopupHot HitTestHot(InlineTranslatePopup* p, Point pt) {
+    if (p->docked && p->newChatRc.Contains(pt)) return PopupHot::NewChat;
     if (p->docked && !p->modelRc.IsEmpty() && p->modelRc.Contains(pt)) return PopupHot::Model;
     if (p->closeRc.Contains(pt)) {
         return PopupHot::Close;
@@ -3751,6 +3816,9 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             brush = CreateSolidBrush(bg);
             return (LRESULT)brush;
         }
+        case WM_CONTEXTMENU:
+            if (p->docked) return 0;
+            break;
         case WM_COMMAND:
             if (HIWORD(wp) == EN_CHANGE && (HWND)lp == p->hwndInput) {
                 SyncInputHasText(p);
@@ -3862,6 +3930,8 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
                 CopyTranslation(p);
             } else if (hot == PopupHot::Send && sendWasDown) {
                 OnSendClicked(p);
+            } else if (hot == PopupHot::NewChat) {
+                NewAskConversation(p);
             } else if (hot == PopupHot::Model) {
                 ShowAskModels(p);
             } else if (hot == PopupHot::Hint) {
@@ -4085,6 +4155,15 @@ void ParkAskAiSidebar(WindowTab* tab) {
         return;
     }
     AiChatState* st = AskState(tab, true);
+    st->chatUsesDefault = gAsk->chatUsesDefault;
+    FreeAiCfg(st->chatCfg);
+    st->chatCfg = gAsk->chatCfg;
+    gAsk->chatCfg = {};
+    str::ReplacePtr(&st->chatProfileName, gAsk->chatProfileName);
+    gAsk->chatProfileName = nullptr;
+    if (st->cancel) st->cancel->Release();
+    st->cancel = gAsk->cancel;
+    gAsk->cancel = nullptr;
     MoveTurns(st->turns, gAsk->turns);
     char* draft = GetEditTextUtf8(gAsk->hwndInput);
     str::ReplacePtr(&st->draft, draft);
@@ -4114,6 +4193,14 @@ void BindAskAiSidebar(WindowTab* tab) {
     }
     gAsk->boundTab = tab;
     gAsk->win = tab->win;
+    gAsk->generation = ++gNextPopupGeneration;
+    gAsk->chatUsesDefault = true;
+    FreeAiCfg(gAsk->chatCfg);
+    str::FreePtr(&gAsk->chatProfileName);
+    if (gAsk->cancel) {
+        gAsk->cancel->Release();
+        gAsk->cancel = nullptr;
+    }
     AiChatState* st = AskState(tab, false);
     if (!st) {
         ClearTurns(gAsk);
@@ -4126,6 +4213,13 @@ void BindAskAiSidebar(WindowTab* tab) {
         PresentChatUpdate(gAsk);
         return;
     }
+    gAsk->chatUsesDefault = st->chatUsesDefault;
+    gAsk->chatCfg = st->chatCfg;
+    st->chatCfg = {};
+    gAsk->chatProfileName = st->chatProfileName;
+    st->chatProfileName = nullptr;
+    gAsk->cancel = st->cancel;
+    st->cancel = nullptr;
     MoveTurns(gAsk->turns, st->turns);
     str::ReplacePtr(&gAsk->selection, st->selection);
     st->selection = nullptr;
@@ -4148,7 +4242,12 @@ void FreeTabAskAiState(WindowTab* tab) {
     if (gAsk && gAsk->boundTab == tab) {
         ClearTurns(gAsk);
         gAsk->asking = false;
-        gAsk->generation++;
+        gAsk->generation = ++gNextPopupGeneration;
+        if (gAsk->cancel) {
+            gAsk->cancel->Cancel();
+            gAsk->cancel->Release();
+            gAsk->cancel = nullptr;
+        }
         gAsk->boundTab = nullptr;
         str::FreePtr(&gAsk->selection);
         gAsk->contextPage = 0;

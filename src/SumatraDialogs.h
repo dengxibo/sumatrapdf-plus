@@ -65,3 +65,6 @@ bool Dialog_ChangeBackgroundColor(HWND hwnd, COLORREF currentColor, bool isCheck
 bool Dialog_SetTabColor(HWND hwnd, COLORREF currentColor, bool isUnset, COLORREF& resultColor, bool& resultIsUnset);
 
 TempStr ZoomLevelStr(float zoom);
+
+// Reuse the searchable model picker for the conversation sidebar. Returned string is owned.
+char* PickAiModel(HWND owner, Vec<char*>& models, const char* current);

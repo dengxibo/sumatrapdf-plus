@@ -2,6 +2,20 @@
 
 ## next
 
+## 3.7.57 (2026-10-15)
+
+- 优化 AI 对话侧栏滚动条和四主题切换，修复亮边残留；提供独立复制菜单和可安全取消生成的新对话功能。
+  Improve AI sidebar scrollbars and theme switching, fix residual bright borders, add dedicated copy actions and safely cancellable new conversations.
+
+- 新增独立的默认对话 API / 模型配置，侧栏临时模型不影响目录识别和翻译；简化模型菜单与智能页布局。
+  Add independent default chat API/model settings; temporary chat model changes leave TOC recognition and translation unchanged. Simplify the model menu and AI settings layout.
+
+- 模型选择按能力过滤，通用模型优先显示视觉模型；一个测试按钮分别验证文本生成与图片识别。
+  Filter models by capability and prioritize vision models for general AI. A single test button checks text generation and image recognition separately.
+
+- 优化目录编辑中印刷页到 PDF 页的映射显示，隐藏无效或零偏移文字并保持箭头和输入框位置稳定。
+  Refine printed-to-PDF page mapping in the TOC editor, hiding absent or zero offsets while keeping arrows and page inputs aligned.
+
 ## 3.7.56 (2026-10-15)
 
 - 移除选项界面中过时的“使用浮动搜索窗口”开关，保留现有详细搜索入口。

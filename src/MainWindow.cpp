@@ -845,6 +845,19 @@ bool HasOpenedDocuments(MainWindow* win) {
     return false;
 }
 
+void SyncSidebarScrollbarTheme(HWND hwnd) {
+    if (!hwnd) return;
+    // Apply only the scrollbar class. Full Explorer theming loads RichEdit
+    // text services and can stall the first theme switch.
+    if (DynSetWindowTheme)
+        DynSetWindowTheme(hwnd, nullptr,
+                          ThemeUsesDarkChrome() ? L"DarkMode_Explorer::ScrollBar" : L"Explorer::ScrollBar");
+    // Clear both cached theme data and non-client pixels, including the gutter
+    // when a scrollbar appeared/disappeared while the previous theme was active.
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME);
+}
+
 static void SyncSidebarTreeViewTheme(HWND hwnd) {
     if (!hwnd || !UseDarkModeLib()) {
         return;
@@ -856,10 +869,11 @@ static void SyncSidebarTreeViewTheme(HWND hwnd) {
     // TreeViewStyle::classic (light scrollbars) even with dark chrome.
     if (ThemeUsesDarkChrome()) {
         DarkMode::setDarkThemeExperimental(hwnd);
-        DarkMode::setDarkScrollBar(hwnd);
+        SyncSidebarScrollbarTheme(hwnd);
         DarkMode::setDarkTooltips(hwnd, static_cast<int>(DarkMode::ToolTipsType::treeview));
     } else {
         DarkMode::setTreeViewWindowThemeEx(hwnd, true);
+        SyncSidebarScrollbarTheme(hwnd);
         HWND tips = TreeView_GetToolTips(hwnd);
         if (tips && DynSetWindowTheme) {
             DynSetWindowTheme(tips, nullptr, nullptr);

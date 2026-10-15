@@ -9257,6 +9257,8 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
         return;
     }
 
+    RefreshAskAiSettings();
+
     if (!autoOcrScanPagesBefore && gGlobalPrefs->autoOcrScanPages) {
         if (MainWindow* ocrWin = FindMainWindowByHwnd(hwnd)) {
             WindowTab* ocrTab = ocrWin->CurrentTab();

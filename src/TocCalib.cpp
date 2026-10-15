@@ -6901,19 +6901,6 @@ static bool TocCalibEditingField(MainWindow* win, TocItem* item, bool printed) {
            gCalibPageEdit.printed == printed;
 }
 
-static COLORREF TocCalibBlend(COLORREF a, COLORREF b, int bPct) {
-    if (bPct < 0) {
-        bPct = 0;
-    }
-    if (bPct > 100) {
-        bPct = 100;
-    }
-    int aPct = 100 - bPct;
-    auto ch = [](int ca, int cb, int ap, int bp) { return (ca * ap + cb * bp) / 100; };
-    return RGB(ch(GetRValue(a), GetRValue(b), aPct, bPct), ch(GetGValue(a), GetGValue(b), aPct, bPct),
-               ch(GetBValue(a), GetBValue(b), aPct, bPct));
-}
-
 static void TocCalibDrawPageField(HWND hwnd, HDC hdc, const RECT& rc, const WCHAR* text, bool empty, bool editing,
                                   bool enabled) {
     if (rc.right <= rc.left || rc.bottom <= rc.top || editing) {
@@ -6964,22 +6951,6 @@ static bool TocCalibDisplayOffset(const TocCalibRow* row, int* offOut) {
     return true;
 }
 
-// True when this folio's pdf−printed differs from the previous row that has one.
-static bool TocCalibOffsetBreaks(const TocCalibSession* s, const TocCalibRow* row, int off) {
-    int idx = TocCalibRowIndex(s, row);
-    if (idx < 1) {
-        return false;
-    }
-    for (int i = idx - 1; i >= 0; i--) {
-        int prev = 0;
-        if (!TocCalibDisplayOffset(&s->rows[i], &prev)) {
-            continue;
-        }
-        return prev != off;
-    }
-    return false;
-}
-
 // LineTo omits the end pixel, which was clipping the arrow tip and the lower stroke.
 static void TocCalibStroke(HDC hdc, int x1, int y1, int x2, int y2, COLORREF color) {
     MoveToEx(hdc, x1, y1, nullptr);
@@ -7000,21 +6971,8 @@ static void TocCalibDrawShaftArrow(HDC hdc, int x1, int x2, int y, int head, COL
     DeleteObject(pen);
 }
 
-// Closer to body text than the disabled gray, on both light and dark sidebars.
-static COLORREF TocCalibOffsetInk(bool emphasize) {
-    COLORREF txt = ThemeWindowTextColor();
-    if (emphasize) {
-        return txt;
-    }
-    COLORREF side = 0;
-    COLORREF sideTxt = 0;
-    ThemeSidebarColors(side, sideTxt);
-    return TocCalibBlend(txt, side, 22);
-}
-
 // +N above the shaft, with a clear gap. The pair is centered in the row.
-static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const RECT& row, const WCHAR* offset,
-                                    bool emphasize) {
+static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const RECT& row, const WCHAR* offset) {
     if (col.right <= col.left || row.bottom <= row.top) {
         return;
     }
@@ -7067,7 +7025,7 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
     }
     // Keep the shaft on the same lower baseline with or without an offset.
     arrowY = limit;
-    COLORREF ink = TocCalibOffsetInk(emphasize && offset && offset[0]);
+    COLORREF ink = ThemeInspectorSecondaryTextColor();
     SetBkMode(hdc, TRANSPARENT);
     if (offset && offset[0]) {
         RECT offRc{};
@@ -7190,7 +7148,6 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
     TocCalibDrawIconBtn(hdc, hwnd, L.del, TbIcon::Trash, true);
     WCHAR offBuf[16]{};
     const WCHAR* offText = nullptr;
-    bool offBreak = false;
     int off = 0;
     if (TocCalibDisplayOffset(row, &off)) {
         if (off > 0) {
@@ -7199,10 +7156,13 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
             _snwprintf(offBuf, dimof(offBuf), L"%d", off);
         }
         offText = offBuf;
-        offBreak = TocCalibOffsetBreaks(s, row, off);
     }
     TocCalibDrawPageField(hwnd, hdc, L.prField, prText, prEmpty, TocCalibEditingField(win, item, true), true);
-    TocCalibDrawOffsetArrow(hdc, hwnd, L.arrow, rcRow, offText, offBreak);
+    // Labels (including Roman folios) have a mapping arrow but no numeric offset.
+    // Keep the fixed column and lower arrow baseline even when the offset is empty.
+    if (TocCalibHasPrinted(printed) || (printedLab && printedLab[0])) {
+        TocCalibDrawOffsetArrow(hdc, hwnd, L.arrow, rcRow, offText);
+    }
     TocCalibDrawPageField(hwnd, hdc, L.pdfField, pdfText, pdfEmpty, TocCalibEditingField(win, item, false), true);
 }
 

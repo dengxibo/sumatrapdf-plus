@@ -14,6 +14,32 @@ struct AiTocApiConfig {
     int concurrency = 4;
 };
 
+// Shared saved API profiles. Strings are owned; call Free() before discarding.
+struct AiApiProfile {
+    char* name = nullptr;
+    char* baseUrl = nullptr;
+    char* key = nullptr;
+    char* model = nullptr;
+    int concurrency = 4;
+    void Free();
+};
+int AiApiLoadProfiles(GlobalPrefs* prefs, Vec<AiApiProfile>& profiles);
+
+// A request owns one reference and its conversation owns another. Cancel closes
+// the active WinINet request; queued UI updates are also guarded by generation.
+struct AiChatCancel {
+    CRITICAL_SECTION lock;
+    void* request = nullptr;
+    LONG refs = 1;
+    LONG canceled = 0;
+    AiChatCancel();
+    ~AiChatCancel();
+    void AddRef();
+    void Release();
+    void Cancel();
+    bool IsCanceled();
+};
+
 // Progress stages reported by AiTocApiProgressFn during recognition.
 enum class AiTocApiStage {
     Render = 0,  // rendering TOC page images
@@ -44,7 +70,8 @@ bool AiTocApiDetectTocPages(EngineBase* engine, const AiTocApiConfig& cfg, AiToc
                             AiTocApiProgressFn progress, void* progressCtx, Vec<int>& pagesOut, char** errorOut);
 
 // Sends a minimal chat request to verify the endpoint/key/model. Blocking.
-bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* model, char** msgOut);
+bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* model, char** msgOut,
+                            bool vision = false);
 
 // Text-only OpenAI-compatible chat/completions. Blocking; call from a worker.
 // roles: "system" / "user" / "assistant". On success *contentOut is newly allocated.
@@ -55,11 +82,13 @@ struct AiTocChatMessage {
 // Optional streaming callback: accumulated UTF-8 reply, borrowed, on the worker thread.
 typedef void (*AiTocChatProgressFn)(void* ctx, const char* content);
 bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,
-                  char** errOut, AiTocChatProgressFn progress = nullptr, void* progressCtx = nullptr);
+                  char** errOut, AiTocChatProgressFn progress = nullptr, void* progressCtx = nullptr,
+                  AiChatCancel* cancel = nullptr);
 
 // Queries the provider's OpenAI-compatible GET /models endpoint. Some
 // providers do not expose it; callers should keep manual model entry usable.
-bool AiTocApiFetchModels(const char* baseUrl, const char* key, Vec<char*>& modelsOut, char** errorOut);
+bool AiTocApiFetchModels(const char* baseUrl, const char* key, Vec<char*>& modelsOut, char** errorOut,
+                         bool preferVision = false);
 
 // Reads base_url / api_key / model from an autoContents static/llm_config.json
 // (multi-config + active_id format) or a flat {"base_url","api_key","model"}

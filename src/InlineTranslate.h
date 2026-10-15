@@ -47,3 +47,6 @@ bool InlineTranslateVolcTest(const char* ak, const char* sk, char** resultOut, c
 void InlineTranslateUnprotectPrefsSecrets(GlobalPrefs* prefs);
 void InlineTranslateProtectPrefsSecretsForSave(GlobalPrefs* prefs, char** plainAkOut, char** plainSkOut);
 void InlineTranslateRestorePrefsSecretsAfterSave(GlobalPrefs* prefs, char* plainAk, char* plainSk);
+
+// Refresh credentials/defaults after saving the shared AI settings, preserving messages.
+void RefreshAskAiSettings();

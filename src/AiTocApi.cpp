@@ -30,6 +30,7 @@
 #include "wingui/UIModels.h"
 
 #include "Settings.h"
+#include "Translations.h"
 #include "DocProperties.h"
 #include "DisplayMode.h"
 #include "DocController.h"
@@ -529,13 +530,39 @@ struct HttpPostResult {
     StrBuilder body;
 };
 
+AiChatCancel::AiChatCancel() {
+    InitializeCriticalSection(&lock);
+}
+AiChatCancel::~AiChatCancel() {
+    DeleteCriticalSection(&lock);
+}
+void AiChatCancel::AddRef() {
+    InterlockedIncrement(&refs);
+}
+void AiChatCancel::Release() {
+    if (InterlockedDecrement(&refs) == 0) delete this;
+}
+bool AiChatCancel::IsCanceled() {
+    return InterlockedCompareExchange(&canceled, 0, 0) != 0;
+}
+void AiChatCancel::Cancel() {
+    EnterCriticalSection(&lock);
+    InterlockedExchange(&canceled, 1);
+    if (request) {
+        InternetCloseHandle((HINTERNET)request);
+        request = nullptr;
+    }
+    LeaveCriticalSection(&lock);
+}
+
 static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method, const char* body, int timeoutMs,
                         HttpPostResult& res, char** errOut, void (*onRead)(void*, const char*) = nullptr,
-                        void* readCtx = nullptr) {
+                        void* readCtx = nullptr, AiChatCancel* cancel = nullptr) {
     *errOut = nullptr;
     HINTERNET hInet = nullptr;
     HINTERNET hConn = nullptr;
     HINTERNET hReq = nullptr;
+    bool registered = false;
     bool ok = false;
 
     char host[256] = {};
@@ -585,6 +612,17 @@ static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method,
             *errOut = str::Dup("Cannot create the HTTP request.");
             goto Exit;
         }
+        if (cancel) {
+            EnterCriticalSection(&cancel->lock);
+            if (cancel->IsCanceled()) {
+                LeaveCriticalSection(&cancel->lock);
+                *errOut = str::Dup("Request canceled.");
+                goto Exit;
+            }
+            cancel->request = hReq;
+            registered = true;
+            LeaveCriticalSection(&cancel->lock);
+        }
         DWORD connectTimeout = 30 * 1000;
         DWORD recvTimeout = (DWORD)timeoutMs;
         InternetSetOptionA(hReq, INTERNET_OPTION_CONNECT_TIMEOUT, &connectTimeout, sizeof(connectTimeout));
@@ -603,6 +641,10 @@ static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method,
         HttpQueryInfoA(hReq, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &status, &len, nullptr);
         res.status = status;
         for (;;) {
+            if (cancel && cancel->IsCanceled()) {
+                *errOut = str::Dup("Request canceled.");
+                goto Exit;
+            }
             char buf[8192];
             DWORD n = 0;
             DWORD toRead = sizeof(buf);
@@ -630,9 +672,15 @@ static bool HttpJsonRaw(const char* url, const char* apiKey, const char* method,
         ok = true;
     }
 Exit:
-    if (hReq) {
-        InternetCloseHandle(hReq);
+    if (cancel && registered) {
+        EnterCriticalSection(&cancel->lock);
+        if (cancel->request == hReq)
+            cancel->request = nullptr;
+        else if (cancel->IsCanceled())
+            hReq = nullptr;
+        LeaveCriticalSection(&cancel->lock);
     }
+    if (hReq) InternetCloseHandle(hReq);
     if (hConn) {
         InternetCloseHandle(hConn);
     }
@@ -2507,7 +2555,7 @@ bool AiTocApiDetectTocPages(EngineBase* engine, const AiTocApiConfig& cfg, AiToc
 // ---------------------------------------------------------------------------
 // settings-related helpers
 
-bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* model, char** msgOut) {
+bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* model, char** msgOut, bool vision) {
     *msgOut = nullptr;
     AiTocApiConfig cfg;
     cfg.baseUrl = baseUrl;
@@ -2517,11 +2565,69 @@ bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* mo
         *msgOut = str::Dup("Please fill in the base URL, API key and model first.");
         return false;
     }
-    ChatPart parts[1] = {};
+    ChatPart parts[2] = {};
     parts[0].text = "Reply with the single word: ok";
+    char challenge[16]{};
+    char* image = nullptr;
+    defer {
+        str::Free(image);
+    };
+    HRESULT com = vision ? CoInitializeEx(nullptr, COINIT_MULTITHREADED) : E_FAIL;
+    defer {
+        if (SUCCEEDED(com)) CoUninitialize();
+    };
+    if (vision) {
+        _snprintf_s(challenge, _TRUNCATE, "%06u", (unsigned)(GetTickCount64() % 1000000));
+        HDC dc = CreateCompatibleDC(nullptr);
+        BITMAPINFO bi{};
+        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bi.bmiHeader.biWidth = 240;
+        bi.bmiHeader.biHeight = -80;
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HBITMAP bitmap = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (!dc || !bitmap || !bits) {
+            if (bitmap) DeleteObject(bitmap);
+            if (dc) DeleteDC(dc);
+            *msgOut = str::Dup("Could not create the vision test image.");
+            return false;
+        }
+        HGDIOBJ old = SelectObject(dc, bitmap);
+        RECT rc{0, 0, 240, 80};
+        FillRect(dc, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+        HFONT font = CreateFontW(-44, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                                 CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, L"Arial");
+        HGDIOBJ oldFont = SelectObject(dc, font);
+        SetTextColor(dc, RGB(0, 0, 0));
+        SetBkColor(dc, RGB(255, 255, 255));
+        DrawTextW(dc, ToWStrTemp(challenge), -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(dc, oldFont);
+        DeleteObject(font);
+        SelectObject(dc, old);
+        DeleteDC(dc);
+        // GDI leaves DIB alpha at zero; make the challenge opaque for WIC.
+        for (int i = 0; i < 240 * 80; i++) ((u32*)bits)[i] |= 0xff000000;
+        // Use the same JPEG encoder as document vision requests.
+        StrBuilder jpeg, b64;
+        char* imageError = nullptr;
+        if (EncodeHBitmapAsJpeg(bitmap, 90, jpeg, &imageError)) {
+            Base64Encode((const u8*)jpeg.Get(), jpeg.size(), b64);
+            image = str::Dup(b64.Get());
+        }
+        str::Free(imageError);
+        DeleteObject(bitmap);
+        if (!image) {
+            *msgOut = str::Dup("Could not create the vision test image.");
+            return false;
+        }
+        parts[0].text = "Read the six digits in this image. Reply with those digits only.";
+        parts[1].b64 = image;
+    }
     StrBuilder content;
     char* err = nullptr;
-    if (!VisionCallOnce(cfg, parts, 1, 30 * 1000, content, &err)) {
+    if (!VisionCallOnce(cfg, parts, vision ? 2 : 1, 30 * 1000, content, &err)) {
         *msgOut = err ? err : str::Dup("The API request failed.");
         return false;
     }
@@ -2530,9 +2636,15 @@ bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* mo
     if (strlen(reply) > 200) {
         reply[200] = 0;
     }
-    *msgOut = str::Format("The API responded successfully. Model reply: %s", reply);
+    bool passed = !vision || str::Eq(reply, challenge);
+    *msgOut =
+        vision ? str::Format(
+                     "%s Model reply: %s",
+                     passed ? _TRA("Vision recognition test passed.") : _TRA("Vision recognition was not verified."),
+                     reply)
+               : str::Format(_TRA("Text generation test passed (vision has not been tested). Model reply: %s"), reply);
     str::Free(reply);
-    return true;
+    return passed;
 }
 
 static void BuildTextChatBody(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, bool disableThinking,
@@ -2588,7 +2700,7 @@ struct ChatStreamReader : json::ValueVisitor {
 };
 
 bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,
-                  char** errOut, AiTocChatProgressFn progress, void* progressCtx) {
+                  char** errOut, AiTocChatProgressFn progress, void* progressCtx, AiChatCancel* cancel) {
     *contentOut = nullptr;
     *errOut = nullptr;
     if (!AiTocApiIsConfigured(cfg)) {
@@ -2609,7 +2721,7 @@ bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int n
         StrBuilder body;
         BuildTextChatBody(cfg, msgs, nMsgs, disableThinking, body, progress != nullptr);
         if (!HttpJsonRaw(url, cfg.key, "POST", body.Get(), timeoutMs, res, errOut,
-                         progress ? ChatStreamReader::Read : nullptr, &stream)) {
+                         progress ? ChatStreamReader::Read : nullptr, &stream, cancel)) {
             return false;
         }
         const char* reply = res.body.Get();
@@ -2648,35 +2760,88 @@ bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int n
     return true;
 }
 
+// Capability metadata wins over conservative name fallbacks. Unknown models
+// stay selectable, including private deployments and provider aliases.
+struct ApiModelInfo {
+    char* id = nullptr;
+    bool vision = false;
+    bool visionSpecified = false;
+    bool textOutput = false;
+    bool outputSpecified = false;
+    bool specialized = false;
+};
+static bool ModelSegment(const char* name, const char* segment) {
+    if (!name) return false;
+    size_t n = str::Len(segment);
+    for (const char* p = name; *p;) {
+        const char* start = p;
+        while (*p && *p != '-' && *p != '_' && *p != '/' && *p != '.') p++;
+        if ((size_t)(p - start) == n && str::EqNI(start, segment, n)) return true;
+        if (*p) p++;
+    }
+    return false;
+}
+static bool SpecializedModel(const char* id) {
+    const char* segments[] = {"embedding", "embeddings", "embed",      "rerank",    "reranker", "tts",
+                              "asr",       "whisper",    "dall",       "imagen",    "flux",     "wanx",
+                              "cosyvoice", "sambert",    "sensevoice", "paraformer"};
+    for (const char* segment : segments)
+        if (ModelSegment(id, segment)) return true;
+    return str::StartsWithI(id, "gpt-image") || str::ContainsI(id, "qwen-image") ||
+           str::ContainsI(id, "hunyuan-image") || str::StartsWithI(id, "stable-diffusion");
+}
+static bool KnownVisionModel(const char* id) {
+    return ModelSegment(id, "vl") || ModelSegment(id, "vision") || str::ContainsI(id, "gpt-4o") ||
+           str::ContainsI(id, "gpt-4.1") || str::ContainsI(id, "gemini") || str::ContainsI(id, "claude-3") ||
+           str::ContainsI(id, "claude-sonnet-4") || str::ContainsI(id, "claude-opus-4");
+}
 struct ModelsResponseVisitor : json::ValueVisitor {
-    Vec<char*> models;
+    Vec<ApiModelInfo> models;
     char* error = nullptr;
-
     ~ModelsResponseVisitor() override {
         str::Free(error);
-        for (auto* model : models) {
-            str::Free(model);
-        }
-        models.Reset();
+        for (auto& model : models) str::Free(model.id);
     }
-
     bool Visit(const char* path, const char* value, json::Type type) override {
-        if (type != json::Type::String) {
-            return true;
-        }
-        if (str::Eq(path, "/error/message")) {
-            str::ReplaceWithCopy(&error, value);
-        } else if (str::StartsWith(path, "/data[")) {
-            const char* end = str::FindChar(path, ']');
-            if (end && str::Eq(end, "]/id") && value && *value) {
-                models.Append(str::Dup(value));
+        if (str::Eq(path, "/error/message") && type == json::Type::String) str::ReplaceWithCopy(&error, value);
+        if (!str::StartsWith(path, "/data[")) return true;
+        char* end = nullptr;
+        long idx = strtol(path + 6, &end, 10);
+        if (!end || *end++ != ']' || *end++ != '/' || idx < 0 || idx >= 20000) return true;
+        while (models.Size() <= idx) models.Append(ApiModelInfo{});
+        auto& m = models[idx];
+        if (str::Eq(end, "id") && type == json::Type::String) str::ReplaceWithCopy(&m.id, value);
+        if (type == json::Type::String) {
+            if (str::ContainsI(end, "output_modalities[") || str::ContainsI(end, "outputModalities[")) {
+                m.outputSpecified = true;
+                if (str::EqI(value, "text")) m.textOutput = true;
             }
+            if (str::ContainsI(end, "input_modalities[") || str::ContainsI(end, "inputModalities["))
+                m.visionSpecified = true;
+            if ((str::ContainsI(end, "input_modalities[") || str::ContainsI(end, "inputModalities[") ||
+                 str::ContainsI(end, "capabilities[")) &&
+                (str::EqI(value, "image") || str::EqI(value, "vision"))) {
+                m.vision = true;
+                m.visionSpecified = true;
+            }
+            if ((str::Eq(end, "type") || str::Eq(end, "task")) &&
+                (str::EqI(value, "embedding") || str::EqI(value, "rerank") || str::EqI(value, "text-to-image") ||
+                 str::EqI(value, "text-to-speech") || str::EqI(value, "automatic-speech-recognition")))
+                m.specialized = true;
+        }
+        if (type == json::Type::Bool && (str::Eq(end, "capabilities/vision") || str::Eq(end, "supports_vision"))) {
+            m.visionSpecified = true;
+            m.vision = str::Eq(value, "true");
+        }
+        if (type == json::Type::Bool && str::Eq(value, "true")) {
+            if (str::Eq(end, "capabilities/text_generation") || str::Eq(end, "capabilities/chat")) m.textOutput = true;
         }
         return true;
     }
 };
 
-bool AiTocApiFetchModels(const char* baseUrl, const char* key, Vec<char*>& modelsOut, char** errorOut) {
+bool AiTocApiFetchModels(const char* baseUrl, const char* key, Vec<char*>& modelsOut, char** errorOut,
+                         bool preferVision) {
     *errorOut = nullptr;
     if (str::IsEmptyOrWhiteSpace(baseUrl) || str::IsEmptyOrWhiteSpace(key)) {
         *errorOut = str::Dup("Please fill in the base URL and API key first.");
@@ -2707,8 +2872,22 @@ bool AiTocApiFetchModels(const char* baseUrl, const char* key, Vec<char*>& model
         *errorOut = str::Dup("The provider returned no models. Enter a model name manually.");
         return false;
     }
-    for (auto* model : v.models) {
-        modelsOut.Append(str::Dup(model));
+    // Two stable passes keep provider order and place verified/known vision first.
+    for (int pass = 0; pass < (preferVision ? 2 : 1); pass++) {
+        for (auto& model : v.models) {
+            if (!model.id || model.specialized || (model.outputSpecified && !model.textOutput) ||
+                (!model.textOutput && SpecializedModel(model.id)))
+                continue;
+            bool vision = model.visionSpecified ? model.vision : KnownVisionModel(model.id);
+            if (preferVision && vision != (pass == 0)) continue;
+            bool duplicate = false;
+            for (auto* id : modelsOut)
+                if (str::EqI(id, model.id)) {
+                    duplicate = true;
+                    break;
+                }
+            if (!duplicate) modelsOut.Append(str::Dup(model.id));
+        }
     }
     return true;
 }
@@ -3084,4 +3263,74 @@ void AiTocApiRestorePrefsSecretsAfterSave(GlobalPrefs* prefs, char* plainKey, ch
         }
         prefs->aiTocApiProfiles = plainProfiles;
     }
+}
+
+void AiApiProfile::Free() {
+    str::Free(name);
+    str::Free(baseUrl);
+    str::Free(key);
+    str::Free(model);
+}
+struct AiApiProfilesVisitor : json::ValueVisitor {
+    Vec<AiApiProfile>* profiles;
+    int active = 0;
+
+    explicit AiApiProfilesVisitor(Vec<AiApiProfile>* p) : profiles(p) {}
+
+    bool Visit(const char* path, const char* value, json::Type type) override {
+        if (str::Eq(path, "/active") && type == json::Type::Number) {
+            active = atoi(value);
+            return true;
+        }
+        if (!str::StartsWith(path, "/profiles[")) {
+            return true;
+        }
+        const char* p = path + str::Len("/profiles[");
+        char* end = nullptr;
+        long idx = strtol(p, &end, 10);
+        if (end == p || idx < 0 || idx >= 100 || !end || *end++ != ']' || *end++ != '/') {
+            return true;
+        }
+        while ((*profiles).Size() <= idx) {
+            (*profiles).Append(AiApiProfile{});
+        }
+        auto& profile = (*profiles)[idx];
+        if (type == json::Type::String) {
+            if (str::Eq(end, "name")) {
+                str::ReplaceWithCopy(&profile.name, value);
+            } else if (str::Eq(end, "base_url")) {
+                str::ReplaceWithCopy(&profile.baseUrl, value);
+            } else if (str::Eq(end, "api_key")) {
+                str::ReplaceWithCopy(&profile.key, value);
+            } else if (str::Eq(end, "model")) {
+                str::ReplaceWithCopy(&profile.model, value);
+            }
+        } else if (type == json::Type::Number && str::Eq(end, "concurrency")) {
+            profile.concurrency = limitValue(atoi(value), 1, 8);
+        }
+        return true;
+    }
+};
+
+int AiApiLoadProfiles(GlobalPrefs* prefs, Vec<AiApiProfile>& profiles) {
+    int active = 0;
+    if (prefs && !str::IsEmptyOrWhiteSpace(prefs->aiTocApiProfiles)) {
+        AiApiProfilesVisitor visitor(&profiles);
+        if (json::Parse(prefs->aiTocApiProfiles, &visitor))
+            active = visitor.active;
+        else {
+            for (auto& p : profiles) p.Free();
+            profiles.Reset();
+        }
+    }
+    if (profiles.IsEmpty()) {
+        AiApiProfile p;
+        p.name = str::Dup("Default");
+        p.baseUrl = str::Dup(prefs ? prefs->aiTocApiBaseUrl : nullptr);
+        p.key = str::Dup(prefs ? prefs->aiTocApiKey : nullptr);
+        p.model = str::Dup(prefs ? prefs->aiTocApiModel : nullptr);
+        p.concurrency = prefs ? prefs->aiTocApiConcurrency : 4;
+        profiles.Append(p);
+    }
+    return limitValue(active, 0, profiles.Size() - 1);
 }

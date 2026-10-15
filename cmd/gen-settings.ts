@@ -1008,6 +1008,8 @@ const globalPrefs: Field[] = [
   mkField("AiTocApiKey", Str, "", "AI table of contents API key"),
   mkField("AiTocApiModel", Str, "", "AI table of contents model"),
   mkField("AiTocApiProfiles", Str, "", "saved AI table of contents API profiles (JSON)"),
+  mkField("AiChatApiProfile", Int, -1, "default chat API profile; -1 inherits the general AI API"),
+  mkField("AiChatModel", Str, "", "default chat model; empty inherits the selected API model"),
   mkField("AiTocApiConcurrency", Int, 4, "maximum simultaneous AI table of contents requests (1-8)"),
   mkField("AiTocBodyProvider", Str, "", "last chosen body TOC AI method: api/web; empty asks on first use"),
   setVersion(
