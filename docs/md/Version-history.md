@@ -2,6 +2,14 @@
 
 ## next
 
+## 3.7.55 (2026-10-15)
+
+- 目录校准中印刷页与 PDF 页无偏移时只显示箭头，不再显示“+0”。
+  Show only the TOC calibration arrow when printed and PDF page numbers have zero offset.
+
+- 修复同一窗口打开或切换多个文档时，缩略图沿用上一文档相同页码图片的问题。
+  Clear sidebar thumbnail caches when switching documents in the same window so page images belong to the current document.
+
 ## 3.7.54 (2026-10-15)
 
 - 目录校准的半边右箭头统一使用固定长度，不再随偏移文字宽度变化；有无偏移值均保持相同的长度和靠下位置。

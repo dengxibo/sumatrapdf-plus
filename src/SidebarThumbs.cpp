@@ -361,8 +361,9 @@ static void SidebarThumbDeliver(SidebarThumbJob* job) {
     t->rendering = false;
     ApplyRenderThemePostColors(job->engine, job->bmp, job->pageNo, job->zoom, &job->box,
                                job->hasProfile ? &job->profile : nullptr);
-    if (job->bmp && job->themeHash == t->themeHash && job->generation == t->generation &&
-        t->win->CurrentTab()->GetEngine() == job->engine) {
+    WindowTab* tab = t->win->CurrentTab();
+    if (job->bmp && job->themeHash == t->themeHash && job->generation == t->generation && tab &&
+        tab->GetEngine() == job->engine) {
         StoreThumb(t, job->pageNo, job->bmp);
         job->bmp = nullptr;
         int idx = ShownIndexOf(t, job->pageNo);
@@ -1223,6 +1224,8 @@ void SidebarThumbsSyncCurrentPage(MainWindow* win) {
         return;
     }
     if (win->ctrl != t->boundCtrl) {
+        // Slots are keyed by page number and theme, so none can survive a document switch.
+        ClearThumbSlots(t);
         t->boundCtrl = win->ctrl;
         t->selected.Reset();
         t->anchor = 0;

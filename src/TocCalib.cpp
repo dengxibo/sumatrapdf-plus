@@ -7197,8 +7197,6 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
             _snwprintf(offBuf, dimof(offBuf), L"+%d", off);
         } else if (off < 0) {
             _snwprintf(offBuf, dimof(offBuf), L"%d", off);
-        } else {
-            _snwprintf(offBuf, dimof(offBuf), L"+0");
         }
         offText = offBuf;
         offBreak = TocCalibOffsetBreaks(s, row, off);
