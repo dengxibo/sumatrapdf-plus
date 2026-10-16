@@ -13,8 +13,8 @@
 - 优化 AI 对话排版：等待提示改用小号正体，去掉问题的逐行灰底，调整正文字号、消息间距和输入框留白。
   Refine AI chat typography, use a compact upright waiting status, remove striped question backgrounds, and improve message and composer spacing.
 
-- 目录编辑恢复统一的展开/折叠箭头，简化页码框，并恢复较宽的保存和取消按钮。
-  Restore consistent TOC editing chevrons, quieter page fields, and wider Save/Cancel buttons.
+- 目录编辑恢复统一的展开/折叠箭头，简化页码框，保存和取消按钮保持紧凑，并在两侧各增加 1 像素留白（随 DPI 缩放）。
+  Restore consistent TOC editing chevrons and quieter page fields; keep Save/Cancel buttons compact with one extra pixel per side, scaled for DPI.
 
 - PDF 和 EPUB 的高亮显示统一为小圆角矩形，替代胶囊形两端。
   Display PDF and EPUB highlights as subtle rounded rectangles instead of capsule-shaped bands.

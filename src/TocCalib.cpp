@@ -6676,9 +6676,7 @@ void TocCalibBar::LayoutIn(int x, int y, int dx, int dy) {
     Size cancelSize = ButtonGetIdealSize(cancel);
     Size jumpSize = ButtonGetIdealSize(jumpToc);
     int btnDy = std::max(jumpSize.dy, std::max(saveSize.dy, cancelSize.dy));
-    RECT buttonUnits{0, 0, 50, 14};
-    MapDialogRect(panel, &buttonUnits);
-    int buttonWidth = std::max((int)buttonUnits.right, std::max(saveSize.dx, cancelSize.dx));
+    int buttonWidth = std::max(saveSize.dx, cancelSize.dx) + DpiScale(hwnd, 2);
     int third = std::max(1, std::min(buttonWidth, (inner - 2 * gap) / 3));
     int top = std::max(0, (dy - btnDy) / 2);
     int jumpWidth = jumpToc ? ButtonGetIdealSize(jumpToc).dx : third;
