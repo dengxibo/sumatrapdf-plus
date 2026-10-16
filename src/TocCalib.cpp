@@ -6676,7 +6676,10 @@ void TocCalibBar::LayoutIn(int x, int y, int dx, int dy) {
     Size cancelSize = ButtonGetIdealSize(cancel);
     Size jumpSize = ButtonGetIdealSize(jumpToc);
     int btnDy = std::max(jumpSize.dy, std::max(saveSize.dy, cancelSize.dy));
-    int third = std::max(1, std::min(std::max(saveSize.dx, cancelSize.dx), (inner - 2 * gap) / 3));
+    RECT buttonUnits{0, 0, 50, 14};
+    MapDialogRect(panel, &buttonUnits);
+    int buttonWidth = std::max((int)buttonUnits.right, std::max(saveSize.dx, cancelSize.dx));
+    int third = std::max(1, std::min(buttonWidth, (inner - 2 * gap) / 3));
     int top = std::max(0, (dy - btnDy) / 2);
     int jumpWidth = jumpToc ? ButtonGetIdealSize(jumpToc).dx : third;
     jumpWidth = std::max(1, std::min(jumpWidth, inner - 2 * third - 2 * gap));
@@ -6906,11 +6909,19 @@ static void TocCalibDrawPageField(HWND hwnd, HDC hdc, const RECT& rc, const WCHA
     if (rc.right <= rc.left || rc.bottom <= rc.top || editing) {
         return;
     }
-    COLORREF page = GetPixel(hdc, rc.left, rc.top);
-    if (page == CLR_INVALID) {
-        page = ThemeSidebarBackgroundColor();
-    }
-    AppDialogPaintEditFrame(hwnd, hdc, rc, page, enabled, false);
+    // Dense numeric columns need quiet, square frames rather than repeated
+    // dialog-style rounded controls. Keep the fill shared with the live edit.
+    COLORREF bg = AppDialogEditBackgroundColor();
+    COLORREF ink = ThemeWindowTextColor();
+    COLORREF page = ThemeSidebarBackgroundColor();
+    int strength = enabled ? 32 : 18;
+    auto blend = [&](int a, int b) { return (a * strength + b * (100 - strength)) / 100; };
+    COLORREF border = RGB(blend(GetRValue(ink), GetRValue(page)), blend(GetGValue(ink), GetGValue(page)),
+                          blend(GetBValue(ink), GetBValue(page)));
+    ScopedGdiObj<HBRUSH> fill(CreateSolidBrush(bg));
+    ScopedGdiObj<HBRUSH> frame(CreateSolidBrush(border));
+    FillRect(hdc, &rc, fill);
+    FrameRect(hdc, &rc, frame);
     COLORREF txt = (!enabled || empty) ? ThemeWindowTextDisabledColor() : ThemeWindowTextColor();
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, txt);

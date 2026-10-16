@@ -22,6 +22,9 @@
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
 #include "TextSearch.h"
+#include "Annotation.h"
+#include "EbookAnnotations.h"
+#include "InlineTranslate.h"
 #include "ExtractPdfToc.h"
 #include "OcrService.h"
 #include "PrintedTocModel.h"
@@ -132,9 +135,103 @@ static const char* FollowThemePageProbeLabel(int probe) {
     }
 }
 
+// Exercise the same GDI overlay used by EPUB annotations, with known glyph
+// coverage instead of a font-dependent screenshot. Include clipped rectangles,
+// both dark palettes, original document colors, opacity, and every AA level.
+static void TestTextMarkupOverlay() {
+    int failures = 0;
+    const char* themes[] = {"Dark-Black", "Dark-Dracula", "Light-White", "Light-Warm"};
+    const COLORREF markers[] = {RGB(255, 255, 0), RGB(0, 255, 0), RGB(255, 128, 64)};
+    for (const char* theme : themes) {
+        SetTheme(theme);
+        for (PdfDocumentColorMode mode : {PdfDocumentColorMode::Auto, PdfDocumentColorMode::Light}) {
+            SetPdfDocumentColorMode(mode);
+            COLORREF background;
+            COLORREF text = ThemePageRenderColors(background, true);
+            u8 tr, tg, tb, br, bg, bb;
+            UnpackColor(text, tr, tg, tb);
+            UnpackColor(background, br, bg, bb);
+            bool lightText = tr + tg + tb > br + bg + bb;
+            for (COLORREF marker : markers) {
+                u8 mr, mg, mb;
+                UnpackColor(marker, mr, mg, mb);
+                for (int opacity : {0, 50, 100}) {
+                    HBITMAP bitmap = CreateMemoryBitmap(Size(258, 3));
+                    HDC dc = CreateCompatibleDC(nullptr);
+                    HGDIOBJ previous = SelectObject(dc, bitmap);
+                    COLORREF sentinel = RGB(7, 23, 41);
+                    SetPixelV(dc, 0, 1, sentinel);
+                    SetPixelV(dc, 1, 0, sentinel);
+                    for (int coverage = 0; coverage <= 255; coverage++) {
+                        int r = (br * (255 - coverage) + tr * coverage + 127) / 255;
+                        int g = (bg * (255 - coverage) + tg * coverage + 127) / 255;
+                        int b = (bb * (255 - coverage) + tb * coverage + 127) / 255;
+                        SetPixelV(dc, coverage + 1, 1, RGB(r, g, b));
+                    }
+                    Vec<Rect> rects;
+                    rects.Append(Rect(-20, -20, 400, 40));
+                    PaintTextMarkupOverlay(dc, Rect(1, 1, 256, 1), AnnotationType::Highlight, marker, rects, opacity);
+                    for (int coverage = 0; coverage <= 255; coverage++) {
+                        COLORREF actual = GetPixel(dc, coverage + 1, 1);
+                        int paper[] = {br, bg, bb};
+                        int ink[] = {tr, tg, tb};
+                        int color[] = {mr, mg, mb};
+                        int result[] = {GetRValue(actual), GetGValue(actual), GetBValue(actual)};
+                        for (int k = 0; k < 3; k++) {
+                            int source = (paper[k] * (255 - coverage) + ink[k] * coverage + 127) / 255;
+                            int marked =
+                                lightText ? (color[k] * (255 - coverage) + 127) / 255 : (color[k] * source + 127) / 255;
+                            int expected = source + (marked - source) * opacity / 100;
+                            if (abs(result[k] - expected) > 2) {
+                                failures++;
+                            }
+                        }
+                    }
+                    if (GetPixel(dc, 0, 1) != sentinel || GetPixel(dc, 1, 0) != sentinel) {
+                        failures++;
+                    }
+                    SelectObject(dc, previous);
+                    DeleteObject(bitmap);
+                    DeleteDC(dc);
+                }
+            }
+        }
+    }
+    // Corners stay clear while the top edge and side centers remain flat.
+    SetTheme("Dark-Black");
+    SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
+    HBITMAP shapeBitmap = CreateMemoryBitmap(Size(200, 60));
+    HDC shapeDc = CreateCompatibleDC(nullptr);
+    HGDIOBJ previous = SelectObject(shapeDc, shapeBitmap);
+    PatBlt(shapeDc, 0, 0, 200, 60, BLACKNESS);
+    Vec<Rect> shapeRects;
+    shapeRects.Append(Rect(10, 10, 180, 40));
+    PaintTextMarkupOverlay(shapeDc, Rect(0, 0, 200, 60), AnnotationType::Highlight, RGB(255, 255, 0), shapeRects);
+    if (GetPixel(shapeDc, 10, 10) != RGB(0, 0, 0) || GetPixel(shapeDc, 189, 49) != RGB(0, 0, 0) ||
+        GetPixel(shapeDc, 100, 10) != RGB(255, 255, 0) || GetPixel(shapeDc, 10, 30) != RGB(255, 255, 0)) {
+        failures++;
+    }
+    SelectObject(shapeDc, previous);
+    DeleteObject(shapeBitmap);
+    DeleteDC(shapeDc);
+    printf("Text markup overlay: %d failures\n", failures);
+    fflush(stdout);
+    ExitProcess(failures ? 1 : 0);
+}
+
 void TestRenderPage(const Flags& i) {
     if (i.showConsole) {
         RedirectIOToConsole();
+    }
+    if (getenv("SUMATRA_TEST_TEXT_MARKUP")) {
+        TestTextMarkupOverlay();
+        return;
+    }
+    if (getenv("SUMATRA_TEST_AI_CHAT")) {
+        bool ok = TestAskAiChatLayout();
+        printf("AI chat layout: %s\n", ok ? "PASS" : "FAIL");
+        fflush(stdout);
+        ExitProcess(ok ? 0 : 1);
     }
 
     FILE* bench = fopen("c:\\src\\sumatrapdf\\out\\dbg64\\render_bench.txt", "w");
@@ -174,7 +271,8 @@ void TestRenderPage(const Flags& i) {
     if (getenv("SUMATRA_DUMP_RENDER_BMP") || getenv("SUMATRA_DUMP_RENDER_TGA")) {
         SetTheme("Light");
     } else if (getenv("SUMATRA_DUMP_DARK_BMP")) {
-        SetTheme("Dark-Dracula");
+        const char* dumpTheme = getenv("SUMATRA_DUMP_DARK_THEME");
+        SetTheme(dumpTheme && dumpTheme[0] ? dumpTheme : "Dark-Dracula");
         SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
         // Default Tone (soft-mask diagrams). SUMATRA_DUMP_IMAGE_DARK=auto|original for cutout checks.
         PdfImageDarkStrategy dumpImg = PdfImageDarkStrategy::Tone;

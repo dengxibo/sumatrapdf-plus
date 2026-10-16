@@ -2,6 +2,29 @@
 
 ## next
 
+## 3.7.58 (2026-10-16)
+
+- 启动还原会话时跳过不存在的文件，避免生成载入失败的标签页。
+  Skip missing files when restoring a session instead of opening failed tabs.
+
+- 修复 AI 流式回答时对话区与滚动条闪动；更新文本时保留阅读位置和选区，避免反复重排整个侧栏。
+  Stabilize streamed AI replies and scrollbar geometry while preserving the reading position and selection.
+
+- 优化 AI 对话排版：等待提示改用小号正体，去掉问题的逐行灰底，调整正文字号、消息间距和输入框留白。
+  Refine AI chat typography, use a compact upright waiting status, remove striped question backgrounds, and improve message and composer spacing.
+
+- 目录编辑恢复统一的展开/折叠箭头，简化页码框，并恢复较宽的保存和取消按钮。
+  Restore consistent TOC editing chevrons, quieter page fields, and wider Save/Cancel buttons.
+
+- PDF 和 EPUB 的高亮显示统一为小圆角矩形，替代胶囊形两端。
+  Display PDF and EPUB highlights as subtle rounded rectangles instead of capsule-shaped bands.
+
+- EPUB 暗黑模式高亮改为彩色背景、深色文字，与 PDF 保持一致。
+  Match PDF highlights in dark EPUBs with colored backgrounds and dark text.
+
+- 修复暗黑模式下 PDF 高亮文字锯齿、图片原色模式下高亮变黑，以及标注被反色或丢失的问题。
+  Preserve PDF annotation colors and native highlight text antialiasing across dark image modes, including scanned pages.
+
 ## 3.7.57 (2026-10-15)
 
 - 优化 AI 对话侧栏滚动条和四主题切换，修复亮边残留；提供独立复制菜单和可安全取消生成的新对话功能。

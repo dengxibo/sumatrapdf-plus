@@ -89,8 +89,8 @@ void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORR
 // Find highlights: alpha overlay in light mode; marker-style (yellow band, dark text) in dark mode.
 void PaintFindMatchHighlightRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, u8 alpha);
 
-// Text selection / highlight: multiply blend with page pixels (MuPDF/Acrobat-style).
-void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity = 100);
+// Text markup: Multiply on light paper; colored band with dark text on dark paper.
+void PaintHighlightRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity = 100);
 void PaintSelection(MainWindow* win, HDC hdc);
 void UpdateTextSelection(MainWindow* win, bool select = true);
 // Rebuild text selection after relayout (e.g. theme/document color change) by

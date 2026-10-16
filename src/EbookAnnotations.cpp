@@ -2890,7 +2890,7 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
 }
 
 // Match MuPDF/Acrobat markup appearance (pdf-appearance.c):
-// highlight: Multiply blend
+// highlight: Multiply on light paper, colored band with dark text on dark paper
 // underline: line at 1/7 of height from bottom, thickness h/16
 // strike-out: line at 3/7 of height from bottom, thickness h/16
 // squiggly: zigzag from baseline with amplitude h/7, step h/7, thickness h/16
@@ -2900,7 +2900,7 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
         return;
     }
     if (type == AnnotationType::Highlight) {
-        PaintMultiplyRectangles(hdc, canvasRc, screenRects, color, opacity);
+        PaintHighlightRectangles(hdc, canvasRc, screenRects, color, opacity);
         return;
     }
 

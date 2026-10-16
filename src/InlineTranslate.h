@@ -50,3 +50,6 @@ void InlineTranslateRestorePrefsSecretsAfterSave(GlobalPrefs* prefs, char* plain
 
 // Refresh credentials/defaults after saving the shared AI settings, preserving messages.
 void RefreshAskAiSettings();
+
+// Offline RichEdit rendering regression; does not contact an AI provider.
+bool TestAskAiChatLayout();

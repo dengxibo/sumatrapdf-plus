@@ -2125,8 +2125,8 @@ static fz_pixmap* FzConvertPixmap2(fz_context* ctx, fz_pixmap* pix, fz_colorspac
     return cvt;
 }
 
-static RenderedBitmap* NewRenderedFzPixmap(fz_context* ctx, fz_pixmap* pixmap) {
-    if (pixmap->n == 4 && fz_colorspace_is_rgb(ctx, pixmap->colorspace)) {
+static RenderedBitmap* NewRenderedFzPixmap(fz_context* ctx, fz_pixmap* pixmap, bool allowPalette = true) {
+    if (allowPalette && pixmap->n == 4 && fz_colorspace_is_rgb(ctx, pixmap->colorspace)) {
         RenderedBitmap* res = TryRenderAsPaletteImage(pixmap);
         if (res) {
             return res;
@@ -9164,18 +9164,127 @@ RectF EngineMupdf::PageMediabox(int pageNo) {
     return cached;
 }
 
+static bool PdfAnnotKeptInOriginalColor(fz_context* ctx, pdf_annot* annot);
+
+// Clip the native highlight appearance to a subtle rounded text quad. This
+// also updates the display of existing capsule-shaped AP streams without
+// changing the saved PDF or discarding their colors and transparency.
+static void RunPdfAnnotWithHighlightShape(fz_context* ctx, pdf_annot* annot, fz_device* dev, fz_cookie* cookie) {
+    if (pdf_annot_type(ctx, annot) != PDF_ANNOT_HIGHLIGHT || !pdf_annot_has_quad_points(ctx, annot) ||
+        pdf_annot_quad_point_count(ctx, annot) == 0) {
+        pdf_run_annot(ctx, annot, dev, fz_identity, cookie);
+        return;
+    }
+    fz_path* path = nullptr;
+    bool clipped = false;
+    fz_var(path);
+    fz_var(clipped);
+    fz_try(ctx) {
+        path = fz_new_path(ctx);
+        int count = pdf_annot_quad_point_count(ctx, annot);
+        auto distance = [](fz_point a, fz_point b) { return hypotf(a.x - b.x, a.y - b.y); };
+        for (int i = 0; i < count; i++) {
+            fz_quad q = pdf_annot_quad_point(ctx, annot, i);
+            fz_point corners[] = {q.ul, q.ur, q.lr, q.ll};
+            float height = distance(q.ul, q.ll);
+            float radius = height * 0.1f;
+            float lengths[4];
+            for (int k = 0; k < 4; k++) {
+                lengths[k] = distance(corners[k], corners[(k + 1) % 4]);
+                radius = std::min(radius, lengths[k] * 0.5f);
+            }
+            if (radius <= 0.f) {
+                continue;
+            }
+            for (int k = 0; k < 4; k++) {
+                fz_point corner = corners[k];
+                fz_point prev = corners[(k + 3) % 4];
+                fz_point next = corners[(k + 1) % 4];
+                float before = radius / lengths[(k + 3) % 4];
+                float after = radius / lengths[k];
+                fz_point a =
+                    fz_make_point(corner.x + (prev.x - corner.x) * before, corner.y + (prev.y - corner.y) * before);
+                fz_point b =
+                    fz_make_point(corner.x + (next.x - corner.x) * after, corner.y + (next.y - corner.y) * after);
+                if (k == 0) {
+                    fz_moveto(ctx, path, a.x, a.y);
+                } else {
+                    fz_lineto(ctx, path, a.x, a.y);
+                }
+                fz_quadto(ctx, path, corner.x, corner.y, b.x, b.y);
+            }
+            fz_closepath(ctx, path);
+        }
+        fz_clip_path(ctx, dev, path, 0, fz_identity, fz_infinite_rect);
+        clipped = true;
+        pdf_run_annot(ctx, annot, dev, fz_identity, cookie);
+    }
+    fz_always(ctx) {
+        if (clipped) {
+            fz_pop_clip(ctx, dev);
+        }
+        fz_drop_path(ctx, path);
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+}
+
+static void RunPdfPageWithHighlightShape(fz_context* ctx, pdf_page* page, fz_device* dev, const char* usage,
+                                         fz_cookie* cookie) {
+    pdf_update_page(ctx, page);
+    pdf_run_page_contents_with_usage(ctx, page, dev, fz_identity, usage, cookie);
+    for (pdf_annot* annot = pdf_first_annot(ctx, page); annot; annot = pdf_next_annot(ctx, annot)) {
+        if (cookie && cookie->abort) {
+            break;
+        }
+        RunPdfAnnotWithHighlightShape(ctx, annot, dev, cookie);
+    }
+    pdf_run_page_widgets_with_usage(ctx, page, dev, fz_identity, usage, cookie);
+}
+
+// Colored marks bypass page recoloring and binarization, then replay once.
+static void RunPdfPageWithoutKeptAnnots(fz_context* ctx, pdf_page* page, fz_device* dev, const char* usage,
+                                        fz_cookie* cookie) {
+    pdf_update_page(ctx, page);
+    pdf_run_page_contents_with_usage(ctx, page, dev, fz_identity, usage, cookie);
+    for (pdf_annot* annot = pdf_first_annot(ctx, page); annot; annot = pdf_next_annot(ctx, annot)) {
+        if (cookie && cookie->abort) {
+            break;
+        }
+        if (!PdfAnnotKeptInOriginalColor(ctx, annot)) {
+            pdf_run_annot(ctx, annot, dev, fz_identity, cookie);
+        }
+    }
+    pdf_run_page_widgets_with_usage(ctx, page, dev, fz_identity, usage, cookie);
+}
+
 // returns a kept reference to the cached "View" display list for the page,
 // building+caching it on first call. Caller must fz_drop_display_list when done.
-// must be called with pi->renderLock held (this both protects pi->displayList
-// and serializes the page-running done by fz_new_display_list_from_page).
+// Excludes marks replayed in their original colors. Caller holds renderLock.
 static fz_display_list* GetOrBuildPageDisplayList(FzPageInfo* pi, fz_context* ctx) {
     if (!pi->displayList) {
         fz_display_list* list = nullptr;
+        fz_device* dev = nullptr;
+        fz_var(list);
+        fz_var(dev);
         fz_try(ctx) {
-            list = fz_new_display_list_from_page(ctx, pi->page);
+            pdf_page* page = pdf_page_from_fz_page(ctx, pi->page);
+            if (page) {
+                list = fz_new_display_list(ctx, fz_bound_page(ctx, pi->page));
+                dev = fz_new_list_device(ctx, list);
+                RunPdfPageWithoutKeptAnnots(ctx, page, dev, "View", nullptr);
+                fz_close_device(ctx, dev);
+            } else {
+                list = fz_new_display_list_from_page(ctx, pi->page);
+            }
+        }
+        fz_always(ctx) {
+            fz_drop_device(ctx, dev);
         }
         fz_catch(ctx) {
             fz_report_error(ctx);
+            fz_drop_display_list(ctx, list);
             list = nullptr;
         }
         pi->displayList = list;
@@ -9418,10 +9527,6 @@ static bool PdfAnnotRectCoversPage(fz_irect r, int w, int h) {
     return area * 2 > page;
 }
 
-static int DarkAnnotLum(int r, int g, int b) {
-    return (r * 54 + g * 183 + b * 19) >> 8;
-}
-
 static void ThemeAnnotColors(u8* textR, u8* textG, u8* textB, u8* bgR, u8* bgG, u8* bgB) {
     COLORREF bg = 0;
     COLORREF text = ThemePageRenderColors(bg, true);
@@ -9457,204 +9562,53 @@ static void MapFreeTextAppearanceRgb(u8 r, u8 g, u8 b, u8 tr, u8 tg, u8 tb, u8 b
     *outB = (u8)mapChannel(b, tb, bb);
 }
 
-// 0 paints the marker. 255 paints near-black ink.
-// White/gray text is neutral and light. Multiply of that text onto yellow is the
-// same hue as the marker, only darker — a light-page census then multiplies again
-// and the glyphs stay pale yellow.
-static int HighlightLightMarkerGlyph(int r, int g, int b, int markerLum) {
-    int maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
-    int minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
-    int chroma = maxC - minC;
-    int lum = DarkAnnotLum(r, g, b);
-    if (chroma < 42 && lum > 80) {
-        int t = lum - 80;
-        if (t > 160) {
-            t = 160;
-        }
-        return t * 255 / 160;
-    }
-    int drop = markerLum - lum;
-    if (chroma >= 42 && drop > 6) {
-        int t = drop - 6;
-        if (t > 18) {
-            t = 18;
-        }
-        return t * 255 / 18;
-    }
-    return 0;
-}
-
-// Warm follow-theme keeps dark type on cream paper. Dark themes invert that,
-// so the type is the light pixels. ThemePageRenderColors is the same pair
-// UpdateBitmapColors uses.
-static bool HighlightPageTextIsLight() {
-    COLORREF bg = 0;
-    COLORREF text = ThemePageRenderColors(bg, true);
-    u8 tr, tg, tb, br, bgg, bb;
-    UnpackColor(text, tr, tg, tb);
-    UnpackColor(bg, br, bgg, bb);
-    return (int)tr + (int)tg + (int)tb > (int)br + (int)bgg + (int)bb;
-}
-
-// Light paper: PDF Multiply, so a yellow mark stays yellow and the glyphs stay dark.
-// A dark page cannot Multiply (yellow on black turns olive). Paint the mark's own
-// color, and draw the glyphs dark so they stay readable on that bright color.
-static void PaintHighlightDeviceRect(fz_pixmap* dest, fz_irect r, u8 hr, u8 hg, u8 hb, float opacity) {
-    if (!dest || !dest->samples || dest->n < 3 || opacity <= 0.f) {
+// The real appearance supplies shape, opacity and premultiplied marker color.
+// Multiply it against the original light page to retain full glyph AA, instead
+// of guessing glyph coverage from sharpened/recolored dark pixels.
+static void PaintDarkHighlightAnnot(fz_context* ctx, pdf_annot* annot, fz_matrix ctm, fz_pixmap* original,
+                                    fz_pixmap* dest) {
+    if (!ctx || !annot || !original || !dest || original->n < 3 || dest->n < 3) {
         return;
     }
-    fz_irect box = fz_make_irect(dest->x, dest->y, dest->x + dest->w, dest->y + dest->h);
-    r = fz_intersect_irect(r, box);
-    if (fz_is_empty_irect(r)) {
-        return;
-    }
-    int op = (int)(opacity * 255.f + 0.5f);
-    if (op < 1) {
-        return;
-    }
-    if (op > 255) {
-        op = 255;
-    }
-    int n = dest->n;
-    int markerLum = DarkAnnotLum(hr, hg, hb);
-    // A yellow band is light even on a dark page. Counting those pixels says
-    // "light paper" and Multiply then leaves the type pale yellow.
-    // Warm follow-theme is the other way around: the type stays dark. Treating
-    // every light pixel as a glyph paints the dark cores yellow and the lighter
-    // fringe black, so the letters look hollow.
-    bool lightMarker = markerLum > 140;
-    bool glyphsAreLight = lightMarker && HighlightPageTextIsLight();
-    int ink = glyphsAreLight ? 16 : 245;
-    int lightN = 0;
-    int darkN = 0;
-    if (!lightMarker) {
-        for (int y = r.y0; y < r.y1; y++) {
-            int py = y - dest->y;
-            if (py < 0 || py >= dest->h) {
-                continue;
-            }
-            u8* row = dest->samples + (size_t)py * (size_t)dest->stride;
-            for (int x = r.x0; x < r.x1; x++) {
-                int px = x - dest->x;
-                if (px < 0 || px >= dest->w) {
-                    continue;
-                }
-                u8* dp = row + (size_t)px * (size_t)n;
-                int lum = DarkAnnotLum(dp[0], dp[1], dp[2]);
-                if (lum >= 180) {
-                    lightN++;
-                } else if (lum <= 70) {
-                    darkN++;
-                }
-            }
-        }
-    }
-    bool darkPage = glyphsAreLight || darkN > lightN;
-    for (int y = r.y0; y < r.y1; y++) {
-        int py = y - dest->y;
-        if (py < 0 || py >= dest->h) {
-            continue;
-        }
-        u8* row = dest->samples + (size_t)py * (size_t)dest->stride;
-        for (int x = r.x0; x < r.x1; x++) {
-            int px = x - dest->x;
-            if (px < 0 || px >= dest->w) {
-                continue;
-            }
-            u8* dp = row + (size_t)px * (size_t)n;
-            int outR;
-            int outG;
-            int outB;
-            if (glyphsAreLight) {
-                int glyph = HighlightLightMarkerGlyph(dp[0], dp[1], dp[2], markerLum);
-                outR = (int)hr + (ink - (int)hr) * glyph / 255;
-                outG = (int)hg + (ink - (int)hg) * glyph / 255;
-                outB = (int)hb + (ink - (int)hb) * glyph / 255;
-            } else if (!darkPage) {
-                outR = (int)dp[0] * (int)hr / 255;
-                outG = (int)dp[1] * (int)hg / 255;
-                outB = (int)dp[2] * (int)hb / 255;
-            } else {
-                int lum = DarkAnnotLum(dp[0], dp[1], dp[2]);
-                int glyph = lum - 40;
-                if (glyph < 0) {
-                    glyph = 0;
-                }
-                if (glyph > 160) {
-                    glyph = 160;
-                }
-                glyph = glyph * 255 / 160;
-                outR = (int)hr + (ink - (int)hr) * glyph / 255;
-                outG = (int)hg + (ink - (int)hg) * glyph / 255;
-                outB = (int)hb + (ink - (int)hb) * glyph / 255;
-            }
-            dp[0] = (u8)((int)dp[0] + (outR - (int)dp[0]) * op / 255);
-            dp[1] = (u8)((int)dp[1] + (outG - (int)dp[1]) * op / 255);
-            dp[2] = (u8)((int)dp[2] + (outB - (int)dp[2]) * op / 255);
-        }
-    }
-}
-
-static void PaintDarkHighlightAnnot(fz_context* ctx, pdf_annot* annot, fz_matrix ctm, fz_pixmap* dest) {
-    if (!ctx || !annot || !dest) {
-        return;
-    }
-    int n = 0;
-    float col[4] = {1.f, 1.f, 0.f, 0.f};
-    float opacity = 1.f;
-    int nq = 0;
-    bool quads = false;
+    fz_pixmap* mark = nullptr;
+    fz_device* dev = nullptr;
+    fz_var(mark);
+    fz_var(dev);
     fz_try(ctx) {
-        pdf_annot_color(ctx, annot, &n, col);
-        opacity = pdf_annot_opacity(ctx, annot);
-        quads = pdf_annot_has_quad_points(ctx, annot) != 0;
-        if (quads) {
-            nq = pdf_annot_quad_point_count(ctx, annot);
+        fz_irect box = fz_make_irect(dest->x, dest->y, dest->x + dest->w, dest->y + dest->h);
+        fz_irect sourceBox =
+            fz_make_irect(original->x, original->y, original->x + original->w, original->y + original->h);
+        fz_irect bounds = fz_round_rect(fz_transform_rect(pdf_bound_annot(ctx, annot), ctm));
+        bounds = fz_intersect_irect(fz_intersect_irect(fz_expand_irect(bounds, 1), box), sourceBox);
+        if (!fz_is_empty_irect(bounds)) {
+            mark = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), bounds, nullptr, 1);
+            fz_clear_pixmap(ctx, mark);
+            dev = fz_new_draw_device(ctx, ctm, mark);
+            RunPdfAnnotWithHighlightShape(ctx, annot, dev, nullptr);
+            fz_close_device(ctx, dev);
+            for (int y = bounds.y0; y < bounds.y1; y++) {
+                const u8* mp = mark->samples + (size_t)(y - mark->y) * mark->stride;
+                const u8* sp = original->samples + (size_t)(y - original->y) * original->stride +
+                               (size_t)(bounds.x0 - original->x) * original->n;
+                u8* dp = dest->samples + (size_t)(y - dest->y) * dest->stride + (size_t)(bounds.x0 - dest->x) * dest->n;
+                for (int x = bounds.x0; x < bounds.x1; x++) {
+                    int alpha = mp[3];
+                    for (int k = 0; k < 3; k++) {
+                        dp[k] = (u8)((mp[k] * sp[k] + dp[k] * (255 - alpha) + 127) / 255);
+                    }
+                    mp += mark->n;
+                    sp += original->n;
+                    dp += dest->n;
+                }
+            }
         }
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, dev);
+        fz_drop_pixmap(ctx, mark);
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
-        return;
-    }
-    u8 hr = 255, hg = 255, hb = 0;
-    if (n >= 3) {
-        hr = (u8)(col[0] * 255.f + 0.5f);
-        hg = (u8)(col[1] * 255.f + 0.5f);
-        hb = (u8)(col[2] * 255.f + 0.5f);
-    } else if (n == 1) {
-        hr = hg = hb = (u8)(col[0] * 255.f + 0.5f);
-    }
-    if (nq < 1) {
-        fz_rect pageRect = fz_empty_rect;
-        fz_try(ctx) {
-            pageRect = pdf_bound_annot(ctx, annot);
-        }
-        fz_catch(ctx) {
-            fz_report_error(ctx);
-            return;
-        }
-        fz_rect devRect = fz_transform_rect(pageRect, ctm);
-        PaintHighlightDeviceRect(dest, fz_round_rect(devRect), hr, hg, hb, opacity);
-        return;
-    }
-    for (int i = 0; i < nq; i++) {
-        fz_quad q{};
-        bool ok = false;
-        fz_try(ctx) {
-            q = pdf_annot_quad_point(ctx, annot, i);
-            ok = true;
-        }
-        fz_catch(ctx) {
-            fz_report_error(ctx);
-        }
-        if (!ok) {
-            continue;
-        }
-        q.ul = fz_transform_point(q.ul, ctm);
-        q.ur = fz_transform_point(q.ur, ctm);
-        q.ll = fz_transform_point(q.ll, ctm);
-        q.lr = fz_transform_point(q.lr, ctm);
-        PaintHighlightDeviceRect(dest, fz_round_rect(fz_rect_from_quad(q)), hr, hg, hb, opacity);
     }
 }
 
@@ -9738,7 +9692,8 @@ static void PaintDarkFreeTextAnnot(fz_context* ctx, pdf_annot* annot, fz_matrix 
 // Draw kept annotations in their own colors on top of the dark page. Strokes
 // paint only the line. Highlight and free text are handled apart from Multiply
 // and black type, which both disappear into a dark page.
-static void ReplayKeptPdfAnnots(fz_context* ctx, fz_page* page, fz_matrix ctm, fz_pixmap* dest, fz_cookie* cookie) {
+static void ReplayKeptPdfAnnots(fz_context* ctx, fz_page* page, fz_matrix ctm, fz_pixmap* original, fz_pixmap* dest,
+                                fz_cookie* cookie) {
     pdf_page* pdfpage = page ? pdf_page_from_fz_page(ctx, page) : nullptr;
     if (!ctx || !pdfpage || !dest) {
         return;
@@ -9777,7 +9732,7 @@ static void ReplayKeptPdfAnnots(fz_context* ctx, fz_page* page, fz_matrix ctm, f
             fz_report_error(ctx);
         }
         if (tp == PDF_ANNOT_HIGHLIGHT) {
-            PaintDarkHighlightAnnot(ctx, annot, ctm, dest);
+            PaintDarkHighlightAnnot(ctx, annot, ctm, original, dest);
             continue;
         }
         if (tp == PDF_ANNOT_FREE_TEXT) {
@@ -9804,7 +9759,7 @@ static void ReplayKeptPdfAnnots(fz_context* ctx, fz_page* page, fz_matrix ctm, f
 
 // original was drawn in RGB before the dark remap. hbmp is the BGRA copy that
 // UpdateBitmapColors already recolored. Marks are drawn onto that dark copy.
-// The light pixmap is only used to recolor handwritten signatures.
+// The light pixmap supplies highlight glyph coverage and handwritten signatures.
 static void RestorePdfAnnotOriginalColorsOnBitmap(fz_context* ctx, fz_page* page, fz_matrix ctm, fz_pixmap* original,
                                                   HBITMAP hbmp) {
     if (!ctx || !page || !original || !original->samples || !hbmp || original->n < 3) {
@@ -9816,7 +9771,8 @@ static void RestorePdfAnnotOriginalColorsOnBitmap(fz_context* ctx, fz_page* page
     if (!GetObject(hbmp, sizeof(ds), &ds) || !ds.dsBm.bmBits || ds.dsBm.bmBitsPixel != 32) {
         return;
     }
-    bool topDown = ds.dsBmih.biHeight < 0;
+    // All callers pass NewRenderedFzPixmap's top-down DIB. GetObject may report
+    // a positive biHeight even for that DIB; using its sign mirrors the marks.
     int bw = ds.dsBm.bmWidth;
     int bh = ds.dsBm.bmHeight;
     int dstStride = ds.dsBm.bmWidthBytes;
@@ -9832,7 +9788,7 @@ static void RestorePdfAnnotOriginalColorsOnBitmap(fz_context* ctx, fz_page* page
         fz_try(ctx) {
             dark = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), box, nullptr, 1);
             for (int py = 0; py < original->h; py++) {
-                int by = topDown ? py : (bh - 1 - py);
+                int by = py;
                 u8* srow = bits + (size_t)by * (size_t)dstStride;
                 u8* drow = dark->samples + (size_t)py * (size_t)dark->stride;
                 for (int px = 0; px < original->w; px++) {
@@ -9844,9 +9800,9 @@ static void RestorePdfAnnotOriginalColorsOnBitmap(fz_context* ctx, fz_page* page
                     dp[3] = 255;
                 }
             }
-            ReplayKeptPdfAnnots(ctx, page, ctm, dark, nullptr);
+            ReplayKeptPdfAnnots(ctx, page, ctm, original, dark, nullptr);
             for (int py = 0; py < original->h; py++) {
-                int by = topDown ? py : (bh - 1 - py);
+                int by = py;
                 u8* srow = dark->samples + (size_t)py * (size_t)dark->stride;
                 u8* drow = bits + (size_t)by * (size_t)dstStride;
                 for (int px = 0; px < original->w; px++) {
@@ -9877,7 +9833,7 @@ static void RestorePdfAnnotOriginalColorsOnBitmap(fz_context* ctx, fz_page* page
         }
         for (int y = r.y0; y < r.y1; y++) {
             int py = y - original->y;
-            int by = topDown ? py : (bh - 1 - py);
+            int by = py;
             if (py < 0 || py >= original->h || by < 0 || by >= bh) {
                 continue;
             }
@@ -9902,7 +9858,7 @@ static void RestorePdfAnnotOriginalColorsOnPixmap(fz_context* ctx, fz_page* page
     if (!ctx || !page || !original || !dark) {
         return;
     }
-    ReplayKeptPdfAnnots(ctx, page, ctm, dark, nullptr);
+    ReplayKeptPdfAnnots(ctx, page, ctm, original, dark, nullptr);
     Vec<fz_irect> signatures;
     AppendPdfAnnotDeviceRects(ctx, page, ctm, signatures, true);
     u8 tr, tg, tb, br, bgg, bb;
@@ -9939,8 +9895,8 @@ static void RestorePdfAnnotOriginalColorsOnPixmap(fz_context* ctx, fz_page* page
     }
 }
 
-// Plain replay of the same display list (page + annotations) for the regions we
-// paste back. Object-level dark mode has already recolored `dark` in place.
+// Render a light backdrop without kept marks. Object-level dark mode has
+// already recolored `dark`; the marks bypass that pass and are composed now.
 static void RestorePdfAnnotOriginalColorsFromPage(fz_context* ctx, fz_page* page, pdf_page* pdfpage, fz_matrix ctm,
                                                   fz_irect ibounds, fz_pixmap* dark, const char* usage,
                                                   fz_cookie* cookie) {
@@ -9955,7 +9911,7 @@ static void RestorePdfAnnotOriginalColorsFromPage(fz_context* ctx, fz_page* page
         original = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), ibounds, nullptr, 1);
         fz_clear_pixmap_with_value(ctx, original, 0xff);
         dev = fz_new_draw_device(ctx, ctm, original);
-        pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage ? usage : "View", cookie);
+        RunPdfPageWithoutKeptAnnots(ctx, pdfpage, dev, usage ? usage : "View", cookie);
         fz_close_device(ctx, dev);
         dev = nullptr;
         RestorePdfAnnotOriginalColorsOnPixmap(ctx, page, ctm, original, dark);
@@ -10063,7 +10019,12 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
                 pix = bin;
             }
         }
-        bitmap = NewRenderedFzPixmap(ctx, pix);
+        if (textScanBinarize && !engine->hideAnnotations) {
+            RestorePdfAnnotOriginalColorsFromPage(ctx, page, pdf_page_from_fz_page(ctx, page), ctm, ibounds, pix,
+                                                  "View", nullptr);
+        }
+        bool allowPalette = engine->hideAnnotations || !pdf_first_annot(ctx, pdf_page_from_fz_page(ctx, page));
+        bitmap = NewRenderedFzPixmap(ctx, pix, allowPalette);
         if (bitmap && !textScanBinarize) {
             Vec<Rect> skipRects;
             Vec<Rect>* skipPtr = nullptr;
@@ -12110,8 +12071,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     const DarkModeProfile* darkProfileForPath = args.darkProfile;
     bool followDirectPath = DarkModeProfileUsesFollowThemeDirect(darkProfileForPath);
     bool followV2Path = DarkModeProfileUsesFollowThemeV2(darkProfileForPath);
-    // Those display lists include annotations. A capture that asked to hide
-    // them (the free-text editor backdrop) must take the contents-only path
+    // Those display lists include the annotations that follow page colors.
+    // A capture that asked to hide them must take the contents-only path
     // below, or the old glyphs stay under the caret and smear on edit.
     bool followThemeBitmapDoc =
         pdfdoc && followThemeDocBitmapRecolor == 1 && !InterlockedCompareExchange(&pdfFollowThemeProbePending, 0, 0);
@@ -12212,7 +12173,12 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                         }
                     }
                     JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
-                    bitmap = NewRenderedFzPixmap(ctx, pix);
+                    if (textScanBinarize && !hideAnnotations) {
+                        RestorePdfAnnotOriginalColorsFromPage(ctx, page, pdf_page_from_fz_page(ctx, page), ctm, ibounds,
+                                                              pix, "View", fzcookie);
+                    }
+                    bool allowPalette = hideAnnotations || !pdf_first_annot(ctx, pdf_page_from_fz_page(ctx, page));
+                    bitmap = NewRenderedFzPixmap(ctx, pix, allowPalette);
                     if (bitmap && darkProfile && !textScanBinarize) {
                         Vec<Rect> skipRects;
                         Vec<Rect>* skipPtr = nullptr;
@@ -12331,6 +12297,10 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             if (hideAnnotations) {
                 pdf_run_page_contents_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
                 pdf_run_page_widgets_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
+            } else if (darkProfile) {
+                RunPdfPageWithoutKeptAnnots(ctx, pdfpage, dev, usage, fzcookie);
+            } else if (args.target == RenderTarget::View) {
+                RunPdfPageWithHighlightShape(ctx, pdfpage, dev, usage, fzcookie);
             } else {
                 pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
             }
@@ -12356,10 +12326,11 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     pix = bin;
                 }
             }
-            if (!hideAnnotations && darkProfile && !followBitmapRecolor && !paperScanBinarize) {
+            if (!hideAnnotations && darkProfile && (!followBitmapRecolor || paperScanBinarize)) {
                 RestorePdfAnnotOriginalColorsFromPage(ctx, page, pdfpage, ctm, ibounds, pix, usage, fzcookie);
             }
-            bitmap = NewRenderedFzPixmap(ctx, pix);
+            bool allowPalette = hideAnnotations || !darkProfile || !pdf_first_annot(ctx, pdfpage);
+            bitmap = NewRenderedFzPixmap(ctx, pix, allowPalette);
             if (bitmap && followBitmapRecolor && darkProfile && !paperScanBinarize) {
                 Vec<Rect> skipRects;
                 Vec<Rect>* skipPtr = nullptr;
@@ -12403,7 +12374,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     pdf_run_page_contents_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
                     pdf_run_page_widgets_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
                 } else {
-                    pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
+                    RunPdfPageWithoutKeptAnnots(ctx, pdfpage, dev, usage, fzcookie);
                 }
                 fz_close_device(ctx, dev);
                 dev = nullptr;
@@ -12411,7 +12382,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     PdfCadEnhancePixmap(ctx, pix, zoom, true);
                 }
                 JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
-                bitmap = NewRenderedFzPixmap(ctx, pix);
+                bool allowPalette = hideAnnotations || !pdf_first_annot(ctx, pdfpage);
+                bitmap = NewRenderedFzPixmap(ctx, pix, allowPalette);
                 if (bitmap) {
                     Vec<Rect> skipRects;
                     Vec<Rect>* skipPtr = nullptr;

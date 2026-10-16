@@ -2980,11 +2980,34 @@ static void DrawTocExpandGlyph(HDC hdc, HWND hwnd, HTREEITEM hItem, const RECT& 
     int midY = (rcRow.top + rcRow.bottom) / 2;
     rc.top = midY - sz / 2;
     rc.bottom = rc.top + sz;
-    HTHEME theme = theme::OpenThemeData(hwnd, L"TREEVIEW");
-    if (theme) {
-        theme::DrawThemeBackground(theme, hdc, TVP_GLYPH, expanded ? GLPS_OPENED : GLPS_CLOSED, &rc, nullptr);
-        theme::CloseThemeData(theme);
+    // Use the same open chevrons in editing and reading modes. Theme glyphs
+    // can switch to boxed +/- controls when dialog chrome changes the tree.
+    COLORREF bg = GetPixel(hdc, rc.left, rc.top);
+    if (bg == CLR_INVALID) {
+        bg = ThemeSidebarBackgroundColor();
     }
+    ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(bg));
+    FillRect(hdc, &rc, brush);
+    COLORREF fg = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
+    u8 r, g, b;
+    UnpackColor(fg, r, g, b);
+    float cx = (rc.left + rc.right) * 0.5f;
+    float cy = (rc.top + rc.bottom) * 0.5f;
+    float half = DpiScale(hwnd, 3);
+    Gdiplus::PointF points[3];
+    if (expanded) {
+        points[0] = {cx - half, cy - half * 0.5f};
+        points[1] = {cx, cy + half * 0.5f};
+        points[2] = {cx + half, cy - half * 0.5f};
+    } else {
+        points[0] = {cx - half * 0.5f, cy - half};
+        points[1] = {cx + half * 0.5f, cy};
+        points[2] = {cx - half * 0.5f, cy + half};
+    }
+    Gdiplus::Graphics graphics(hdc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen pen(Gdiplus::Color(255, r, g, b), std::max(1.f, DpiScale(hwnd, 10) / 10.f));
+    graphics.DrawLines(&pen, points, 3);
 }
 
 static COLORREF TocSelectedRowFillColor(HWND) {
@@ -3513,6 +3536,7 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                                          ? TocHotTrackBgColor()
                                          : SidebarBackgroundColor(ev->treeView->bgColor);
                     TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, rowBg);
+                    DrawTocExpandGlyph(cd->hdc, ev->treeView->hwnd, hItem, rcRow);
                 }
             }
             ev->result = CDRF_DODEFAULT;
@@ -3583,6 +3607,7 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                                      ? TocHotTrackBgColor()
                                      : SidebarBackgroundColor(ev->treeView->bgColor);
                 TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, rowBg);
+                DrawTocExpandGlyph(cd->hdc, ev->treeView->hwnd, hItem, rcRow);
             }
         }
         ev->result = CDRF_DODEFAULT;

@@ -449,16 +449,16 @@ static u8 MultiplyChannel(u8 backdrop, u8 highlight) {
     return (u8)(((unsigned)backdrop * highlight + 127) / 255);
 }
 
-void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity) {
+void PaintHighlightRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity) {
     opacity = std::clamp(opacity, 0, 100);
     Rect bounds;
     Vec<Rect> clippedRects;
     for (Rect rect : rects) {
-        rect = rect.Intersect(screenRc);
-        if (rect.IsEmpty()) {
+        Rect clipped = rect.Intersect(screenRc);
+        if (clipped.IsEmpty()) {
             continue;
         }
-        bounds = bounds.IsEmpty() ? rect : bounds.Union(rect);
+        bounds = bounds.IsEmpty() ? clipped : bounds.Union(clipped);
         clippedRects.Append(rect);
     }
     if (bounds.IsEmpty()) {
@@ -493,20 +493,52 @@ void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF 
     UnpackColor(color, hr, hg, hb);
     const u8 highlight[3] = {hb, hg, hr};
 
+    COLORREF pageBg;
+    COLORREF pageText = ThemePageRenderColors(pageBg, true);
+    u8 tr, tg, tb, br, bg, bb;
+    UnpackColor(pageText, tr, tg, tb);
+    UnpackColor(pageBg, br, bg, bb);
+    float textLum = PixelLuminance01(tr, tg, tb);
+    float paperLum = PixelLuminance01(br, bg, bb);
+    bool lightText = textLum > paperLum;
+
     u8* pixels = (u8*)info.dsBm.bmBits;
-    for (Rect rect : clippedRects) {
+    for (Rect originalRect : clippedRects) {
+        Rect rect = originalRect.Intersect(screenRc);
+        float radius = std::min(originalRect.dy * 0.1f, originalRect.dx * 0.5f);
         int xStart = rect.x - bounds.x;
         int yStart = rect.y - bounds.y;
         for (int y = yStart; y < yStart + rect.dy; y++) {
             u8* row = pixels + y * info.dsBm.bmWidthBytes;
             for (int x = xStart; x < xStart + rect.dx; x++) {
                 u8* pixel = row + x * 4;
+                float sx = bounds.x + x - originalRect.x + 0.5f;
+                float sy = bounds.y + y - originalRect.y + 0.5f;
+                float cornerX = radius - std::min(sx, originalRect.dx - sx);
+                float cornerY = radius - std::min(sy, originalRect.dy - sy);
+                float coverage = 1.f;
+                if (cornerX > 0.f && cornerY > 0.f) {
+                    coverage = std::clamp(radius + 0.5f - hypotf(cornerX, cornerY), 0.f, 1.f);
+                }
+                int pixelOpacity = (int)(opacity * coverage + 0.5f);
+                if (lightText) {
+                    // Multiply leaves black paper black and only colors the
+                    // light glyphs. Recover continuous glyph coverage using
+                    // the theme endpoints, then put dark ink on the marker.
+                    float lum = PixelLuminance01(pixel[2], pixel[1], pixel[0]);
+                    float ink = std::clamp((lum - paperLum) / (textLum - paperLum), 0.f, 1.f);
+                    for (int k = 0; k < 3; k++) {
+                        u8 marked = LerpChannel(highlight[k], 0, ink);
+                        pixel[k] = LerpChannel(pixel[k], marked, pixelOpacity / 100.f);
+                    }
+                    continue;
+                }
                 u8 mul = MultiplyChannel(pixel[0], highlight[0]);
-                pixel[0] = (u8)(pixel[0] + (mul - pixel[0]) * opacity / 100);
+                pixel[0] = (u8)(pixel[0] + (mul - pixel[0]) * pixelOpacity / 100);
                 mul = MultiplyChannel(pixel[1], highlight[1]);
-                pixel[1] = (u8)(pixel[1] + (mul - pixel[1]) * opacity / 100);
+                pixel[1] = (u8)(pixel[1] + (mul - pixel[1]) * pixelOpacity / 100);
                 mul = MultiplyChannel(pixel[2], highlight[2]);
-                pixel[2] = (u8)(pixel[2] + (mul - pixel[2]) * opacity / 100);
+                pixel[2] = (u8)(pixel[2] + (mul - pixel[2]) * pixelOpacity / 100);
             }
         }
     }

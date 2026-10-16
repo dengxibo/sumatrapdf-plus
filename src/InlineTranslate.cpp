@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "utils/FileUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 #include "utils/Dpi.h"
@@ -967,7 +968,6 @@ enum RtfColor {
     kRtfMuted = 2,
     kRtfAccent = 3,
     kRtfCodeBg = 4,
-    kRtfUserBg = 5,
 };
 
 enum class MdBlock {
@@ -1390,8 +1390,6 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
     doc.compact = p->docked;
     float codeMix = p->docked ? 0.045f : 0.10f;
     COLORREF codeBg = BlendFloatingPopupColors(ChatContentBg(p), FloatingPopupTextColor(), codeMix);
-    float userLift = p->docked ? 0.04f : (ThemeUsesDarkChrome() ? 0.08f : 0.06f);
-    COLORREF userBg = BlendFloatingPopupColors(ChatContentBg(p), FloatingPopupTextColor(), userLift);
 
     StrBuilder& sb = doc.sb;
     sb.Append("{\\rtf1\\ansi\\deff0\\uc1{\\fonttbl{\\f0\\fnil ");
@@ -1402,10 +1400,9 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
     RtfAppendColorEntry(sb, FloatingPopupMutedTextColor());
     RtfAppendColorEntry(sb, FloatingPopupAccentColor());
     RtfAppendColorEntry(sb, codeBg);
-    RtfAppendColorEntry(sb, userBg);
     sb.AppendFmt("}\\f0\\fs%d\\cf%d ", doc.halfPt, kRtfText);
 
-    int labelFs = std::max(doc.halfPt - (p->docked ? 2 : 0), 14);
+    int labelFs = FontHalfPoints(p->font, dpi);
     int n = stopAtTurn >= 0 ? stopAtTurn : p->turns.Size();
     for (int i = 0; i < n; i++) {
         ChatTurn& t = p->turns[i];
@@ -1415,35 +1412,32 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
         }
         int before = 0;
         if (doc.hasPara) {
-            before = p->docked ? RtfDoc::Tw(12) : doc.GapTw() * 2;
+            before = p->docked ? RtfDoc::Tw(18) : doc.GapTw() * 2;
         }
         doc.Para(0, 0, before, RtfDoc::Tw(2));
-        sb.AppendFmt("{\\fs%d\\cf%d ", labelFs, kRtfMuted);
+        sb.AppendFmt("{\\fs%d\\b\\i0\\cf%d ", labelFs, kRtfMuted);
         const char* label = user ? _TRA("You") : _TRA("AI");
         RtfAppendEscaped(sb, label, label + str::Len(label));
         sb.Append("}");
         const char* text = t.display ? t.display : t.content;
         if (user) {
             doc.Para(RtfDoc::Tw(p->docked ? 2 : 0), 0, RtfDoc::Tw(3), RtfDoc::Tw(4));
-            if (p->docked) {
-                sb.AppendFmt("\\highlight%d ", kRtfUserBg);
-            }
+            // Character highlighting creates ragged stripes after wrapping.
+            // Let spacing and the small role label distinguish each turn.
             RtfAppendEscaped(sb, text, text + str::Len(text));
-            if (p->docked) {
-                sb.Append("\\highlight0 ");
-            }
         } else {
             doc.pendingGap = false;
             RtfAppendMarkdown(doc, text);
         }
     }
     if (stopAtTurn < 0 && p->asking && (p->turns.IsEmpty() || str::IsEmptyOrWhiteSpace(p->turns.Last().content))) {
-        int before = doc.hasPara ? (p->docked ? RtfDoc::Tw(12) : doc.GapTw() * 2) : 0;
+        int before = doc.hasPara ? (p->docked ? RtfDoc::Tw(18) : doc.GapTw() * 2) : 0;
         doc.Para(0, 0, before, RtfDoc::Tw(2));
-        sb.AppendFmt("{\\fs%d\\cf%d ", labelFs, kRtfMuted);
+        // Status is UI text, not an italic paragraph in the reading font.
+        sb.AppendFmt("{\\fs%d\\i0\\b0\\cf%d ", labelFs, kRtfMuted);
         const char* label = _TRA("AI");
         RtfAppendEscaped(sb, label, label + str::Len(label));
-        sb.AppendFmt("}\\par\n\\pard{\\i\\cf%d ", kRtfMuted);
+        sb.Append("  ");
         const char* thinking = _TRA("Thinking…");
         RtfAppendEscaped(sb, thinking, thinking + str::Len(thinking));
         sb.Append("}");
@@ -1492,6 +1486,11 @@ static void RebuildChatView(InlineTranslatePopup* p) {
         SendMessageW(p->hwndChat, EM_SCROLLCARET, 0, 0);
         return;
     }
+    bool wasAdjusting = p->chatAdjustingScroll;
+    p->chatAdjustingScroll = true;
+    defer {
+        p->chatAdjustingScroll = wasAdjusting;
+    };
     POINT saved{};
     CHARRANGE savedSelection{};
     SendMessageW(p->hwndChat, EM_EXGETSEL, 0, (LPARAM)&savedSelection);
@@ -1499,7 +1498,6 @@ static void RebuildChatView(InlineTranslatePopup* p) {
     if (keepPlace) {
         SendMessageW(p->hwndChat, EM_GETSCROLLPOS, 0, (LPARAM)&saved);
     }
-    SendMessageW(p->hwndChat, EM_SETBKGNDCOLOR, 0, (LPARAM)ChatContentBg(p));
     int lastUser = -1;
     for (int i = 0; i < p->turns.Size(); i++) {
         if (str::Eq(p->turns[i].role, "user")) {
@@ -1511,12 +1509,16 @@ static void RebuildChatView(InlineTranslatePopup* p) {
     if (!keepPlace && lastUser > 0) {
         RtfDoc head;
         BuildChatRtf(p, head, lastUser);
-        SetRichTextRtf(p->hwndChat, head.sb.Get());
-        p->chatScrollCp = RichTextLen(p->hwndChat) + 1;
+        HWND scratch = CreateWindowExW(0, MSFTEDIT_CLASS, L"", WS_CHILD | ES_MULTILINE, 0, 0, 0, 0, p->hwnd, nullptr,
+                                       GetModuleHandleW(nullptr), nullptr);
+        if (scratch) {
+            SetRichTextRtf(scratch, head.sb.Get());
+            p->chatScrollCp = RichTextLen(scratch) + 1;
+            DestroyWindow(scratch);
+        }
     }
     RtfDoc doc;
     BuildChatRtf(p, doc, -1);
-    p->chatAdjustingScroll = true;
     SetRichTextRtf(p->hwndChat, doc.sb.Get());
     if (keepPlace) {
         SendMessageW(p->hwndChat, EM_EXSETSEL, 0, (LPARAM)&savedSelection);
@@ -1525,7 +1527,6 @@ static void RebuildChatView(InlineTranslatePopup* p) {
     } else {
         p->chatScrollPending = true;
     }
-    p->chatAdjustingScroll = false;
 }
 
 static void ApplyChatScroll(InlineTranslatePopup* p) {
@@ -1537,6 +1538,22 @@ static void ApplyChatScroll(InlineTranslatePopup* p) {
     int target = (int)SendMessageW(h, EM_EXLINEFROMCHAR, 0, (LPARAM)p->chatScrollCp);
     int first = (int)SendMessageW(h, EM_GETFIRSTVISIBLELINE, 0, 0);
     SendMessageW(h, EM_LINESCROLL, 0, (LPARAM)(target - first));
+}
+
+static void RefreshStreamingChatView(InlineTranslatePopup* p) {
+    HWND chat = p->hwndChat;
+    bool visible = (GetWindowLongPtrW(chat, GWL_STYLE) & WS_VISIBLE) != 0;
+    if (visible) {
+        SendMessageW(chat, WM_SETREDRAW, FALSE, 0);
+    }
+    RebuildChatView(p);
+    ApplyChatScroll(p);
+    if (visible) {
+        SendMessageW(chat, WM_SETREDRAW, TRUE, 0);
+        // Queue one paint after scroll restoration. Do not erase/repaint the
+        // parent, composer or native scrollbar frame for each arriving token.
+        RedrawWindow(chat, nullptr, nullptr, RDW_INVALIDATE);
+    }
 }
 
 static int FontLineHeight(HWND hwnd, HFONT font) {
@@ -1610,6 +1627,11 @@ static void ResizePopupHeight(InlineTranslatePopup* p, int dy) {
 }
 
 static void SyncEditScrollbar(HWND edit, int contentH, int visibleH) {
+    // Docked RichEdit keeps a stable gutter even for a short response. Repeated
+    // hide/show calls recalculate its non-client area while text is streaming.
+    if (GetWindowLongPtrW(edit, GWL_STYLE) & ES_DISABLENOSCROLL) {
+        return;
+    }
     ShowScrollBar(edit, SB_VERT, contentH > visibleH);
 }
 
@@ -1825,8 +1847,8 @@ static void UpdateAskCue(InlineTranslatePopup* p) {
 static void LayoutAskSidebar(InlineTranslatePopup* p) {
     HWND h = p->hwnd;
     Rect rc = ClientRect(h);
-    int padX = Px(h, 12);
-    int padY = Px(h, 8);
+    int padX = Px(h, 14);
+    int padY = Px(h, 10);
     int lineH = FontLineHeight(h, p->font);
     HFONT reading = p->bodyFont ? p->bodyFont : p->font;
     int readLine = FontLineHeight(h, reading);
@@ -1850,8 +1872,8 @@ static void LayoutAskSidebar(InlineTranslatePopup* p) {
     y += Px(h, 10);
 
     int lines = std::max(1, std::min(p->composerLines, 5));
-    int rowPad = Px(h, 8);
-    int rowH = lineH * lines + rowPad;
+    int rowPad = Px(h, 16);
+    int rowH = std::max(lineH * lines + rowPad, Px(h, 40));
     int bottomPad = Px(h, 10);
     int hintH = aiOk ? 0 : std::min(MeasureTextHeight(h, p->font, HintText(p), rc.dx - padX * 2), lineH * 2);
     int bottomH = aiOk ? rowH : hintH;
@@ -1868,10 +1890,11 @@ static void LayoutAskSidebar(InlineTranslatePopup* p) {
         int inset = padX;
         int chatW = std::max(1, rc.dx - inset);
         p->chatRc = Rect(0, y, rc.dx, chatH);
-        int textW = std::max(1, chatW - scrollW - Px(h, 4));
+        int textW = std::max(1, chatW - scrollW - Px(h, 10));
         int textH = p->chatIsRich ? MeasureRichHeight(p->hwndChat, textW)
                                   : MeasureTextHeight(h, reading, ChatDisplayTextTemp(p), textW);
         MoveWindow(p->hwndChat, inset, y, chatW, std::max(1, chatH), TRUE);
+        SendMessageW(p->hwndChat, EM_SETMARGINS, EC_RIGHTMARGIN, MAKELONG(0, Px(h, 10)));
         SyncEditScrollbar(p->hwndChat, textH, chatH);
         ShowWindow(p->hwndChat, SW_SHOWNA);
         ApplyChatScroll(p);
@@ -2588,6 +2611,7 @@ static void ApplyPopupTheme(InlineTranslatePopup* p) {
     } else
         ApplyEditTheme(p->hwndInput, false);
     if (p->chatIsRich) {
+        SendMessageW(p->hwndChat, EM_SETBKGNDCOLOR, 0, (LPARAM)ChatContentBg(p));
         // colors live in the RTF color table
         RebuildChatView(p);
         if (IsWindowVisible(p->hwnd) || p->deferPaint) {
@@ -2892,9 +2916,9 @@ static HFONT CreateTitleFont(HFONT base) {
     return CreateFontIndirectW(&lf);
 }
 
-// Two points larger than the UI font, for the translation and the AI answer.
+// A modest reading step above UI text: one point in the sidebar, two in popups.
 // A fixed step, not a percentage, so a large UI font is not scaled again.
-static HFONT CreateReadingFont(HFONT base, int dpi) {
+static HFONT CreateReadingFont(HFONT base, int dpi, int extraPoints = 2) {
     LOGFONTW lf{};
     if (!base || !GetObjectW(base, sizeof(lf), &lf)) {
         return nullptr;
@@ -2902,7 +2926,7 @@ static HFONT CreateReadingFont(HFONT base, int dpi) {
     if (dpi < 72) {
         dpi = 96;
     }
-    int bump = std::max(MulDiv(2, dpi, 72), 1);
+    int bump = std::max(MulDiv(extraPoints, dpi, 72), 1);
     if (lf.lfHeight < 0) {
         lf.lfHeight -= bump;
     } else if (lf.lfHeight > 0) {
@@ -2928,7 +2952,7 @@ static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi) {
     }
     p->font = GetAppFontForDpi(dpi);
     p->titleFont = CreateTitleFont(p->font);
-    p->bodyFont = CreateReadingFont(p->font, dpi);
+    p->bodyFont = CreateReadingFont(p->font, dpi, p->docked ? 1 : 2);
     HFONT reading = p->bodyFont ? p->bodyFont : p->font;
     if (p->hwndTrans) {
         SendMessageW(p->hwndTrans, WM_SETFONT, (WPARAM)reading, FALSE);
@@ -2942,6 +2966,178 @@ static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi) {
     if (p->chatIsRich && (p->turns.Size() > 0 || p->asking)) {
         RebuildChatView(p);
     }
+}
+
+static bool TestChatStreaming() {
+    HWND parent = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 420, 300, nullptr, nullptr,
+                                  GetModuleHandleW(nullptr), nullptr);
+    if (!parent) return false;
+    defer {
+        DestroyWindow(parent);
+    };
+    HWND chat = CreateWindowExW(0, MSFTEDIT_CLASS, L"",
+                                WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_DISABLENOSCROLL | ES_READONLY,
+                                12, 12, 380, 240, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!chat) return false;
+    SendMessageW(chat, EM_SETTARGETDEVICE, 0, 0);
+    SendMessageW(chat, EM_SHOWSCROLLBAR, SB_HORZ, FALSE);
+    InlineTranslatePopup popup;
+    popup.hwnd = parent;
+    popup.hwndChat = chat;
+    popup.docked = popup.chatIsRich = true;
+    popup.chatFollowTail = false;
+    popup.dpi = 96;
+    popup.font = GetAppFontForDpi(96);
+    popup.bodyFont = CreateReadingFont(popup.font, 96, 1);
+    defer {
+        DeleteObject(popup.bodyFont);
+    };
+    ChatTurn user;
+    user.role = str::Dup("user");
+    user.content = str::Dup("请解释这段文字，并列出要点。");
+    popup.turns.Append(user);
+    ChatTurn assistant;
+    assistant.role = str::Dup("assistant");
+    assistant.content = str::Dup("");
+    popup.turns.Append(assistant);
+    defer {
+        for (auto& turn : popup.turns) turn.Free();
+    };
+    RECT initial{};
+    GetWindowRect(chat, &initial);
+    StrBuilder response;
+    bool ok = true;
+    for (int chunk = 0; chunk < 80; chunk++) {
+        response.Append("流式输出的内容应当保持稳定的阅读位置，不应重新排列整个窗口。\n\n");
+        str::ReplaceWithCopy(&popup.turns.Last().content, response.Get());
+        POINT before{};
+        SendMessageW(chat, EM_GETSCROLLPOS, 0, (LPARAM)&before);
+        SCROLLINFO barBefore{sizeof(barBefore), SIF_POS};
+        GetScrollInfo(chat, SB_VERT, &barBefore);
+        CHARRANGE selection{};
+        SendMessageW(chat, EM_EXGETSEL, 0, (LPARAM)&selection);
+        RefreshStreamingChatView(&popup);
+        POINT after{};
+        SendMessageW(chat, EM_GETSCROLLPOS, 0, (LPARAM)&after);
+        SCROLLINFO barAfter{sizeof(barAfter), SIF_POS};
+        GetScrollInfo(chat, SB_VERT, &barAfter);
+        CHARRANGE restored{};
+        SendMessageW(chat, EM_EXGETSEL, 0, (LPARAM)&restored);
+        RECT current{};
+        GetWindowRect(chat, &current);
+        LONG_PTR style = GetWindowLongPtrW(chat, GWL_STYLE);
+        ok = ok && EqualRect(&initial, &current) && before.x == after.x && before.y == after.y &&
+             barBefore.nPos == barAfter.nPos && selection.cpMin == restored.cpMin &&
+             selection.cpMax == restored.cpMax && (style & (WS_VISIBLE | WS_VSCROLL)) == (WS_VISIBLE | WS_VSCROLL) &&
+             !(style & WS_HSCROLL);
+        if (chunk == 20) {
+            // Simulate reading older text and selecting a passage while the
+            // reply continues to grow beyond the visible control.
+            CHARRANGE selected{40, 72};
+            SendMessageW(chat, EM_EXSETSEL, 0, (LPARAM)&selected);
+            POINT scroll{0, 120};
+            SendMessageW(chat, EM_SETSCROLLPOS, 0, (LPARAM)&scroll);
+        }
+    }
+    return ok;
+}
+
+bool TestAskAiChatLayout() {
+    if (!LoadLibraryW(L"Msftedit.dll")) return false;
+    HWND chat = CreateWindowExW(0, MSFTEDIT_CLASS, L"", WS_POPUP | ES_MULTILINE, 0, 0, 520, 720, nullptr, nullptr,
+                                GetModuleHandleW(nullptr), nullptr);
+    if (!chat) return false;
+    defer {
+        DestroyWindow(chat);
+    };
+    bool ok = true;
+    const char* themes[] = {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"};
+    for (const char* theme : themes) {
+        SetTheme(theme);
+        InlineTranslatePopup popup;
+        popup.hwnd = chat;
+        popup.docked = true;
+        popup.mode = PopupMode::AskAi;
+        popup.dpi = 96;
+        popup.font = GetAppFontForDpi(96);
+        popup.bodyFont = CreateReadingFont(popup.font, 96, 1);
+        defer {
+            DeleteObject(popup.bodyFont);
+        };
+        ChatTurn user;
+        user.role = str::Dup("user");
+        user.content = str::Dup(
+            "请解释一下这段文字：\n教育的根本，是先理解和尊重每一个孩子。\n知识之外，也要关注人格和身心健康。");
+        popup.turns.Append(user);
+        ChatTurn assistant;
+        assistant.role = str::Dup("assistant");
+        assistant.content = str::Dup("");
+        popup.turns.Append(assistant);
+        defer {
+            for (auto& turn : popup.turns) turn.Free();
+        };
+        for (bool waiting : {true, false}) {
+            popup.asking = waiting;
+            if (!waiting) {
+                str::ReplaceWithCopy(
+                    &popup.turns.Last().content,
+                    "这段话强调的是：教育应当从理解孩子开始。\n\n### "
+                    "尊重个体\n先关注孩子的感受，再讨论具体的学习方法。\n\n- 理解差异，避免一概而论。\n- "
+                    "鼓励提问，保留探索的空间。\n\n**知识与人格同样重要。**");
+            }
+            RtfDoc doc;
+            BuildChatRtf(&popup, doc, -1);
+            SetRichTextRtf(chat, doc.sb.Get());
+            SendMessageW(chat, EM_SETBKGNDCOLOR, 0, ChatContentBg(&popup));
+            if (waiting) {
+                int length = RichTextLen(chat);
+                CHARRANGE range{std::max(0, length - 2), length};
+                SendMessageW(chat, EM_EXSETSEL, 0, (LPARAM)&range);
+                CHARFORMAT2W format{sizeof(format)};
+                SendMessageW(chat, EM_GETCHARFORMAT, SCF_SELECTION, (LPARAM)&format);
+                ok = ok && !(format.dwEffects & (CFE_ITALIC | CFE_BOLD)) &&
+                     format.yHeight == FontHalfPoints(popup.font, 96) * 10;
+            }
+            FINDTEXTEXW find{};
+            find.chrg = {0, -1};
+            find.lpstrText = L"请解释";
+            if (SendMessageW(chat, EM_FINDTEXTEXW, FR_DOWN, (LPARAM)&find) >= 0) {
+                SendMessageW(chat, EM_EXSETSEL, 0, (LPARAM)&find.chrgText);
+                CHARFORMAT2W format{sizeof(format)};
+                SendMessageW(chat, EM_GETCHARFORMAT, SCF_SELECTION, (LPARAM)&format);
+                ok = ok && (format.dwEffects & CFE_AUTOBACKCOLOR);
+            } else {
+                ok = false;
+            }
+            const char* prefix = getenv("SUMATRA_DUMP_AI_CHAT");
+            if (prefix && prefix[0]) {
+                HBITMAP bitmap = CreateMemoryBitmap(Size(520, 720));
+                HDC dc = CreateCompatibleDC(nullptr);
+                HGDIOBJ old = SelectObject(dc, bitmap);
+                RECT bounds{0, 0, 520, 720};
+                ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(ChatContentBg(&popup)));
+                FillRect(dc, &bounds, brush);
+                FORMATRANGE fr{};
+                fr.hdc = fr.hdcTarget = dc;
+                fr.rc = {180, 180, MulDiv(504, 1440, GetDeviceCaps(dc, LOGPIXELSX)),
+                         MulDiv(704, 1440, GetDeviceCaps(dc, LOGPIXELSY))};
+                fr.rcPage = fr.rc;
+                fr.chrg = {0, -1};
+                SendMessageW(chat, EM_FORMATRANGE, TRUE, (LPARAM)&fr);
+                SendMessageW(chat, EM_FORMATRANGE, FALSE, 0);
+                ByteSlice png = SerializeBitmap(bitmap);
+                TempStr path = str::FormatTemp("%s-%s-%s.png", prefix, theme, waiting ? "thinking" : "reply");
+                bool written = png.data() && file::WriteFile(path, png);
+                ok = ok && written;
+                png.Free();
+                SelectObject(dc, old);
+                DeleteObject(bitmap);
+                DeleteDC(dc);
+            }
+        }
+        ok = TestChatStreaming() && ok;
+    }
+    return ok;
 }
 
 static void StripEditFrame(HWND hwnd) {
@@ -3061,7 +3257,7 @@ static InlineTranslatePopup* CreatePopup(MainWindow* win, bool docked) {
     p->dpi = dpi;
     p->font = GetAppFontForDpi(dpi);
     p->titleFont = CreateTitleFont(p->font);
-    p->bodyFont = CreateReadingFont(p->font, dpi);
+    p->bodyFont = CreateReadingFont(p->font, dpi, p->docked ? 1 : 2);
     // Floating: owned by the frame, stays above it, hides with it.
     // Docked: a child of the sidebar column, the AI page.
     DWORD ex = docked ? 0 : WS_EX_TOOLWINDOW;
@@ -3089,12 +3285,15 @@ static InlineTranslatePopup* CreatePopup(MainWindow* win, bool docked) {
     }
     static HMODULE richEditLib = LoadLibraryW(L"Msftedit.dll");
     if (richEditLib) {
-        p->hwndChat = CreateWindowExW(0, MSFTEDIT_CLASS, L"", roStyle, 0, 0, 0, 0, p->hwnd, nullptr, inst, nullptr);
+        DWORD chatStyle = roStyle | (docked ? ES_DISABLENOSCROLL : 0);
+        p->hwndChat = CreateWindowExW(0, MSFTEDIT_CLASS, L"", chatStyle, 0, 0, 0, 0, p->hwnd, nullptr, inst, nullptr);
     }
     p->chatIsRich = p->hwndChat != nullptr;
     if (p->chatIsRich) {
         SendMessageW(p->hwndChat, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
         SendMessageW(p->hwndChat, EM_SETEVENTMASK, 0, 0);
+        SendMessageW(p->hwndChat, EM_SETTARGETDEVICE, 0, 0);
+        SendMessageW(p->hwndChat, EM_SHOWSCROLLBAR, SB_HORZ, FALSE);
         // Spell checking is on by default. Its first use loads a language service
         // and can freeze the UI for many seconds, which showed up as the first
         // light/dark switch while an answer was on screen.
@@ -3335,8 +3534,12 @@ static void AskJobAppend(AskJob* job, const char* role, const char* content) {
 
 // Replace the chat and resize in one paint. Otherwise the answer is drawn into
 // the small "Thinking…" window, then the window jumps to the new height.
-static void PresentChatUpdate(InlineTranslatePopup* p) {
+static void PresentChatUpdate(InlineTranslatePopup* p, bool streaming = false) {
     if (!p || !p->hwnd) {
+        return;
+    }
+    if (streaming && p->docked && p->chatIsRich && !p->chatRc.IsEmpty()) {
+        RefreshStreamingChatView(p);
         return;
     }
     bool live = (GetWindowLongPtrW(p->hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
@@ -3368,7 +3571,7 @@ static void AskProgressUi(AskProgress* update) {
     if (p && p->boundTab == update->tab && p->generation == update->generation && p->asking &&
         (!update->tab || IsWindowTabValid(update->tab))) {
         SetAskReply(p->turns, update->content);
-        PresentChatUpdate(p);
+        PresentChatUpdate(p, true);
         p->chatFollowTail = false;
     } else if (update->tab && IsWindowTabValid(update->tab)) {
         auto* st = (AiChatState*)update->tab->askAiState;

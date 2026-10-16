@@ -1945,13 +1945,22 @@ ContinueOpenWindow:
             // create window hidden to avoid flashing the about page
             win = CreateAndShowMainWindow(data, false);
             int selectedTabIdx = data->tabIndex - 1;
+            int sessionTabIdx = 0;
             for (TabState* state : *data->tabStates) {
-                if (str::IsEmpty(state->filePath)) {
-                    logf("WinMain: skipping RestoreTabOnStartup() because state->filePath is empty\n");
+                int originalTabIdx = sessionTabIdx++;
+                if (str::IsEmpty(state->filePath) || !DocumentPathExists(state->filePath)) {
+                    logf("WinMain: skipping session tab because document is missing: '%s'\n", state->filePath);
+                    if (originalTabIdx < data->tabIndex - 1) {
+                        selectedTabIdx--;
+                    }
                     continue;
                 }
                 // always create tab shells first; load only the selected tab below
                 RestoreTabOnStartup(win, state, gGlobalPrefs->lazyLoading);
+            }
+            int restoredTabCount = win->Tabs().Size();
+            if (selectedTabIdx >= restoredTabCount) {
+                selectedTabIdx = restoredTabCount - 1;
             }
             // selects the session tab and loads it if still a shell (TabsSelect also
             // handles the case where the last restored tab is already selected)
