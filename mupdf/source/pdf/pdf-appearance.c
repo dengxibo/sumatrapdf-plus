@@ -1847,150 +1847,152 @@ pdf_write_stamp_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz
 		pdf_write_stamp_appearance_rubber(ctx, annot, buf, rect, bbox, matrix, res);
 }
 
-static void
-add_required_fonts(fz_context *ctx, pdf_document *doc, pdf_obj *res_font,
-	fz_text_language lang, fz_font *font, const char *fontname, const char *text)
-{
-	fz_font *cjk_font;
-	char buf[40];
-
-	int add_latin = 0;
-	int add_latin2 = 0; /* SumatraPDF: CP-1250 fallback font, #5404 */
-	int add_greek = 0;
-	int add_cyrillic = 0;
-	int add_korean = 0;
-	int add_japanese = 0;
-	int add_bopomofo = 0;
-	int add_han = 0;
-	int add_hans = 0;
-	int add_hant = 0;
-
-	while (*text)
-	{
-		int c;
-		text += fz_chartorune(&c, text);
-		switch (ucdn_get_script(c))
-		{
-		default: add_latin = 1; /* for fallback bullet character */ break;
-		case UCDN_SCRIPT_COMMON: break;
-		case UCDN_SCRIPT_INHERITED: break;
-		case UCDN_SCRIPT_LATIN:
-			/* SumatraPDF: route CP-1250-only letters to the LATIN2 font (#5404) */
-			if (fz_windows_1252_from_unicode(c) < 0 && fz_windows_1250_from_unicode(c) >= 0)
-				add_latin2 = 1;
-			else
-				add_latin = 1;
-			break;
-		case UCDN_SCRIPT_GREEK: add_greek = 1; break;
-		case UCDN_SCRIPT_CYRILLIC: add_cyrillic = 1; break;
-		case UCDN_SCRIPT_HANGUL: add_korean = 1; break;
-		case UCDN_SCRIPT_HIRAGANA: add_japanese = 1; break;
-		case UCDN_SCRIPT_KATAKANA: add_japanese = 1; break;
-		case UCDN_SCRIPT_BOPOMOFO: add_bopomofo = 1; break;
-		case UCDN_SCRIPT_HAN: add_han = 1; break;
-		}
-	}
-
-	if (add_han)
-	{
-		switch (lang)
-		{
-		case FZ_LANG_ko: add_korean = 1; break;
-		default: /* fall through */
-		case FZ_LANG_ja: add_japanese = 1; break;
-		case FZ_LANG_zh: /* fall through */
-		case FZ_LANG_zh_Hant: add_hant = 1; break;
-		case FZ_LANG_zh_Hans: add_hans = 1; break;
-		}
-	}
-
-	if (add_bopomofo)
-	{
-		if (lang == FZ_LANG_zh_Hans)
-			add_hans = 1;
-		else
-			add_hant = 1;
-	}
-
-	if (!add_greek && !add_cyrillic && !add_korean && !add_japanese && !add_hant && !add_hans)
-		add_latin = 1;
-
-	if (add_latin)
-	{
-		if (!pdf_dict_gets(ctx, res_font, fontname))
-			pdf_dict_puts_drop(ctx, res_font, fontname,
-				pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_LATIN));
-	}
-	/* SumatraPDF: "<font>CE" is the CP-1250 sibling of the Latin font (#5404) */
-	if (add_latin2)
-	{
-		fz_snprintf(buf, sizeof buf, "%sCE", fontname);
-		if (!pdf_dict_gets(ctx, res_font, buf))
-			pdf_dict_puts_drop(ctx, res_font, buf,
-				pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_LATIN2));
-	}
-	if (add_greek)
-	{
-		fz_snprintf(buf, sizeof buf, "%sGRK", fontname);
-		if (!pdf_dict_gets(ctx, res_font, buf))
-			pdf_dict_puts_drop(ctx, res_font, buf,
-				pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_GREEK));
-	}
-	if (add_cyrillic)
-	{
-		fz_snprintf(buf, sizeof buf, "%sCYR", fontname);
-		if (!pdf_dict_gets(ctx, res_font, buf))
-			pdf_dict_puts_drop(ctx, res_font, buf,
-				pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_CYRILLIC));
-	}
-	if (add_korean && !pdf_dict_gets(ctx, res_font, "Batang"))
-	{
-		cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_KOREA);
-		pdf_dict_puts_drop(ctx, res_font, "Batang",
-			pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_KOREA, 0, 1));
-		fz_drop_font(ctx, cjk_font);
-	}
-	if (add_japanese && !pdf_dict_gets(ctx, res_font, "Mincho"))
-	{
-		cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_JAPAN);
-		pdf_dict_puts_drop(ctx, res_font, "Mincho",
-			pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_JAPAN, 0, 1));
-		fz_drop_font(ctx, cjk_font);
-	}
-	if (add_hant && !pdf_dict_gets(ctx, res_font, "Ming"))
-	{
-		cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_CNS);
-		pdf_dict_puts_drop(ctx, res_font, "Ming",
-			pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_CNS, 0, 1));
-		fz_drop_font(ctx, cjk_font);
-	}
-	if (add_hans && !pdf_dict_gets(ctx, res_font, "Song"))
-	{
-		cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_GB);
-		pdf_dict_puts_drop(ctx, res_font, "Song",
-			pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_GB, 0, 1));
-		fz_drop_font(ctx, cjk_font);
-	}
-}
-
-static int find_initial_script(const char *text)
-{
-	int script = UCDN_SCRIPT_COMMON;
-	int c;
-	while (*text)
-	{
-		text += fz_chartorune(&c, text);
-		script = ucdn_get_script(c);
-		if (script != UCDN_SCRIPT_COMMON && script != UCDN_SCRIPT_INHERITED)
-			break;
-	}
-	if (script == UCDN_SCRIPT_COMMON || script == UCDN_SCRIPT_INHERITED)
-		script = UCDN_SCRIPT_LATIN;
-	return script;
+static int find_initial_script(const char* text) {
+    int script = UCDN_SCRIPT_COMMON;
+    int c;
+    while (*text) {
+        text += fz_chartorune(&c, text);
+        script = ucdn_get_script(c);
+        if (script != UCDN_SCRIPT_COMMON && script != UCDN_SCRIPT_INHERITED) break;
+    }
+    if (script == UCDN_SCRIPT_COMMON || script == UCDN_SCRIPT_INHERITED) script = UCDN_SCRIPT_LATIN;
+    return script;
 }
 
 /* SumatraPDF: ENC_LATIN2 (CP-1250 Central European Latin) added for #5404 */
-enum { ENC_LATIN = 1, ENC_LATIN2, ENC_GREEK, ENC_CYRILLIC, ENC_KOREAN, ENC_JAPANESE, ENC_HANT, ENC_HANS };
+enum {
+    ENC_LATIN = 1,
+    ENC_LATIN2,
+    ENC_GREEK,
+    ENC_CYRILLIC,
+    ENC_KOREAN,
+    ENC_JAPANESE,
+    ENC_HANT,
+    ENC_HANS
+};
+
+/* SumatraPDF: pick a CJK collection that can actually encode the text (#6082).
+ *
+ * CJK text goes into the appearance stream as UCS-2 codes that the viewer
+ * resolves through one of the Uni*-UCS2-H CMaps. A character the chosen
+ * collection has no CID for comes out blank - which is what silently dropped
+ * the simplified-only characters (义, 组, 处, 复, ...) of Chinese free text
+ * written with the default Adobe-Japan1 collection. */
+
+static const char* cjk_enc_cmap_name(int enc) {
+    switch (enc) {
+        case ENC_KOREAN:
+            return "UniKS-UCS2-H";
+        case ENC_JAPANESE:
+            return "UniJIS-UCS2-H";
+        case ENC_HANT:
+            return "UniCNS-UCS2-H";
+        case ENC_HANS:
+            return "UniGB-UCS2-H";
+    }
+    return NULL;
+}
+
+/* like pdf_load_system_cmap, but returns NULL instead of throwing when the
+ * CMaps were compiled out (NO_CJK) */
+static pdf_cmap* cjk_enc_cmap(fz_context* ctx, int enc) {
+    const char* name = cjk_enc_cmap_name(enc);
+    pdf_cmap* cmap = name ? pdf_load_builtin_cmap(ctx, name) : NULL;
+    pdf_cmap* c;
+    for (c = cmap; c && c->usecmap_name[0] && !c->usecmap; c = c->usecmap) {
+        pdf_cmap* use = pdf_load_builtin_cmap(ctx, c->usecmap_name);
+        if (!use) break;
+        pdf_set_usecmap(ctx, c, use);
+    }
+    return cmap;
+}
+
+static int cjk_enc_covers(fz_context* ctx, int enc, int u) {
+    pdf_cmap* cmap;
+    /* the code is written as a 4 digit hex string, so it has to be BMP */
+    if (u < 0 || u > 0xffff) return 0;
+    cmap = cjk_enc_cmap(ctx, enc);
+    if (!cmap) return 0;
+    return pdf_lookup_cmap(cmap, u) > 0;
+}
+
+/* the collection to try first, in text of this language */
+static int cjk_enc_for_lang(fz_text_language lang) {
+    switch (lang) {
+        case FZ_LANG_ko:
+            return ENC_KOREAN;
+        case FZ_LANG_ja:
+            return ENC_JAPANESE;
+        case FZ_LANG_zh: /* fall through */
+        case FZ_LANG_zh_Hant:
+            return ENC_HANT;
+        case FZ_LANG_zh_Hans:
+            return ENC_HANS;
+    }
+    return 0;
+}
+
+/* any collection that has this character, or 0 if none does */
+static int cjk_enc_covering(fz_context* ctx, int u) {
+    static const int order[] = {ENC_HANS, ENC_HANT, ENC_JAPANESE, ENC_KOREAN};
+    size_t i;
+    for (i = 0; i < nelem(order); i++)
+        if (cjk_enc_covers(ctx, order[i], u)) return order[i];
+    return 0;
+}
+
+/* With no /Lang and no hint from the DA font name, guess the language from the
+ * text itself. Without this Han characters default to the Japanese collection,
+ * whatever they are. */
+static fz_text_language guess_text_language(fz_context* ctx, const char* text) {
+    int kana = 0, hangul = 0, bopomofo = 0;
+    int han = 0, hans = 0, hant = 0, japan = 0;
+    int c;
+
+    if (!text) return FZ_LANG_UNSET;
+
+    while (*text) {
+        text += fz_chartorune(&c, text);
+        switch (ucdn_get_script(c)) {
+            default:
+                break;
+            case UCDN_SCRIPT_HIRAGANA: /* fall through */
+            case UCDN_SCRIPT_KATAKANA:
+                kana = 1;
+                break;
+            case UCDN_SCRIPT_HANGUL:
+                hangul = 1;
+                break;
+            case UCDN_SCRIPT_BOPOMOFO:
+                bopomofo = 1;
+                break;
+            case UCDN_SCRIPT_HAN:
+                han++;
+                hans += cjk_enc_covers(ctx, ENC_HANS, c);
+                hant += cjk_enc_covers(ctx, ENC_HANT, c);
+                japan += cjk_enc_covers(ctx, ENC_JAPANESE, c);
+                break;
+        }
+    }
+
+    /* kana and hangul say what the language is outright */
+    if (kana) return FZ_LANG_ja;
+    if (hangul) return FZ_LANG_ko;
+    if (bopomofo) return FZ_LANG_zh_Hant;
+    if (!han) return FZ_LANG_UNSET;
+
+    /* otherwise go by which collection covers most of the Han characters */
+    if (hans >= hant && hans >= japan) return FZ_LANG_zh_Hans;
+    if (hant >= japan) return FZ_LANG_zh_Hant;
+    return FZ_LANG_ja;
+}
+
+/* The annotation's language, falling back to what its text looks like. */
+static fz_text_language annot_text_language(fz_context* ctx, pdf_annot* annot, const char* text) {
+    fz_text_language lang = pdf_annot_language(ctx, annot);
+    if (lang == FZ_LANG_UNSET) lang = guess_text_language(ctx, text);
+    return lang;
+}
 
 struct text_walk_state
 {
@@ -1998,7 +2000,9 @@ struct text_walk_state
 	fz_font *font;
 	fz_text_language lang;
 	int enc, u, c, n, last_script;
-	float w;
+        /* SumatraPDF: set when the character had to be replaced (#6082) */
+        int dropped;
+        float w;
 };
 
 static void init_text_walk(fz_context *ctx, struct text_walk_state *state, fz_text_language lang, fz_font *font, const char *text, const char *end)
@@ -2009,6 +2013,8 @@ static void init_text_walk(fz_context *ctx, struct text_walk_state *state, fz_te
 	state->font = font;
 	state->last_script = find_initial_script(text);
 	state->n = 0;
+        state->dropped = 0;
+        state->w = 0;
 }
 
 static int next_text_walk(fz_context *ctx, struct text_walk_state *state)
@@ -2086,14 +2092,29 @@ static int next_text_walk(fz_context *ctx, struct text_walk_state *state)
 		break;
 	}
 
-	/* TODO: check that character is encodable with ENC_KOREAN/etc */
-	if (state->c < 0)
-	{
-		state->enc = ENC_LATIN;
-		state->c = REPLACEMENT;
-	}
+        /* SumatraPDF: don't take the collection's word for it - a character it has
+         * no CID for renders blank, so move it to one that has it (#6082) */
+        if (state->enc >= ENC_KOREAN && !cjk_enc_covers(ctx, state->enc, state->u))
+            state->enc = cjk_enc_covering(ctx, state->u);
+        else if (state->enc < ENC_KOREAN && state->c < 0) {
+            /* a sign none of the 8-bit encodings has - fullwidth punctuation, an
+             * arrow, a set symbol - is usually in the CJK collection the rest of
+             * the text is being written with */
+            int enc = cjk_enc_for_lang(state->lang);
+            if (enc && cjk_enc_covers(ctx, enc, state->u)) {
+                state->enc = enc;
+                state->c = state->u;
+            }
+        }
 
-	if (state->enc >= ENC_KOREAN)
+        state->dropped = 0;
+        if (state->enc == 0 || state->c < 0) {
+            state->enc = ENC_LATIN;
+            state->c = REPLACEMENT;
+            state->dropped = 1;
+        }
+
+        if (state->enc >= ENC_KOREAN)
 	{
 		state->w = 1;
 	}
@@ -2107,6 +2128,68 @@ static int next_text_walk(fz_context *ctx, struct text_walk_state *state)
 	}
 
 	return 1;
+}
+
+/* SumatraPDF: the fonts the appearance stream will reference. Walking the text
+ * the same way write_string does keeps the two from disagreeing (#6082). */
+static void add_required_fonts(fz_context* ctx, pdf_document* doc, pdf_obj* res_font, fz_text_language lang,
+                               fz_font* font, const char* fontname, const char* text) {
+    struct text_walk_state state;
+    fz_font* cjk_font;
+    char buf[40];
+    int used[ENC_HANS + 1];
+    int i;
+
+    for (i = 0; i <= ENC_HANS; i++) used[i] = 0;
+
+    init_text_walk(ctx, &state, lang, font, text, NULL);
+    while (next_text_walk(ctx, &state)) used[state.enc] = 1;
+
+    /* the base font is also where the fallback bullet character comes from */
+    if (!used[ENC_GREEK] && !used[ENC_CYRILLIC] && !used[ENC_KOREAN] && !used[ENC_JAPANESE] && !used[ENC_HANT] &&
+        !used[ENC_HANS])
+        used[ENC_LATIN] = 1;
+
+    if (used[ENC_LATIN]) {
+        if (!pdf_dict_gets(ctx, res_font, fontname))
+            pdf_dict_puts_drop(ctx, res_font, fontname, pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_LATIN));
+    }
+    /* SumatraPDF: "<font>CE" is the CP-1250 sibling of the Latin font (#5404) */
+    if (used[ENC_LATIN2]) {
+        fz_snprintf(buf, sizeof buf, "%sCE", fontname);
+        if (!pdf_dict_gets(ctx, res_font, buf))
+            pdf_dict_puts_drop(ctx, res_font, buf, pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_LATIN2));
+    }
+    if (used[ENC_GREEK]) {
+        fz_snprintf(buf, sizeof buf, "%sGRK", fontname);
+        if (!pdf_dict_gets(ctx, res_font, buf))
+            pdf_dict_puts_drop(ctx, res_font, buf, pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_GREEK));
+    }
+    if (used[ENC_CYRILLIC]) {
+        fz_snprintf(buf, sizeof buf, "%sCYR", fontname);
+        if (!pdf_dict_gets(ctx, res_font, buf))
+            pdf_dict_puts_drop(ctx, res_font, buf, pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_CYRILLIC));
+    }
+    if (used[ENC_KOREAN] && !pdf_dict_gets(ctx, res_font, "Batang")) {
+        cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_KOREA);
+        pdf_dict_puts_drop(ctx, res_font, "Batang", pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_KOREA, 0, 1));
+        fz_drop_font(ctx, cjk_font);
+    }
+    if (used[ENC_JAPANESE] && !pdf_dict_gets(ctx, res_font, "Mincho")) {
+        cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_JAPAN);
+        pdf_dict_puts_drop(ctx, res_font, "Mincho", pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_JAPAN, 0, 1));
+        fz_drop_font(ctx, cjk_font);
+    }
+    if (used[ENC_HANT] && !pdf_dict_gets(ctx, res_font, "Ming")) {
+        cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_CNS);
+        pdf_dict_puts_drop(ctx, res_font, "Ming", pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_CNS, 0, 1));
+        fz_drop_font(ctx, cjk_font);
+    }
+    if (used[ENC_HANS] && !pdf_dict_gets(ctx, res_font, "Song")) {
+        cjk_font = fz_new_cjk_font(ctx, FZ_ADOBE_GB);
+        pdf_dict_puts_drop(ctx, res_font, "Song", pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_GB, 0, 1));
+        fz_drop_font(ctx, cjk_font);
+    }
 }
 
 static float
@@ -2662,40 +2745,16 @@ escape_text(fz_context *ctx, const char *s)
 	return d2;
 }
 
-static int text_needs_rich_layout(fz_context *ctx, const char *s)
-{
-	int c, script;
-	while (*s)
-	{
-		s += fz_chartorune(&c, s);
-
-		// base 14 fonts
-		if (fz_windows_1252_from_unicode(c) > 0)
-			continue;
-		/* SumatraPDF: Central European Latin (Č, Ň, ...) is handled by the
-		 * base appearance path via ENC_LATIN2, so it does not need (and must
-		 * not take) the rich/HTML layout path which renders it blank (#5404) */
-		if (fz_windows_1250_from_unicode(c) > 0)
-			continue;
-		if (fz_iso8859_7_from_unicode(c) > 0)
-			continue;
-		if (fz_koi8u_from_unicode(c) > 0)
-			continue;
-
-		// cjk fonts
-		script = ucdn_get_script(c);
-		if (
-			script == UCDN_SCRIPT_HANGUL ||
-			script == UCDN_SCRIPT_HIRAGANA ||
-			script == UCDN_SCRIPT_KATAKANA ||
-			script == UCDN_SCRIPT_BOPOMOFO ||
-			script == UCDN_SCRIPT_HAN
-		)
-			continue;
-
-		return 1;
-	}
-	return 0;
+/* SumatraPDF: the rich (HTML) layout path embeds a whole fallback font - a few
+ * megabytes of it for CJK - and lays the text out in that face rather than the
+ * annotation's own. Only take it when the simple path really cannot write the
+ * text, which is what the walk below decides (#6082). */
+static int text_needs_rich_layout(fz_context* ctx, fz_text_language lang, const char* s) {
+    struct text_walk_state state;
+    init_text_walk(ctx, &state, lang, NULL, s, NULL);
+    while (next_text_walk(ctx, &state))
+        if (state.dropped) return 1;
+    return 0;
 }
 
 static unsigned int hex_from_color(fz_context *ctx, int n, float color[4])
@@ -2753,8 +2812,8 @@ pdf_write_line_caption(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_rec
 		dy /= line_length;
 
 		text = pdf_annot_contents(ctx, annot);
-		lang = pdf_annot_language(ctx, annot);
-		co = pdf_dict_get_point(ctx, annot->obj, PDF_NAME(CO));
+                lang = annot_text_language(ctx, annot, text);
+                co = pdf_dict_get_point(ctx, annot->obj, PDF_NAME(CO));
 
 		font = fz_new_base14_font(ctx, "Helvetica");
 		if (!*res)
@@ -2871,8 +2930,8 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	text = pdf_annot_contents(ctx, annot);
 	q = pdf_annot_quadding(ctx, annot);
 	pdf_annot_default_appearance(ctx, annot, &font, &size, &n, color);
-	lang = pdf_annot_language(ctx, annot);
-	rd = pdf_annot_rect_diff(ctx, annot);
+        lang = annot_text_language(ctx, annot, text);
+        rd = pdf_annot_rect_diff(ctx, annot);
 
 	/* /Rotate is an undocumented annotation property supported by Adobe.
 	 * When Rotate is used, neither the box, nor the arrow move at all.
@@ -3033,22 +3092,18 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 			rc = free_rc = escape_text(ctx, text ? text : "");
 		}
 	}
-	if (!rc && (ds || text_needs_rich_layout(ctx, text)))
-	{
-		rc = free_rc = escape_text(ctx, text);
-		if (!ds)
-		{
-			fz_snprintf(ds_buf, sizeof ds_buf,
-				"font-family:%s;font-size:%gpt;color:#%06x;text-align:%s;",
-				full_font_name(&font),
-				size,
-				hex_from_color(ctx, n, color),
-				(q == 0 ? "left" : q == 1 ? "center" : "right")
-			);
-			ds = ds_buf;
-		}
-	}
-	if (rc)
+        if (!rc && (ds || text_needs_rich_layout(ctx, lang, text))) {
+            rc = free_rc = escape_text(ctx, text);
+            if (!ds) {
+                fz_snprintf(ds_buf, sizeof ds_buf, "font-family:%s;font-size:%gpt;color:#%06x;text-align:%s;",
+                            full_font_name(&font), size, hex_from_color(ctx, n, color),
+                            (q == 0   ? "left"
+                             : q == 1 ? "center"
+                                      : "right"));
+                ds = ds_buf;
+            }
+        }
+        if (rc)
 	{
 		fz_try(ctx)
 			write_rich_content(ctx, annot, buf, res, rc ? rc : text, ds, size, w, h, pad, 1);
@@ -3093,9 +3148,9 @@ pdf_write_tx_widget_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	r = pdf_dict_get_int(ctx, pdf_dict_get(ctx, annot->obj, PDF_NAME(MK)), PDF_NAME(R));
 	q = pdf_annot_quadding(ctx, annot);
 	pdf_annot_default_appearance(ctx, annot, &font, &size, &n, color);
-	lang = pdf_annot_language(ctx, annot);
+        lang = annot_text_language(ctx, annot, text);
 
-	w = rect->x1 - rect->x0;
+        w = rect->x1 - rect->x0;
 	h = rect->y1 - rect->y0;
 	r = r % 360;
 	if (r == 90 || r == 270)
@@ -3120,22 +3175,18 @@ pdf_write_tx_widget_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 #if FZ_ENABLE_HTML_ENGINE
 	ds = pdf_dict_get_text_string_opt(ctx, annot->obj, PDF_NAME(DS));
 	rc = pdf_dict_get_text_string_opt(ctx, annot->obj, PDF_NAME(RV));
-	if (!rc && (ds || text_needs_rich_layout(ctx, text)))
-	{
-		rc = free_rc = escape_text(ctx, text);
-		if (!ds)
-		{
-			fz_snprintf(ds_buf, sizeof ds_buf,
-				"font-family:%s;font-size:%gpt;color:#%06x;text-align:%s",
-				full_font_name(&font),
-				size,
-				hex_from_color(ctx, n, color),
-				(q == 0 ? "left" : q == 1 ? "center" : "right")
-			);
-			ds = ds_buf;
-		}
-	}
-	if (rc)
+        if (!rc && (ds || text_needs_rich_layout(ctx, lang, text))) {
+            rc = free_rc = escape_text(ctx, text);
+            if (!ds) {
+                fz_snprintf(ds_buf, sizeof ds_buf, "font-family:%s;font-size:%gpt;color:#%06x;text-align:%s",
+                            full_font_name(&font), size, hex_from_color(ctx, n, color),
+                            (q == 0   ? "left"
+                             : q == 1 ? "center"
+                                      : "right"));
+                ds = ds_buf;
+            }
+        }
+        if (rc)
 	{
 		fz_try(ctx)
 			write_rich_content(ctx, annot, buf, res, rc ? rc : text, ds, size, w, h, b * 2,
@@ -3199,9 +3250,9 @@ pdf_layout_text_widget(fz_context *ctx, pdf_annot *annot)
 	r = pdf_dict_get_int(ctx, pdf_dict_get(ctx, annot->obj, PDF_NAME(MK)), PDF_NAME(R));
 	q = pdf_annot_quadding(ctx, annot);
 	pdf_annot_default_appearance(ctx, annot, &font, &size, &n, color);
-	lang = pdf_annot_language(ctx, annot);
+        lang = annot_text_language(ctx, annot, text);
 
-	w = rect.x1 - rect.x0;
+        w = rect.x1 - rect.x0;
 	h = rect.y1 - rect.y0;
 	r = r % 360;
 	if (r == 90 || r == 270)

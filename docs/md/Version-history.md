@@ -2,6 +2,14 @@
 
 ## next
 
+## 3.7.59 (2026-10-17)
+
+- 同步上游中文注释修复：按文字内容选择字符集合，并为日语等语言设置下缺失的汉字切换可用映射，避免自由文本部分汉字不显示。
+  Port upstream CJK annotation fixes: infer the text language and fall back to a character collection that covers each glyph, including PDFs marked as Japanese.
+
+- 修复启用 LaTeX 增强功能时，双击 EPUB 文字弹出“无法打开同步文件”而无法查词的问题。反向搜索仅处理 PDF。
+  Restrict inverse search to PDF so double-click word lookup in EPUB works with TeX enhancements enabled.
+
 ## 3.7.58 (2026-10-16)
 
 - 启动还原会话时跳过不存在的文件，避免生成载入失败的标签页。

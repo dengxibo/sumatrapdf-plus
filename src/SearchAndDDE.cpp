@@ -3030,7 +3030,9 @@ bool OnInverseSearch(MainWindow* win, int x, int y) {
         return false;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || tab->GetEngineType() != kindEngineMupdf) {
+    // MuPDF also handles EPUB and other formats that cannot have PDF sync data.
+    // Let their double-click continue to word lookup and text selection.
+    if (!tab || tab->GetEngineType() != kindEngineMupdf || !str::EndsWithI(tab->filePath, ".pdf")) {
         return false;
     }
     DisplayModel* dm = tab->AsFixed();
