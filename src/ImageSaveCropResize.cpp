@@ -48,10 +48,8 @@ constexpr const WCHAR* kImageEditWinClassName = L"SUMATRA_PDF_IMAGE_EDIT";
 
 constexpr int kMinWindowWidth = 640;
 constexpr int kImagePadding = 16;
-constexpr int kResizeEdgeThreshold = 2;
+constexpr int kResizeEdgeThreshold = 6;
 constexpr int kDragHandleSize = 6;
-constexpr int kControlAreaDy = 100;
-constexpr int kPathLabelRowDy = 16 + 6; // label height + kRowPadding
 constexpr int kRowPadding = 6;
 constexpr int kButtonPadding = 8;
 
@@ -120,6 +118,7 @@ enum class DragEdge {
     TopRight,
     BottomLeft,
     BottomRight,
+    Draw,
     Move // only used in crop mode
 };
 
@@ -134,6 +133,8 @@ struct ImageEditWindow {
     HWND hwndPathLabel = nullptr;
     HWND hwndDestEdit = nullptr;
     HWND hwndBrowseBtn = nullptr;
+    HWND hwndOpenAfterSave = nullptr;
+    Rect hintRc;
     // Size line is not a control. A STATIC (even a hidden one) plus the window
     // background brush paints a second plate under the glyphs.
     char* infoText = nullptr;
@@ -242,6 +243,9 @@ static void ApplyImageFont(ImageEditWindow* ew, int dpi) {
     }
     if (ew->hwndBrowseBtn) {
         SendMessageW(ew->hwndBrowseBtn, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->hwndOpenAfterSave) {
+        SendMessageW(ew->hwndOpenAfterSave, WM_SETFONT, (WPARAM)ew->hFont, TRUE);
     }
     if (ew->btnSave && ew->btnSave->hwnd) {
         SendMessageW(ew->btnSave->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
@@ -469,10 +473,52 @@ static void InvalidateImageArea(ImageEditWindow* ew) {
     InvalidateRect(ew->hwnd, &rc, FALSE);
 }
 
+static const char* ImageCropHint() {
+    return _TRA("Crop: drag to draw a selection; drag handles to resize; hold Space and drag to move.");
+}
+
+static int LayoutImageActions(ImageEditWindow* ew, int x, int y, int width, bool place) {
+    int left = x, rowH = 0;
+    int gap = ImgPx(ew, 6);
+    bool rtl = trans::IsCurrLangRtl();
+    auto add = [&](HWND hwnd, Size sz) {
+        if (!hwnd) return;
+        if (left > x && left + sz.dx > x + width) {
+            y += rowH + gap;
+            left = x;
+            rowH = 0;
+        }
+        if (place) MoveWindow(hwnd, rtl ? x + width - (left - x) - sz.dx : left, y, sz.dx, sz.dy, TRUE);
+        left += sz.dx + gap;
+        rowH = std::max(rowH, sz.dy);
+    };
+    Button* buttons[] = {ew->btnRotateLeft, ew->btnRotateRight, ew->btnSave, ew->btnCrop, ew->btnResize};
+    for (Button* button : buttons) {
+        if (button) add(button->hwnd, button->GetIdealSize());
+    }
+    if (ew->dropFormat) add(ew->dropFormat->hwnd, ew->dropFormat->GetIdealSize());
+    return y + std::max(rowH, ImgPx(ew, 26));
+}
+
+static int ImageHintHeight(ImageEditWindow* ew, int width) {
+    HDC dc = GetDC(ew->hwnd);
+    HFONT old = ew->hFont ? (HFONT)SelectObject(dc, ew->hFont) : nullptr;
+    RECT rc{0, 0, std::max(width, ImgPx(ew, 100)), 0};
+    DrawTextW(dc, ToWStrTemp(ImageCropHint()), -1, &rc, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    if (old) SelectObject(dc, old);
+    ReleaseDC(ew->hwnd, dc);
+    return std::max((int)rc.bottom, ImgPx(ew, 18));
+}
+
 static int GetControlAreaDy(ImageEditWindow* ew) {
-    int full = ImgPx(ew, kControlAreaDy);
-    int pathRow = ImgPx(ew, kPathLabelRowDy);
-    return ew->fromRenderedBitmap ? (full - pathRow) : full;
+    int pad = ImgPx(ew, kRowPadding);
+    int width = ew->hwnd ? ClientRect(ew->hwnd).dx - ImgPx(ew, kButtonPadding * 2) : ImgPx(ew, kMinWindowWidth);
+    int height = ew->fromRenderedBitmap ? 0 : ImgPx(ew, 18) + pad;
+    height += ImgPx(ew, 24) + pad;
+    height += LayoutImageActions(ew, 0, 0, width, false) + pad;
+    height += ImgPx(ew, 20) + pad;
+    if (!ew->cropDone) height += ImgPx(ew, 26) + pad;
+    return height + ImageHintHeight(ew, width) + pad * 2;
 }
 
 static void CalcImageLayout(ImageEditWindow* ew) {
@@ -616,7 +662,7 @@ static DragEdge HitTestCropEdge(ImageEditWindow* ew, int mx, int my) {
     int top = ImageToDisplayY(ew, ew->cropY);
     int bottom = ImageToDisplayY(ew, ew->cropY + ew->cropH);
 
-    int t = kResizeEdgeThreshold;
+    int t = ImgPx(ew, kResizeEdgeThreshold);
 
     bool onLeft = (mx >= left - t && mx <= left + t);
     bool onRight = (mx >= right - t && mx <= right + t);
@@ -650,10 +696,13 @@ static DragEdge HitTestCropEdge(ImageEditWindow* ew, int mx, int my) {
     if (onBottom && inHorzRange) {
         return DragEdge::Bottom;
     }
-    // inside the crop rect = move
-    if (mx > left + t && mx < right - t && my > top + t && my < bottom - t) {
+    // Space explicitly moves the selection; otherwise draw a replacement.
+    if ((GetKeyState(VK_SPACE) & 0x8000) && mx >= left && mx <= right && my >= top && my <= bottom) {
         return DragEdge::Move;
     }
+    if (mx >= ew->imgDisplayX && mx < ew->imgDisplayX + ew->imgDisplayW && my >= ew->imgDisplayY &&
+        my < ew->imgDisplayY + ew->imgDisplayH)
+        return DragEdge::Draw;
     return DragEdge::None;
 }
 
@@ -668,7 +717,7 @@ static DragEdge HitTestResizeEdge(ImageEditWindow* ew, int mx, int my) {
     int top = cy - dispNewH / 2;
     int bottom = top + dispNewH;
 
-    int t = kResizeEdgeThreshold;
+    int t = ImgPx(ew, kResizeEdgeThreshold);
 
     bool onLeft = (mx >= left - t && mx <= left + t);
     bool onRight = (mx >= right - t && mx <= right + t);
@@ -721,6 +770,8 @@ static HCURSOR GetCursorForEdge(DragEdge edge) {
             return GetCachedCursor(IDC_SIZENESW);
         case DragEdge::Move:
             return GetCachedCursor(IDC_SIZEALL);
+        case DragEdge::Draw:
+            return GetCachedCursor(IDC_CROSS);
         default:
             return GetCachedCursor(IDC_ARROW);
     }
@@ -788,7 +839,10 @@ static void PaintCropImage(ImageEditWindow* ew, HDC hdc) {
     }
 
     // draw crop border
-    Gdiplus::Pen pen(Color(255, 255, 255), 1.0f);
+    float stroke = (float)ImgPx(ew, 1);
+    Gdiplus::Pen outline(Color(255, 0, 0, 0), stroke * 3);
+    g.DrawRectangle(&outline, cropDispX, cropDispY, cropDispR - cropDispX, cropDispB - cropDispY);
+    Gdiplus::Pen pen(Color(255, 255, 255), stroke);
     pen.SetDashStyle(Gdiplus::DashStyleDash);
     g.DrawRectangle(&pen, cropDispX, cropDispY, cropDispR - cropDispX, cropDispB - cropDispY);
 
@@ -799,7 +853,7 @@ static void PaintCropImage(ImageEditWindow* ew, HDC hdc) {
     int midY = (cropDispY + cropDispB) / 2;
 
     Gdiplus::SolidBrush handleBrush(Color(255, 255, 255, 255));
-    Gdiplus::Pen handlePen(Color(255, 0, 0, 0), 1);
+    Gdiplus::Pen handlePen(Color(255, 0, 0, 0), (float)ImgPx(ew, 1));
 
     auto drawHandle = [&](int cx, int cy) {
         g.FillRectangle(&handleBrush, cx - hh, cy - hh, hs, hs);
@@ -850,7 +904,9 @@ static void PaintResizeImage(ImageEditWindow* ew, HDC hdc) {
     g.DrawImage(ew->srcBitmap, newLeft, newTop, dispNewW, dispNewH);
 
     // draw border around the new size rectangle
-    Gdiplus::Pen pen(Color(255, 255, 255), 1.0f);
+    Gdiplus::Pen underlay(Color(255, 0, 0, 0), (float)ImgPx(ew, 3));
+    g.DrawRectangle(&underlay, newLeft, newTop, dispNewW, dispNewH);
+    Gdiplus::Pen pen(Color(255, 255, 255), (float)ImgPx(ew, 1));
     pen.SetDashStyle(Gdiplus::DashStyleDash);
     g.DrawRectangle(&pen, newLeft, newTop, dispNewW, dispNewH);
 
@@ -863,7 +919,7 @@ static void PaintResizeImage(ImageEditWindow* ew, HDC hdc) {
     int bottom = newTop + dispNewH;
 
     Gdiplus::SolidBrush handleBrush(Color(255, 255, 255, 255));
-    Gdiplus::Pen handlePen(Color(255, 0, 0, 0), 1);
+    Gdiplus::Pen handlePen(Color(255, 0, 0, 0), (float)ImgPx(ew, 1));
 
     auto drawHandle = [&](int hx, int hy) {
         g.FillRectangle(&handleBrush, hx - hh, hy - hh, hs, hs);
@@ -881,11 +937,14 @@ static void PaintResizeImage(ImageEditWindow* ew, HDC hdc) {
 }
 
 static void LayoutControls(ImageEditWindow* ew) {
+    // Button captions can change between Save/Overwrite and Crop/Apply Crop.
+    // Recompute the image area when translated controls wrap onto another row.
+    CalcImageLayout(ew);
     Rect cRc = ClientRect(ew->hwnd);
     int rowPad = ImgPx(ew, kRowPadding);
     int btnPad = ImgPx(ew, kButtonPadding);
-    int labelH = ImgPx(ew, 16);
-    int editH = ImgPx(ew, 22);
+    int labelH = ImgPx(ew, 18);
+    int editH = ImgPx(ew, 24);
     int y = ew->imgAreaH + rowPad;
     int x = btnPad;
     int w = cRc.dx - 2 * btnPad;
@@ -907,75 +966,14 @@ static void LayoutControls(ImageEditWindow* ew) {
     MoveWindow(ew->hwndBrowseBtn, x + w - browseW, y, browseW, editH, TRUE);
     y += editH + rowPad;
 
-    // row 3: rotate on the left, save / crop / resize on the right
-    int leftX = x;
-    if (ew->btnRotateLeft) {
-        Size sz = ew->btnRotateLeft->GetIdealSize();
-        ew->btnRotateLeft->SetBounds({leftX, y, sz.dx, sz.dy});
-        leftX += sz.dx + gap;
+    y = LayoutImageActions(ew, x, y, w, true) + rowPad;
+    ew->infoRc = {x, y, w, ImgPx(ew, 20)};
+    y += ew->infoRc.dy + rowPad;
+    if (ew->hwndOpenAfterSave) {
+        MoveWindow(ew->hwndOpenAfterSave, x, y, w, ImgPx(ew, 26), TRUE);
+        y += ImgPx(ew, 26) + rowPad;
     }
-    if (ew->btnRotateRight) {
-        Size sz = ew->btnRotateRight->GetIdealSize();
-        ew->btnRotateRight->SetBounds({leftX, y, sz.dx, sz.dy});
-        leftX += sz.dx + gap;
-    }
-    int bx = cRc.dx - btnPad;
-    if (ew->btnSave) {
-        // right-to-left: Resize, Crop, [Format], Save
-        if (ew->btnResize) {
-            Size szResize = ew->btnResize->GetIdealSize();
-            bx -= szResize.dx;
-            ew->btnResize->SetBounds({bx, y, szResize.dx, szResize.dy});
-        }
-        if (ew->btnCrop) {
-            Size szCrop = ew->btnCrop->GetIdealSize();
-            bx -= szCrop.dx + gap;
-            ew->btnCrop->SetBounds({bx, y, szCrop.dx, szCrop.dy});
-        }
-        if (ew->dropFormat) {
-            Size szDrop = ew->dropFormat->GetIdealSize();
-            bx -= szDrop.dx + gap;
-            Size szRef = ew->btnResize ? ew->btnResize->GetIdealSize() : ew->btnSave->GetIdealSize();
-            int dropY = y + (szRef.dy - szDrop.dy) / 2;
-            ew->dropFormat->SetBounds({bx, dropY, szDrop.dx, szDrop.dy});
-        }
-        Size szSave = ew->btnSave->GetIdealSize();
-        bx -= szSave.dx + gap;
-        ew->btnSave->SetBounds({bx, y, szSave.dx, szSave.dy});
-    }
-
-    // One line, with a clear gap after Rotate Right. A tight box wraps the
-    // tail (" , 0") and the next line shows up as dots under the first digits.
-    int rowH = labelH;
-    if (ew->btnRotateLeft) {
-        rowH = ew->btnRotateLeft->GetIdealSize().dy;
-    } else if (ew->btnSave) {
-        rowH = ew->btnSave->GetIdealSize().dy;
-    }
-    int infoGap = ImgPx(ew, 14);
-    int textW = 0;
-    if (ew->infoText && ew->infoText[0]) {
-        HDC hdc = GetDC(ew->hwnd);
-        HFONT oldFont = (HFONT)SelectObject(hdc, ew->hFont);
-        RECT trc{0, 0, 0, 0};
-        WCHAR* infoW = ToWStrTemp(ew->infoText);
-        DrawTextW(hdc, infoW, -1, &trc, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
-        textW = trc.right - trc.left;
-        SelectObject(hdc, oldFont);
-        ReleaseDC(ew->hwnd, hdc);
-    }
-    int textPad = ImgPx(ew, 16);
-    int infoLeft = leftX + infoGap;
-    int infoRight = bx - infoGap;
-    int maxLabelW = infoRight - infoLeft;
-    int labelW = textW + textPad;
-    if (maxLabelW >= 0 && labelW > maxLabelW) {
-        labelW = maxLabelW;
-    }
-    if (labelW < 0) {
-        labelW = 0;
-    }
-    ew->infoRc = {infoLeft, y, labelW, rowH};
+    ew->hintRc = {x, y, w, ImageHintHeight(ew, w)};
 }
 
 static bool IsCropChanged(ImageEditWindow* ew);
@@ -1252,7 +1250,7 @@ static bool SaveBitmapAsPdf(Bitmap* bmp, const char* destPath) {
     return ok;
 }
 
-static void OnSave(ImageEditWindow* ew) {
+static void SaveImageEdit(ImageEditWindow* ew, bool showErrors) {
     if (!ew->srcBitmap) {
         return;
     }
@@ -1293,7 +1291,7 @@ static void OnSave(ImageEditWindow* ew) {
         // save as-is
         result = ew->srcBitmap->Clone(0, 0, ew->imgW, ew->imgH, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            MessageBoxWarning(ew->hwnd, _TRA("Failed to save image"), _TRA("Save Image"));
+            if (showErrors) MessageBoxWarning(ew->hwnd, _TRA("Failed to save image"), _TRA("Save Image"));
             return;
         }
     } else if (ew->mode == ImageEditMode::Crop) {
@@ -1301,14 +1299,14 @@ static void OnSave(ImageEditWindow* ew) {
         Gdiplus::Rect srcRect(ew->cropX, ew->cropY, ew->cropW, ew->cropH);
         result = ew->srcBitmap->Clone(srcRect, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            MessageBoxWarning(ew->hwnd, _TRA("Failed to create cropped image"), _TRA("Crop Image"));
+            if (showErrors) MessageBoxWarning(ew->hwnd, _TRA("Failed to create cropped image"), _TRA("Crop Image"));
             return;
         }
     } else {
         // create resized bitmap
         result = new Bitmap(ew->newW, ew->newH, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            MessageBoxWarning(ew->hwnd, _TRA("Failed to create resized image"), _TRA("Resize Image"));
+            if (showErrors) MessageBoxWarning(ew->hwnd, _TRA("Failed to create resized image"), _TRA("Resize Image"));
             return;
         }
         Graphics g(result);
@@ -1326,13 +1324,22 @@ static void OnSave(ImageEditWindow* ew) {
     delete result;
 
     if (!saved) {
-        MessageBoxWarning(ew->hwnd, _TRA("Failed to save image"), _TRA("Save Image"));
+        if (showErrors) MessageBoxWarning(ew->hwnd, _TRA("Failed to save image"), _TRA("Save Image"));
         return;
     }
     UpdateSaveButtonText(ew);
 
     // A signature photo still has to come back through Apply Crop. Saving only writes the file.
     if (ew->cropDone) {
+        return;
+    }
+
+    bool openAfterSave = ew->hwndOpenAfterSave && SendMessageW(ew->hwndOpenAfterSave, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    str::ReplaceWithCopy(&gGlobalPrefs->imageSaveFolder, path::GetDirTemp(dest));
+    gGlobalPrefs->imageOpenAfterSave = openAfterSave;
+    SaveSettings();
+    if (!openAfterSave) {
+        DestroyWindow(ew->hwnd);
         return;
     }
 
@@ -1350,6 +1357,10 @@ static void OnSave(ImageEditWindow* ew) {
         StartLoadDocument(&args);
     }
     free(savedPath);
+}
+
+static void OnSave(ImageEditWindow* ew) {
+    SaveImageEdit(ew, true);
 }
 
 static void UpdateInfoLabel(ImageEditWindow* ew);
@@ -1576,6 +1587,24 @@ static bool CopyEditedImageToClipboard(ImageEditWindow* ew) {
 
 LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
+static void CancelImageEditDrag(ImageEditWindow* ew) {
+    if (!ew || !ew->isDragging) return;
+    ew->isDragging = false;
+    if (ew->mode == ImageEditMode::Crop) {
+        ew->cropX = ew->dragCropX;
+        ew->cropY = ew->dragCropY;
+        ew->cropW = ew->dragCropW;
+        ew->cropH = ew->dragCropH;
+    } else {
+        ew->newW = ew->dragNewW;
+        ew->newH = ew->dragNewH;
+    }
+    if (GetCapture() == ew->hwnd) ReleaseCapture();
+    UpdateInfoLabel(ew);
+    UpdateModeButtons(ew);
+    InvalidateImageArea(ew);
+}
+
 LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     ImageEditWindow* ew;
 
@@ -1591,6 +1620,7 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DPICHANGED: {
             ew = FindImageEditWindowByHwnd(hwnd);
             if (ew) {
+                CancelImageEditDrag(ew);
                 int dpi = RoundUp((int)LOWORD(wp), 4);
                 if (dpi < 72) {
                     dpi = 96;
@@ -1607,6 +1637,22 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+
+        case WM_GETMINMAXINFO: {
+            ew = FindImageEditWindowByHwnd(hwnd);
+            if (ew) {
+                auto* limits = (MINMAXINFO*)lp;
+                limits->ptMinTrackSize.x = ImgPx(ew, kMinWindowWidth);
+                limits->ptMinTrackSize.y = GetControlAreaDy(ew) + ImgPx(ew, 140);
+                return 0;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
+        }
+
+        case WM_CANCELMODE:
+        case WM_CAPTURECHANGED:
+            CancelImageEditDrag(FindImageEditWindowByHwnd(hwnd));
+            return 0;
 
         case WM_SIZE: {
             ew = FindImageEditWindowByHwnd(hwnd);
@@ -1653,6 +1699,14 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             DeleteDC(memDC);
             FillControlStrip(ew, hdc);
             PaintInfoLabel(ew, hdc);
+            HFONT oldFont = (HFONT)SelectObject(hdc, ew->hFont);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, ThemeWindowTextColor());
+            RECT hint = ToRECT(ew->hintRc);
+            UINT flags = DT_WORDBREAK | DT_NOPREFIX;
+            if (trans::IsCurrLangRtl()) flags |= DT_RIGHT | DT_RTLREADING;
+            DrawTextW(hdc, ToWStrTemp(ImageCropHint()), -1, &hint, flags);
+            SelectObject(hdc, oldFont);
             EndPaint(hwnd, &ps);
             return 0;
         }
@@ -1664,6 +1718,14 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             HDC hdc = (HDC)wp;
             FillControlStrip(ew, hdc);
             PaintInfoLabel(ew, hdc);
+            HFONT oldFont = (HFONT)SelectObject(hdc, ew->hFont);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, ThemeWindowTextColor());
+            RECT hint = ToRECT(ew->hintRc);
+            UINT flags = DT_WORDBREAK | DT_NOPREFIX;
+            if (trans::IsCurrLangRtl()) flags |= DT_RIGHT | DT_RTLREADING;
+            DrawTextW(hdc, ToWStrTemp(ImageCropHint()), -1, &hint, flags);
+            SelectObject(hdc, oldFont);
             return 1;
         }
 
@@ -1702,6 +1764,19 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     int nw = ew->dragCropW;
                     int nh = ew->dragCropH;
 
+                    if (edge == DragEdge::Draw) {
+                        int sx = DisplayToImageX(ew, ew->dragStart.x);
+                        int sy = DisplayToImageY(ew, ew->dragStart.y);
+                        int ex = DisplayToImageX(ew, mx);
+                        int ey = DisplayToImageY(ew, my);
+                        if (abs(mx - ew->dragStart.x) <= ImgPx(ew, 4) && abs(my - ew->dragStart.y) <= ImgPx(ew, 4))
+                            return 0;
+                        nx = std::min(sx, ex);
+                        ny = std::min(sy, ey);
+                        nw = abs(ex - sx);
+                        nh = abs(ey - sy);
+                        if (nw < 1 || nh < 1) return 0;
+                    }
                     if (edge == DragEdge::Left || edge == DragEdge::TopLeft || edge == DragEdge::BottomLeft) {
                         nx = ew->dragCropX + imgDx;
                         nw = ew->dragCropW - imgDx;
@@ -1819,7 +1894,7 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_LBUTTONDOWN: {
             ew = FindImageEditWindowByHwnd(hwnd);
-            if (!ew) {
+            if (!ew || ew->mode == ImageEditMode::Save) {
                 break;
             }
             int mx = GET_X_LPARAM(lp);
@@ -1831,6 +1906,7 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 edge = HitTestResizeEdge(ew, mx, my);
             }
             if (edge != DragEdge::None) {
+                SetFocus(hwnd);
                 ew->isDragging = true;
                 ew->dragEdge = edge;
                 ew->dragStart = {mx, my};
@@ -1894,6 +1970,10 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (wp == VK_ESCAPE) {
+                if (ew->isDragging) {
+                    CancelImageEditDrag(ew);
+                    return 0;
+                }
                 if (ew->mode != ImageEditMode::Save) {
                     SwitchToSaveMode(ew);
                 } else if (gGlobalPrefs->escToExit) {
@@ -2010,6 +2090,12 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 break;
             }
             int code = HIWORD(wp);
+            if ((HWND)lp == ew->hwndOpenAfterSave && code == BN_CLICKED) {
+                gGlobalPrefs->imageOpenAfterSave =
+                    SendMessageW(ew->hwndOpenAfterSave, BM_GETCHECK, 0, 0) == BST_CHECKED;
+                SaveSettings();
+                return 0;
+            }
             // browse button
             if ((HWND)lp == ew->hwndBrowseBtn && code == BN_CLICKED) {
                 OnBrowse(ew);
@@ -2060,12 +2146,15 @@ static void ImageEditThemeRefreshCb(HWND hwnd, void* ctx) {
     ew->brushes.Recreate();
     AppDialogApplyChrome(hwnd);
     ImageEditApplyFieldTheme(ew);
+    CalcImageLayout(ew);
+    LayoutControls(ew);
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
 }
 
-HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePath, RenderedBitmap* rbmp,
-                         bool selectPdf, ImageCropDoneFn cropDone, void* cropDoneUser) {
-    if (!win) {
+static HWND CreateImageEditWindow(HWND owner, MainWindow* win, ImageEditMode mode, const char* filePath,
+                                  RenderedBitmap* rbmp, bool selectPdf, ImageCropDoneFn cropDone, void* cropDoneUser,
+                                  bool show) {
+    if (!owner) {
         return nullptr;
     }
 
@@ -2088,7 +2177,7 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     } else {
         // load from current tab's file
         if (!filePath) {
-            WindowTab* tab = win->CurrentTab();
+            WindowTab* tab = win ? win->CurrentTab() : nullptr;
             if (!tab || !tab->filePath) {
                 return nullptr;
             }
@@ -2147,7 +2236,7 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     wcex.hIcon = LoadIconW(h, iconName);
     RegisterClassEx(&wcex);
 
-    int dpi = DpiGet(win->hwndFrame);
+    int dpi = DpiGet(owner);
     if (dpi < 72) {
         dpi = 96;
     }
@@ -2167,7 +2256,7 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     }
     int winH = rc.bottom - rc.top;
     // clamp to screen
-    HMONITOR hMon = MonitorFromWindow(win->hwndFrame, MONITOR_DEFAULTTONEAREST);
+    HMONITOR hMon = MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi = {sizeof(mi)};
     GetMonitorInfo(hMon, &mi);
     int screenW = mi.rcWork.right - mi.rcWork.left;
@@ -2200,7 +2289,7 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     }
 
     ew->hwnd = hwnd;
-    ew->hwndParent = win->hwndFrame;
+    ew->hwndParent = owner;
 
     ApplyImageFont(ew, ew->dpi);
 
@@ -2215,13 +2304,19 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     SendMessageW(ew->hwndPathLabel, WM_SETFONT, (WPARAM)ew->hFont, TRUE);
 
     // row 2: dest edit + browse
-    TempStr destPath = filePath ? MakeUniqueFilePathTemp(filePath) : str::DupTemp("");
-    ew->hwndDestEdit = CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, ToWStrTemp(destPath),
-                                       WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 0, 0, 0, 0, hwnd, nullptr, h, nullptr);
+    TempStr suggested = filePath ? str::DupTemp(filePath) : nullptr;
+    if (!cropDone && !str::IsEmpty(gGlobalPrefs->imageSaveFolder) && dir::Exists(gGlobalPrefs->imageSaveFolder)) {
+        suggested =
+            path::JoinTemp(gGlobalPrefs->imageSaveFolder, filePath ? path::GetBaseNameTemp(filePath) : "image.png");
+    }
+    TempStr destPath = suggested ? MakeUniqueFilePathTemp(suggested) : str::DupTemp("");
+    ew->hwndDestEdit =
+        CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, ToWStrTemp(destPath),
+                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 0, 0, hwnd, nullptr, h, nullptr);
     SendMessageW(ew->hwndDestEdit, WM_SETFONT, (WPARAM)ew->hFont, TRUE);
 
-    ew->hwndBrowseBtn = CreateWindowExW(0, L"BUTTON", L"...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 0, 0, hwnd,
-                                        nullptr, h, nullptr);
+    ew->hwndBrowseBtn = CreateWindowExW(0, L"BUTTON", L"...", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0,
+                                        0, 0, hwnd, nullptr, h, nullptr);
     SendMessageW(ew->hwndBrowseBtn, WM_SETFONT, (WPARAM)ew->hFont, TRUE);
 
     // row 3: info label
@@ -2319,19 +2414,240 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         OnFormatChanged(ew);
     }
 
+    if (!cropDone) {
+        DWORD ex = trans::IsCurrLangRtl() ? WS_EX_RTLREADING | WS_EX_RIGHT : 0;
+        ew->hwndOpenAfterSave = CreateWindowExW(ex, WC_BUTTONW, _TRW("Open image after saving"),
+                                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_MULTILINE, 0,
+                                                0, 0, 0, hwnd, nullptr, h, nullptr);
+        SendMessageW(ew->hwndOpenAfterSave, WM_SETFONT, (WPARAM)ew->hFont, TRUE);
+        SendMessageW(ew->hwndOpenAfterSave, BM_SETCHECK, gGlobalPrefs->imageOpenAfterSave ? BST_CHECKED : BST_UNCHECKED,
+                     0);
+    }
+    // Measure translated controls after they exist. Long labels can wrap the
+    // action row and need more height than the initial estimate.
+    Rect client = ClientRect(hwnd);
+    int minClientH = GetControlAreaDy(ew) + ImgPx(ew, 140);
+    if (client.dy < minClientH) {
+        RECT outer{};
+        GetWindowRect(hwnd, &outer);
+        SetWindowPos(hwnd, nullptr, 0, 0, outer.right - outer.left, outer.bottom - outer.top + minClientH - client.dy,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     CalcImageLayout(ew);
     UpdateModeButtons(ew);
     LayoutControls(ew);
     UpdateSaveButtonText(ew);
 
-    CenterDialog(hwnd, win->hwndFrame);
+    CenterDialog(hwnd, owner);
     HwndEnsureVisible(hwnd);
     ew->brushes.Create();
     AppDialogApplyChrome(hwnd);
     ImageEditApplyFieldTheme(ew);
     RegisterAppDialogForTheme(hwnd, ImageEditThemeRefreshCb, ew);
-    ShowWindow(hwnd, SW_SHOW);
+    if (show) ShowWindow(hwnd, SW_SHOW);
     return hwnd;
+}
+
+HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePath, RenderedBitmap* rbmp,
+                         bool selectPdf, ImageCropDoneFn cropDone, void* cropDoneUser) {
+    return win ? CreateImageEditWindow(win->hwndFrame, win, mode, filePath, rbmp, selectPdf, cropDone, cropDoneUser,
+                                       true)
+               : nullptr;
+}
+
+bool TestImageEditWindow() {
+    const char* outputDir = getenv("SUMATRA_TEST_IMAGE_EDIT_DIR");
+    if (!outputDir || !dir::Exists(outputDir)) return false;
+    FILE* report = fopen(path::JoinTemp(outputDir, "results.txt"), "w");
+    if (!report) return false;
+    defer {
+        fclose(report);
+    };
+    HWND owner = CreateWindowExW(0, WC_STATICW, L"Image tests", WS_POPUP, 0, 0, 800, 900, nullptr, nullptr,
+                                 GetModuleHandleW(nullptr), nullptr);
+    if (!owner) return false;
+    defer {
+        DestroyWindow(owner);
+    };
+    Bitmap source(240, 160, PixelFormat32bppARGB);
+    {
+        Graphics g(&source);
+        g.Clear(Color(255, 255, 0, 0));
+        Gdiplus::SolidBrush blue(Color(255, 0, 0, 255));
+        g.FillRectangle(&blue, 120, 0, 120, 160);
+    }
+    HBITMAP hbmp = nullptr;
+    source.GetHBITMAP(Color(255, 255, 255, 255), &hbmp);
+    if (!hbmp) return false;
+    RenderedBitmap rendered(hbmp, Size(240, 160));
+    bool ok = true;
+    const char* themes[] = {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"};
+    const char* langs[] = {"cn", "tw", "en", "de", "ar"};
+    int dpis[] = {96, 120, 144, 192, 96};
+    for (const char* theme : themes) {
+        SetTheme(theme);
+        for (const char* lang : langs) {
+            trans::SetCurrentLangByCode(lang);
+            TempStr dest = path::JoinTemp(outputDir, str::FormatTemp("crop-%s-%s.png", theme, lang));
+            str::ReplaceWithCopy(&gGlobalPrefs->imageSaveFolder, outputDir);
+            gGlobalPrefs->imageOpenAfterSave = false;
+            HWND hwnd = CreateImageEditWindow(owner, nullptr, ImageEditMode::Crop, dest, &rendered, false, nullptr,
+                                              nullptr, false);
+            ImageEditWindow* ew = FindImageEditWindowByHwnd(hwnd);
+            if (!ew) return false;
+            bool valid = ew->hintRc.Bottom() <= ClientRect(hwnd).dy;
+            for (int dpi : dpis) {
+                RECT suggested{0, 0, MulDiv(800, dpi, 96), MulDiv(900, dpi, 96)};
+                SendMessageW(hwnd, WM_DPICHANGED, MAKELONG(dpi, dpi), (LPARAM)&suggested);
+                valid = valid && ew->dpi == dpi && ew->hintRc.Bottom() <= ClientRect(hwnd).dy;
+                HWND controls[] = {ew->hwndDestEdit,        ew->hwndBrowseBtn,        ew->hwndOpenAfterSave,
+                                   ew->btnSave->hwnd,       ew->btnCrop->hwnd,        ew->btnResize->hwnd,
+                                   ew->btnRotateLeft->hwnd, ew->btnRotateRight->hwnd, ew->dropFormat->hwnd};
+                for (HWND ctl : controls) {
+                    RECT r{};
+                    GetWindowRect(ctl, &r);
+                    MapWindowPoints(HWND_DESKTOP, hwnd, (POINT*)&r, 2);
+                    Rect client = ClientRect(hwnd);
+                    valid =
+                        valid && r.left >= 0 && r.right <= client.dx && r.top >= ew->imgAreaH && r.bottom <= client.dy;
+                }
+                for (int direction = 0; direction < 4; direction++) {
+                    ew->cropX = ew->cropY = 0;
+                    ew->cropW = ew->imgW;
+                    ew->cropH = ew->imgH;
+                    int x0 = ImageToDisplayX(ew, direction & 1 ? 200 : 40);
+                    int y0 = ImageToDisplayY(ew, direction & 2 ? 130 : 30);
+                    int x1 = ImageToDisplayX(ew, direction & 1 ? 40 : 200);
+                    int y1 = ImageToDisplayY(ew, direction & 2 ? 30 : 130);
+                    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x0, y0));
+                    SendMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x1, y1));
+                    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x1, y1));
+                    valid = valid && abs(ew->cropX - 40) <= 2 && abs(ew->cropY - 30) <= 2 &&
+                            abs(ew->cropW - 160) <= 2 && abs(ew->cropH - 100) <= 2;
+                }
+                ew->cropX = 40;
+                ew->cropY = 30;
+                ew->cropW = 160;
+                ew->cropH = 100;
+                int x = ImageToDisplayX(ew, 80), y = ImageToDisplayY(ew, 60);
+                SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+                SendMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x + ImgPx(ew, 30), y + ImgPx(ew, 30)));
+                SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+                valid = valid && !ew->isDragging && ew->cropX == 40 && ew->cropY == 30 && ew->cropW == 160 &&
+                        ew->cropH == 100;
+                SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+                SendMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x + ImgPx(ew, 30), y + ImgPx(ew, 30)));
+                SendMessageW(hwnd, WM_CANCELMODE, 0, 0);
+                valid = valid && !ew->isDragging && ew->cropX == 40 && ew->cropY == 30 && ew->cropW == 160 &&
+                        ew->cropH == 100;
+                RotateSource(ew, true);
+                valid = valid && ew->imgW == 160 && ew->imgH == 240 && ew->cropX == 30 && ew->cropY == 40 &&
+                        ew->cropW == 100 && ew->cropH == 160;
+                RotateSource(ew, false);
+                valid = valid && ew->imgW == 240 && ew->imgH == 160 && ew->cropX == 40 && ew->cropY == 30 &&
+                        ew->cropW == 160 && ew->cropH == 100;
+            }
+            // Saving must keep original pixels regardless of theme and close
+            // the editor without opening a document by default.
+            WCHAR filename[MAX_PATH + 1]{};
+            GetWindowTextW(ew->hwndDestEdit, filename, dimof(filename));
+            OnSave(ew);
+            Bitmap saved(filename);
+            Color red, blue;
+            saved.GetPixel(0, 0, &red);
+            saved.GetPixel(159, 99, &blue);
+            valid = valid && !IsWindow(hwnd) && saved.GetWidth() == 160 && saved.GetHeight() == 100 &&
+                    red.GetR() == 255 && red.GetB() == 0 && blue.GetB() == 255 && blue.GetR() == 0 &&
+                    !gGlobalPrefs->imageOpenAfterSave && str::EqI(gGlobalPrefs->imageSaveFolder, outputDir);
+            printf("Image crop/export theme=%s lang=%s DPI round trip: %s\n", theme, lang, valid ? "PASS" : "FAIL");
+            fprintf(report,
+                    "Image crop/export theme=%s lang=%s DPI round trip, cancellation, rotation, original pixels: %s\n",
+                    theme, lang, valid ? "PASS" : "FAIL");
+            ok = ok && valid;
+        }
+    }
+    int callbackCount = 0;
+    auto done = [](Bitmap* bmp, void* data) {
+        int* count = (int*)data;
+        *count += bmp && bmp->GetWidth() == 80 && bmp->GetHeight() == 60 ? 1 : 100;
+        delete bmp;
+    };
+    TempStr dest = path::JoinTemp(outputDir, "signature.png");
+    HWND hwnd =
+        CreateImageEditWindow(owner, nullptr, ImageEditMode::Crop, dest, &rendered, false, done, &callbackCount, false);
+    ImageEditWindow* ew = FindImageEditWindowByHwnd(hwnd);
+    if (!ew) return false;
+    ok = ok && ew->hwndOpenAfterSave == nullptr;
+    ew->cropW = 80;
+    ew->cropH = 60;
+    OnSave(ew);
+    ok = ok && IsWindow(hwnd) && callbackCount == 0;
+    OnCropButton(ew);
+    ok = ok && !IsWindow(hwnd) && callbackCount == 1;
+    printf("Signature save/apply callback: %s\n", callbackCount == 1 ? "PASS" : "FAIL");
+    fprintf(report, "Signature save/apply callback: %s\n", callbackCount == 1 ? "PASS" : "FAIL");
+    // A missing remembered directory must fall back to the supplied default.
+    // Reusing an existing path must suggest a different filename.
+    TempStr missingDir = path::JoinTemp(outputDir, "directory-that-does-not-exist");
+    str::ReplaceWithCopy(&gGlobalPrefs->imageSaveFolder, missingDir);
+    hwnd = CreateImageEditWindow(owner, nullptr, ImageEditMode::Crop, dest, &rendered, false, nullptr, nullptr, false);
+    ew = FindImageEditWindowByHwnd(hwnd);
+    if (!ew) return false;
+    WCHAR suggested[MAX_PATH + 1]{};
+    GetWindowTextW(ew->hwndDestEdit, suggested, dimof(suggested));
+    TempStr suggestedPath = ToUtf8Temp(suggested);
+    bool pathsOk = str::EqI(path::GetDirTemp(suggestedPath), outputDir) && !file::Exists(suggestedPath);
+    TempStr invalidPath = path::JoinTemp(missingDir, "failure.png");
+    SetWindowTextW(ew->hwndDestEdit, ToWStrTemp(invalidPath));
+    ew->cropX = 40;
+    ew->cropY = 30;
+    ew->cropW = 160;
+    ew->cropH = 100;
+    SendMessageW(ew->hwndOpenAfterSave, BM_SETCHECK, BST_CHECKED, 0);
+    SaveImageEdit(ew, false);
+    pathsOk = pathsOk && IsWindow(hwnd) && ew->cropX == 40 && ew->cropY == 30 && ew->cropW == 160 && ew->cropH == 100 &&
+              str::EqI(gGlobalPrefs->imageSaveFolder, missingDir) && !gGlobalPrefs->imageOpenAfterSave &&
+              !file::Exists(invalidPath);
+    TempStr chinesePath = path::JoinTemp(outputDir, "裁剪保存测试.png");
+    SetWindowTextW(ew->hwndDestEdit, ToWStrTemp(chinesePath));
+    SaveImageEdit(ew, false);
+    pathsOk = pathsOk && !IsWindow(hwnd) && file::Exists(chinesePath) && gGlobalPrefs->imageOpenAfterSave &&
+              str::EqI(gGlobalPrefs->imageSaveFolder, outputDir);
+    ok = ok && pathsOk;
+    fprintf(report,
+            "Unique filename, invalid remembered folder, failed save preservation, Chinese path, open preference: %s\n",
+            pathsOk ? "PASS" : "FAIL");
+    fprintf(report, "Overall: %s\n", ok ? "PASS" : "FAIL");
+    return ok;
+}
+
+bool ImageEditWindowPreTranslate(MSG& msg) {
+    for (ImageEditWindow* ew : gImageEditWindows) {
+        if (msg.hwnd != ew->hwnd && !IsChild(ew->hwnd, msg.hwnd)) continue;
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
+            SendMessageW(ew->hwnd, WM_KEYDOWN, VK_ESCAPE, msg.lParam);
+            return true;
+        }
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN &&
+            (!ew->dropFormat || msg.hwnd != ew->dropFormat->hwnd)) {
+            WCHAR cls[32]{};
+            GetClassNameW(msg.hwnd, cls, dimof(cls));
+            if (str::EqI(cls, WC_BUTTONW))
+                SendMessageW(msg.hwnd, BM_CLICK, 0, 0);
+            else
+                OnSave(ew);
+            return true;
+        }
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_TAB) return IsDialogMessageW(ew->hwnd, &msg) != FALSE;
+        // Keep document accelerators out of the path editor and checkbox.
+        if (msg.message >= WM_KEYFIRST && msg.message <= WM_KEYLAST) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+            return true;
+        }
+        return false;
+    }
+    return false;
 }
 
 HWND ShowImageCropForBitmap(MainWindow* win, Gdiplus::Bitmap* src, ImageCropDoneFn fn, void* user) {

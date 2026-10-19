@@ -44043,3 +44043,21 @@ tw:失敗
 :Not verified
 cn:未通过验证
 tw:未通過驗證
+
+:Open image after saving
+cn:保存后打开图片
+tw:儲存後開啟圖片
+de:Bild nach dem Speichern öffnen
+ar:فتح الصورة بعد الحفظ
+
+:Crop: drag to draw a selection; drag handles to resize; hold Space and drag to move.
+cn:裁剪：拖动绘制选区；拖动控制点调整大小；按住空格拖动以移动选区。
+tw:裁剪：拖曳繪製選取範圍；拖曳控制點調整大小；按住空白鍵拖曳以移動選取範圍。
+de:Zuschneiden: Auswahl ziehen; Größe an den Griffen ändern; zum Verschieben Leertaste gedrückt halten und ziehen.
+ar:اقتصاص: اسحب لتحديد منطقة؛ اسحب المقابض لتغيير الحجم؛ اضغط مطولاً على مفتاح المسافة واسحب للتحريك.
+
+:Failed to create image
+cn:无法生成图片
+tw:無法產生圖片
+de:Bild konnte nicht erstellt werden
+ar:تعذر إنشاء الصورة

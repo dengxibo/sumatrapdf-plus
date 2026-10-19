@@ -5491,6 +5491,7 @@ void LoadModelIntoTab(WindowTab* tab) {
     MainWindow* win = tab->win;
     WindowTab* prevTab = win->CurrentTab();
     const bool switchingTab = (tab != prevTab);
+    if (switchingTab && win->mouseAction == MouseAction::ImageRegion) CancelDrag(win);
     logf("SESSIONTRACE LoadModelIntoTab begin file='%s' switching=%d loaded=%d tabStatePage=%d\n", tab->filePath,
          switchingTab, tab->ctrl != nullptr, tab->tabState ? tab->tabState->pageNo : -1);
     if (switchingTab) {
@@ -6312,6 +6313,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     HandwrittenSignatureCancelPlace(win);
 
     // TODO: this can cause a mouse capture to stick around when called from LoadModelIntoTab (cf. OnSelectionStop)
+    if (win->mouseAction == MouseAction::ImageRegion) CancelDrag(win);
     win->mouseAction = MouseAction::None;
 
     DeletePropertiesWindow(win->hwndFrame);

@@ -71,6 +71,7 @@
 #include "PrintedTocOverlay.h"
 #include "MediaOverlayPlayer.h"
 #include "PdfPageAudio.h"
+#include "ImageSaveCropResize.h"
 
 #include "utils/Log.h"
 
@@ -1048,6 +1049,14 @@ static void StopMouseDrag(MainWindow* win, int x, int y, bool aborted) {
 static bool StopEbookAnnotationResize(MainWindow* win, bool aborted);
 
 void CancelDrag(MainWindow* win) {
+    if (win->mouseAction == MouseAction::ImageRegion) {
+        win->mouseAction = MouseAction::None;
+        win->selectionRect = Rect();
+        win->imageRegionPageNo = 0;
+        win->imageRegionTab = nullptr;
+        win->dragStartPending = false;
+        ScheduleRepaint(win, 0);
+    }
     auto pt = win->dragPrevPos;
     auto [x, y] = pt;
     if (win->ebookAnnotationBeingDragged && win->annotationBeingResized) {
@@ -1271,7 +1280,7 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
 
     UpdateFullscreenExitHot(win, Point{x, y});
 
-    if (HandwrittenSignatureOnMouseMove(win, x, y)) {
+    if (win->mouseAction != MouseAction::ImageRegion && HandwrittenSignatureOnMouseMove(win, x, y)) {
         return;
     }
 
@@ -1419,6 +1428,12 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
             ScheduleRepaint(win, 0);
             break;
         }
+        case MouseAction::ImageRegion:
+            if (win->imageRegionTab != win->CurrentTab()) {
+                CancelDrag(win);
+                break;
+            }
+            [[fallthrough]];
         case MouseAction::OcrRegion: {
             win->annotationUnderCursor = nullptr;
             win->selectionRect.dx = x - win->selectionRect.x;
@@ -2253,7 +2268,7 @@ static float PreviewShapeStrokePx(MainWindow* win, DisplayModel* dm, bool ebook,
 }
 
 static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) {
-    bool ocrDrag = win->mouseAction == MouseAction::OcrRegion;
+    bool ocrDrag = win->mouseAction == MouseAction::OcrRegion || win->mouseAction == MouseAction::ImageRegion;
     if (win->mouseAction != MouseAction::CreatingAnnotation && !ocrDrag) {
         return;
     }
@@ -2277,6 +2292,21 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
     UnpackColor(rgb, r, g, b);
     Gdiplus::Graphics gs(hdc);
     gs.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    if (win->mouseAction == MouseAction::ImageRegion) {
+        int pageNo = win->imageRegionPageNo;
+        if (!dm->ValidPageNo(pageNo)) return;
+        Rect rc = NormalizeScreenRect(win->annotCreateDragStart, Point{win->selectionRect.x + win->selectionRect.dx,
+                                                                       win->selectionRect.y + win->selectionRect.dy});
+        rc = rc.Intersect(dm->CvtToScreen(pageNo, dm->GetEngine()->PageMediabox(pageNo)));
+        if (rc.IsEmpty()) return;
+        float width = (float)DpiScale(win->hwndCanvas, 1);
+        Gdiplus::Pen outline(Gdiplus::Color(255, 0, 0, 0), width * 3);
+        Gdiplus::Pen border(Gdiplus::Color(255, 255, 255, 255), width);
+        border.SetDashStyle(Gdiplus::DashStyleDash);
+        gs.DrawRectangle(&outline, rc.x, rc.y, rc.dx, rc.dy);
+        gs.DrawRectangle(&border, rc.x, rc.y, rc.dx, rc.dy);
+        return;
+    }
     Gdiplus::Color col(ocrDrag ? 200 : 255, r, g, b);
     Gdiplus::Pen pen(col, strokePx);
     if (type == AnnotationType::Ink) {
@@ -2593,6 +2623,26 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     HwndSetFocus(win->hwndFrame);
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
+    if (IsAltPressed() && IsShiftPressed() && !IsCtrlPressed()) {
+        // This gesture takes precedence over OCR, pan and annotation tools.
+        EngineBase* engine = dm->GetEngine();
+        int pageNo = dm->GetPageNoByPoint(pt);
+        bool supported = engine->kind == kindEngineImage ||
+                         (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf"));
+        gSupressNextAltMenuTrigger = true;
+        if (supported && HasPermission(Perm::CopySelection) && dm->ValidPageNo(pageNo)) {
+            win->imageRegionPageNo = pageNo;
+            win->imageRegionTab = win->CurrentTab();
+            win->annotCreateDragStart = pt;
+            win->dragStart = pt;
+            win->selectionRect = Rect(x, y, 0, 0);
+            win->mouseAction = MouseAction::ImageRegion;
+            win->dragStartPending = true;
+            SetCursorCached(IDC_CROSS);
+            SetCapture(win->hwndCanvas);
+        }
+        return;
+    }
     if (HandwrittenSignatureOnMouseDown(win, x, y)) {
         return;
     }
@@ -2818,7 +2868,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
 
-    if (HandwrittenSignatureOnMouseUp(win, x, y)) {
+    if (win->mouseAction != MouseAction::ImageRegion && HandwrittenSignatureOnMouseUp(win, x, y)) {
         return;
     }
 
@@ -2881,6 +2931,42 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     auto ma = win->mouseAction;
+    if (ma == MouseAction::ImageRegion) {
+        int pageNo = win->imageRegionPageNo;
+        WindowTab* sourceTab = win->imageRegionTab;
+        Point start = win->annotCreateDragStart;
+        Rect region = NormalizeScreenRect(start, Point{x, y});
+        CancelDrag(win);
+        int dragThreshold = DpiScale(win->hwndCanvas, 4);
+        if (sourceTab != win->CurrentTab() || !dm->ValidPageNo(pageNo) ||
+            (abs(x - start.x) <= dragThreshold && abs(y - start.y) <= dragThreshold)) {
+            return;
+        }
+        RectF clip = dm->CvtFromScreen(region, pageNo);
+        if (clip.dx < 0) {
+            clip.x += clip.dx;
+            clip.dx = -clip.dx;
+        }
+        if (clip.dy < 0) {
+            clip.y += clip.dy;
+            clip.dy = -clip.dy;
+        }
+        clip = clip.Intersect(dm->GetEngine()->PageMediabox(pageNo));
+        if (clip.IsEmpty()) return;
+        RenderPageArgs args(pageNo, dm->GetZoomReal(pageNo), dm->GetRotation(), &clip, RenderTarget::Export);
+        RenderedBitmap* bmp = dm->GetEngine()->RenderPage(args);
+        if (bmp) {
+            TempStr dir = path::GetDirTemp(sourceTab->filePath);
+            TempStr base = path::GetBaseNameTemp(sourceTab->filePath);
+            TempStr name = path::GetPathNoExtTemp(base);
+            TempStr dest = path::JoinTemp(dir, str::FormatTemp("%s_page_%d.png", name, pageNo));
+            ShowImageEditWindow(win, ImageEditMode::Save, dest, bmp);
+            delete bmp;
+        } else {
+            ShowWarningNotification(win->hwndCanvas, _TRA("Failed to create image"), kNotif5SecsTimeOut);
+        }
+        return;
+    }
     if (ma == MouseAction::OcrRegion) {
         Point endCanvas{x, y};
         bool fromModifier = win->ocrRegionFromModifier;
@@ -4066,6 +4152,7 @@ static LRESULT OnSetCursor(MainWindow* win, HWND hwnd) {
             break;
         case MouseAction::CreatingAnnotation:
         case MouseAction::OcrRegion:
+        case MouseAction::ImageRegion:
             SetCursorCached(IDC_CROSS);
             return TRUE;
         case MouseAction::None:
@@ -4893,7 +4980,19 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             CloseWordLookup(true);
             return CanvasOnMouseHWheel(win, msg, wp, lp);
 
+        case WM_CANCELMODE:
+        case WM_CAPTURECHANGED:
+            if (win->mouseAction == MouseAction::ImageRegion) {
+                CancelDrag(win);
+                return 0;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
+
         case WM_KEYDOWN:
+            if (wp == VK_ESCAPE && win->mouseAction == MouseAction::ImageRegion) {
+                CancelDrag(win);
+                return 0;
+            }
             if (wp == VK_ESCAPE && HandwrittenSignatureIsPlacing(win)) {
                 HandwrittenSignatureCancelPlace(win);
                 return 0;

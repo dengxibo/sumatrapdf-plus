@@ -26,6 +26,7 @@
 #include "EbookAnnotations.h"
 #include "InlineTranslate.h"
 #include "ReadAloudBar.h"
+#include "ImageSaveCropResize.h"
 #include "ExtractPdfToc.h"
 #include "OcrService.h"
 #include "PrintedTocModel.h"
@@ -232,6 +233,12 @@ void TestRenderPage(const Flags& i) {
         bool ok = TestAskAiChatLayout();
         ok = TestReadAloudBarDpiFonts() && ok;
         printf("AI chat layout: %s\n", ok ? "PASS" : "FAIL");
+        fflush(stdout);
+        ExitProcess(ok ? 0 : 1);
+    }
+    if (getenv("SUMATRA_TEST_IMAGE_EDIT")) {
+        bool ok = TestImageEditWindow();
+        printf("Image export/crop: %s\n", ok ? "PASS" : "FAIL");
         fflush(stdout);
         ExitProcess(ok ? 0 : 1);
     }

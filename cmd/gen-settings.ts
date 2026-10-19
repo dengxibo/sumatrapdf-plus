@@ -1250,6 +1250,8 @@ const globalPrefs: Field[] = [
   setExpert(mkStruct("ComicBookUI", comicBookUI, "customization options for Comic Book UI")),
   mkEmptyLine(),
   setExpert(mkStruct("ImageUI", imageUI, "customization options for image files UI")),
+  mkField("ImageOpenAfterSave", Bool, false, "open exported images after saving"),
+  mkField("ImageSaveFolder", Str, null, "last successful image export folder; falls back to the default if unavailable"),
   mkEmptyLine(),
   setExpert(
     mkStruct(

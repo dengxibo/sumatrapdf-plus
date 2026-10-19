@@ -81,6 +81,7 @@
 #include "CommandPalette.h"
 #include "EditAnnotations.h"
 #include "EditEbookAnnotations.h"
+#include "ImageSaveCropResize.h"
 #include "TocCalib.h"
 
 #include "utils/Log.h"
@@ -704,7 +705,7 @@ bool PumpAppMessage(MSG& msg) {
         PostQuitMessage((int)msg.wParam);
         return false;
     }
-    if (InlineTranslatePopupPreTranslate(msg)) {
+    if (ImageEditWindowPreTranslate(msg) || InlineTranslatePopupPreTranslate(msg)) {
         return true;
     }
     // The splitter is one pixel. The <-> arrow is wider than that, and its

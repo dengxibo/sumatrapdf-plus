@@ -98,6 +98,8 @@ export const settingsInlineCommentsZh: Record<string, string> = {
   "ComicBookUI.PageSpacing": "漫画分页间距",
   "ComicBookUI.CbxMangaMode": "日式右向左阅读",
   "ComicBookUI.WindowBgCol": "漫画画布背景色",
+  ImageOpenAfterSave: "图片保存后打开结果，默认关闭",
+  ImageSaveFolder: "最近成功保存图片的目录；目录失效时使用默认目录",
   ImageUI: "图片文件界面",
   "ImageUI.WindowBgCol": "图片画布背景色",
   "ImageUI.DefaultZoom": "打开图片默认缩放",

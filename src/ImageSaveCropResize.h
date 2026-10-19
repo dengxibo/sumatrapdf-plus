@@ -27,3 +27,5 @@ HWND ShowImageCropForBitmap(MainWindow* win, Gdiplus::Bitmap* src, ImageCropDone
 
 // Saves an already-rendered page as PNG without opening the image editor.
 bool SaveBitmapAsPng(HBITMAP hbmp, const char* destPath);
+bool ImageEditWindowPreTranslate(MSG& msg);
+bool TestImageEditWindow();

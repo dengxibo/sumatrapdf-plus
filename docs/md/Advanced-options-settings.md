@@ -457,6 +457,12 @@ ImageUI [
     DefaultZoom = shrink to fit
 ]
 
+; open exported images after saving
+ImageOpenAfterSave = false
+
+; last successful image export folder; falls back to the default if unavailable
+ImageSaveFolder =
+
 ; customization options for CHM UI. If UseFixedPageUI is true, FixedPageUI
 ; settings apply instead
 ChmUI [
