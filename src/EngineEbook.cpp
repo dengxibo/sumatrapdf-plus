@@ -576,8 +576,9 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
     Graphics g(hDC);
     mui::InitGraphicsMode(&g);
 
-    bool darkTheme = IsDarkThemeSelected();
-    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+    bool exporting = args.target == RenderTarget::Export;
+    bool darkTheme = !exporting && IsDarkThemeSelected();
+    PdfDocumentColorMode docMode = exporting ? PdfDocumentColorMode::Light : GetPdfDocumentColorMode();
     COLORREF bgCol;
     COLORREF textCol;
     if (docMode == PdfDocumentColorMode::Light) {

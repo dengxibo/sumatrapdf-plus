@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.61
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.61/SumatraPDF-Plus.exe
-Notes: Add Alt+Shift region image export, easier crop selection, optional opening after saving, and remembered export folder.
-NotesZh: 新增 Alt+Shift 框选保存图片，改进裁剪操作，支持保存后按需打开及记住保存目录。
+Latest: 3.7.62
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.62/SumatraPDF-Plus.exe
+Notes: Responsive toolbar with grouped overflow menus; region image export for all paginated formats and improved save button placement.
+NotesZh: 工具栏支持窄窗口自动收纳，框选保存扩展至所有分页文档，改进图片保存按钮布局。

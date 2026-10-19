@@ -9,6 +9,9 @@ void ReCreateToolbar(MainWindow* win);
 void ToolbarUpdateStateForWindow(MainWindow*, bool setButtonsVisibility, bool pageChangeOnly = false);
 void UpdateToolbarButtonsToolTipsForWindow(MainWindow*);
 void UpdateToolbarFindText(MainWindow*);
+// Reserve the search field first; move lower-priority tools into the overflow menu.
+int LayoutToolbarOverflow(MainWindow*, int buttonsRightLimit, int compactRightLimit);
+bool TestToolbarOverflowMenu(MainWindow*);
 void UpdateToolbarPageText(MainWindow*, int pageCount, bool updateOnly = false);
 void UpdateFindbox(MainWindow*);
 void SetToolbarButtonEnableState(MainWindow*, int cmdId, bool isEnabled);

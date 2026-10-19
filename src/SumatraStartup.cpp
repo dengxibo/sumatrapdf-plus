@@ -607,7 +607,7 @@ static HACCEL FindAcceleratorsForHwnd(HWND hwnd, HWND* hwndAccel) {
     }
     // find bar/window edits are WC_EDIT: use the safe edit accel table so plain
     // letters type normally; Ctrl+F etc. are included via isSafeAccel()
-    if (IsFindUIHwnd(win, hwnd)) {
+    if (IsFindUIHwnd(win, hwnd) || hwnd == win->hwndToolbar) {
         *hwndAccel = win->hwndFrame;
         return editAccTable;
     }
@@ -1755,6 +1755,10 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     FileWatcherInit();
 
     if (flags.testRenderPage) {
+        if (getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW")) {
+            RegisterWinClass();
+            InstanceInit();
+        }
         TestRenderPage(flags);
         ShutdownCommon();
         return 0;

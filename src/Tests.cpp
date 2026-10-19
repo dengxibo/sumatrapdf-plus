@@ -27,6 +27,12 @@
 #include "InlineTranslate.h"
 #include "ReadAloudBar.h"
 #include "ImageSaveCropResize.h"
+#include "MainWindow.h"
+#include "SumatraPDF.h"
+#include "Toolbar.h"
+#include "FindBar.h"
+#include "Translations.h"
+#include "Commands.h"
 #include "ExtractPdfToc.h"
 #include "OcrService.h"
 #include "PrintedTocModel.h"
@@ -221,6 +227,166 @@ static void TestTextMarkupOverlay() {
     ExitProcess(failures ? 1 : 0);
 }
 
+static bool TestRegionExport(const Flags& flags) {
+    FILE* report = fopen(getenv("SUMATRA_TEST_REGION_EXPORT"), "w");
+    if (!report) return false;
+    defer {
+        fclose(report);
+    };
+    SetTheme("Dark-Dracula");
+    bool ok = !flags.fileNames.IsEmpty();
+    for (const char* fileName : flags.fileNames) {
+        EngineBase* engine = CreateEngineFromFile(fileName, nullptr, true);
+        if (!engine || engine->PageCount() < 1) {
+            fprintf(report, "%s: FAIL (load)\n", fileName);
+            SafeEngineRelease(&engine);
+            ok = false;
+            continue;
+        }
+        RectF page = engine->PageMediabox(1);
+        RectF clip(page.x + page.dx / 4, page.y + page.dy / 4, page.dx / 2, page.dy / 2);
+        bool valid = !clip.IsEmpty();
+        for (int rotation : {0, 90, 180, 270}) {
+            for (float zoom : {0.5f, 1.f, 2.f}) {
+                RenderPageArgs args(1, zoom, rotation, &clip, RenderTarget::Export);
+                RenderedBitmap* bmp = engine->RenderPage(args);
+                Size expected = engine->Transform(clip, 1, zoom, rotation).Round().Size();
+                valid = valid && bmp && abs(bmp->GetSize().dx - expected.dx) <= 2 &&
+                        abs(bmp->GetSize().dy - expected.dy) <= 2;
+                delete bmp;
+            }
+        }
+        fprintf(report, "%s (%s): clipped export, four rotations, three zoom levels: %s\n", fileName, engine->kind,
+                valid ? "PASS" : "FAIL");
+        SafeEngineRelease(&engine);
+        ok = valid && ok;
+    }
+    fprintf(report, "Overall: %s\n", ok ? "PASS" : "FAIL");
+    return ok;
+}
+
+static bool TestResponsiveToolbar(const Flags& flags) {
+    const char* reportPath = getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW");
+    FILE* report = fopen(reportPath, "w");
+    if (!report || flags.fileNames.IsEmpty()) return false;
+    defer {
+        fclose(report);
+    };
+    gGlobalPrefs->showToolbar = true;
+    for (int i = 0; i < 2; i++) {
+        auto* shortcut = new Shortcut{};
+        shortcut->cmd = str::Dup("CmdZoomIn");
+        shortcut->cmdId = CmdZoomIn;
+        shortcut->toolbarText = str::Dup(i == 0 ? "Custom toolbar command with a long translated caption"
+                                                : "Second custom command with the same command ID");
+        gGlobalPrefs->shortcuts->Append(shortcut);
+    }
+    LoadArgs args(flags.fileNames[0], nullptr);
+    args.syncLoad = true;
+    args.showWin = false;
+    args.noSavePrefs = true;
+    MainWindow* win = LoadDocument(&args);
+    if (!win || !win->AsFixed()) return false;
+    bool ok = true;
+    const char* themes[] = {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"};
+    const char* langs[] = {"cn", "tw", "en", "de", "ar"};
+    int widths[] = {3200, 1280, 960, 640, 500, 640, 960, 3200};
+    for (const char* theme : themes) {
+        SetTheme(theme);
+        for (const char* lang : langs) {
+            SetCurrentLanguageAndRefreshUI(lang);
+            for (int iconSize : {18, 36}) {
+                gGlobalPrefs->toolbarSize = iconSize;
+                ReCreateToolbar(win);
+                ToolbarUpdateStateForWindow(win, true);
+                HWND edit = ToolbarFindEdit(win);
+                ToolbarFindSetText(win, "search 中文 text", true);
+                SendMessageW(edit, EM_SETSEL, 2, 6);
+                bool valid = edit != nullptr;
+                for (int width : widths) {
+                    SetWindowPos(win->hwndFrame, nullptr, 0, 0, width, 850, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                    RelayoutWindow(win);
+                    ToolbarFindLayout(win);
+                    DWORD start = 0, end = 0;
+                    SendMessageW(edit, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+                    bool queryOk = ToolbarFindEdit(win) == edit && start == 2 && end == 6 &&
+                                   str::Eq(HwndGetTextTemp(edit), "search 中文 text");
+                    RECT field{}, client{}, query{};
+                    GetWindowRect(win->hwndToolbarFind, &field);
+                    MapWindowPoints(HWND_DESKTOP, win->hwndToolbar, (POINT*)&field, 2);
+                    GetClientRect(win->hwndToolbar, &client);
+                    GetWindowRect(edit, &query);
+                    bool fieldOk = (GetWindowLongW(win->hwndToolbarFind, GWL_STYLE) & WS_VISIBLE) && field.left >= 0 &&
+                                   field.right <= client.right && field.bottom <= client.bottom &&
+                                   query.right - query.left >= 60;
+                    int count = (int)SendMessageW(win->hwndToolbar, TB_BUTTONCOUNT, 0, 0);
+                    bool buttonsOk = true;
+                    int lastRight = 0;
+                    for (int idx = 0; idx < count; idx++) {
+                        TBBUTTON button{};
+                        RECT r{};
+                        SendMessageW(win->hwndToolbar, TB_GETBUTTON, idx, (LPARAM)&button);
+                        if (!(button.fsState & TBSTATE_HIDDEN) &&
+                            SendMessageW(win->hwndToolbar, TB_GETITEMRECT, idx, (LPARAM)&r)) {
+                            buttonsOk = buttonsOk && r.right <= field.left;
+                            lastRight = std::max(lastRight, (int)r.right);
+                        }
+                    }
+                    bool menuOk = width != 500 || (!win->toolbarOverflow.IsEmpty() && TestToolbarOverflowMenu(win));
+                    bool restoreOk = width != 3200 || iconSize != 18 || win->toolbarOverflow.IsEmpty();
+                    valid = valid && queryOk && fieldOk && buttonsOk && menuOk && restoreOk;
+                    if (!(queryOk && fieldOk && buttonsOk && menuOk && restoreOk))
+                        fprintf(report,
+                                "width=%d query=%d field=%d buttons=%d menu=%d restore=%d rect=%ld,%ld,%ld,%ld "
+                                "client=%ld,%ld editWidth=%ld buttonsRight=%d overflow=%d\n",
+                                width, queryOk, fieldOk, buttonsOk, menuOk, restoreOk, field.left, field.top,
+                                field.right, field.bottom, client.right, client.bottom, query.right - query.left,
+                                lastRight, win->toolbarOverflow.Size());
+                }
+                fprintf(report,
+                        "theme=%s lang=%s icon=%d resize round trip, query/selection, bounds, overflow states: %s\n",
+                        theme, lang, iconSize, valid ? "PASS" : "FAIL");
+                fflush(report);
+                ok = ok && valid;
+            }
+        }
+    }
+    bool dpiOk = true;
+    for (int dpi : {96, 120, 144, 192, 96}) {
+        RECT suggested{100, 100, 1060, 950};
+        SendMessageW(win->hwndFrame, WM_DPICHANGED, MAKELONG(dpi, dpi), (LPARAM)&suggested);
+        RelayoutWindow(win);
+        ToolbarFindLayout(win);
+        HWND edit = ToolbarFindEdit(win);
+        RECT r{}, client{};
+        GetWindowRect(win->hwndToolbarFind, &r);
+        MapWindowPoints(HWND_DESKTOP, win->hwndToolbar, (POINT*)&r, 2);
+        GetClientRect(win->hwndToolbar, &client);
+        dpiOk = dpiOk && edit && str::Eq(HwndGetTextTemp(edit), "search 中文 text") && r.left >= 0 &&
+                r.right <= client.right && (GetWindowLongW(win->hwndToolbarFind, GWL_STYLE) & WS_VISIBLE) &&
+                TestToolbarOverflowMenu(win);
+    }
+    ok = ok && dpiOk;
+    fprintf(report, "WM_DPICHANGED 96/120/144/192/96 simulation: %s\n", dpiOk ? "PASS" : "FAIL");
+    gGlobalPrefs->showAnnotToolbarButtons = false;
+    SetWindowPos(win->hwndFrame, nullptr, 0, 0, 500, 850, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    ToolbarUpdateStateForWindow(win, true);
+    bool hiddenPreferenceOk = true;
+    for (int idx : win->toolbarOverflow) {
+        TBBUTTON b{};
+        SendMessageW(win->hwndToolbar, TB_GETBUTTON, idx, (LPARAM)&b);
+        hiddenPreferenceOk =
+            hiddenPreferenceOk && !((b.idCommand >= CmdCreateAnnotFirst && b.idCommand <= CmdCreateAnnotLast) ||
+                                    b.idCommand == CmdAddHandwrittenSignature);
+    }
+    ok = ok && hiddenPreferenceOk;
+    fprintf(report, "Hidden annotation preference, long custom captions and duplicate command IDs: %s\n",
+            hiddenPreferenceOk ? "PASS" : "FAIL");
+    // The -render harness exits directly; it has no normal session shutdown loop.
+    fprintf(report, "Overall: %s\n", ok ? "PASS" : "FAIL");
+    return ok;
+}
+
 void TestRenderPage(const Flags& i) {
     if (i.showConsole) {
         RedirectIOToConsole();
@@ -241,6 +407,12 @@ void TestRenderPage(const Flags& i) {
         printf("Image export/crop: %s\n", ok ? "PASS" : "FAIL");
         fflush(stdout);
         ExitProcess(ok ? 0 : 1);
+    }
+    if (getenv("SUMATRA_TEST_REGION_EXPORT")) {
+        ExitProcess(TestRegionExport(i) ? 0 : 1);
+    }
+    if (getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW")) {
+        ExitProcess(TestResponsiveToolbar(i) ? 0 : 1);
     }
 
     FILE* bench = fopen("c:\\src\\sumatrapdf\\out\\dbg64\\render_bench.txt", "w");

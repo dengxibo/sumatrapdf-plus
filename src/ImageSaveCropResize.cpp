@@ -492,7 +492,7 @@ static int LayoutImageActions(ImageEditWindow* ew, int x, int y, int width, bool
         left += sz.dx + gap;
         rowH = std::max(rowH, sz.dy);
     };
-    Button* buttons[] = {ew->btnRotateLeft, ew->btnRotateRight, ew->btnSave, ew->btnCrop, ew->btnResize};
+    Button* buttons[] = {ew->btnRotateLeft, ew->btnRotateRight, ew->btnCrop, ew->btnResize};
     for (Button* button : buttons) {
         if (button) add(button->hwnd, button->GetIdealSize());
     }
@@ -510,6 +510,10 @@ static int ImageHintHeight(ImageEditWindow* ew, int width) {
     return std::max((int)rc.bottom, ImgPx(ew, 18));
 }
 
+static int ImageFooterHeight(ImageEditWindow* ew) {
+    return std::max(ew->btnSave ? ew->btnSave->GetIdealSize().dy : 0, ImgPx(ew, 26));
+}
+
 static int GetControlAreaDy(ImageEditWindow* ew) {
     int pad = ImgPx(ew, kRowPadding);
     int width = ew->hwnd ? ClientRect(ew->hwnd).dx - ImgPx(ew, kButtonPadding * 2) : ImgPx(ew, kMinWindowWidth);
@@ -517,8 +521,7 @@ static int GetControlAreaDy(ImageEditWindow* ew) {
     height += ImgPx(ew, 24) + pad;
     height += LayoutImageActions(ew, 0, 0, width, false) + pad;
     height += ImgPx(ew, 20) + pad;
-    if (!ew->cropDone) height += ImgPx(ew, 26) + pad;
-    return height + ImageHintHeight(ew, width) + pad * 2;
+    return height + ImageHintHeight(ew, width) + ImageFooterHeight(ew) + pad * 3;
 }
 
 static void CalcImageLayout(ImageEditWindow* ew) {
@@ -969,11 +972,15 @@ static void LayoutControls(ImageEditWindow* ew) {
     y = LayoutImageActions(ew, x, y, w, true) + rowPad;
     ew->infoRc = {x, y, w, ImgPx(ew, 20)};
     y += ew->infoRc.dy + rowPad;
-    if (ew->hwndOpenAfterSave) {
-        MoveWindow(ew->hwndOpenAfterSave, x, y, w, ImgPx(ew, 26), TRUE);
-        y += ImgPx(ew, 26) + rowPad;
-    }
     ew->hintRc = {x, y, w, ImageHintHeight(ew, w)};
+    y += ew->hintRc.dy + rowPad;
+    int footerH = ImageFooterHeight(ew);
+    int saveW = std::max(ew->btnSave->GetIdealSize().dx, ImgPx(ew, 90));
+    bool rtl = trans::IsCurrLangRtl();
+    MoveWindow(ew->btnSave->hwnd, rtl ? x : x + w - saveW, y, saveW, footerH, TRUE);
+    if (ew->hwndOpenAfterSave) {
+        MoveWindow(ew->hwndOpenAfterSave, rtl ? x + saveW + rowPad : x, y, w - saveW - rowPad, footerH, TRUE);
+    }
 }
 
 static bool IsCropChanged(ImageEditWindow* ew);

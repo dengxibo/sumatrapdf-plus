@@ -25276,7 +25276,7 @@ uz:Betlar soni:
 vn:Số trang:
 :OCR
 br:OCR
-cn:OCR
+cn:识别
 de:OCR
 es:OCR
 fr:OCR
@@ -25288,7 +25288,7 @@ pl:OCR
 pt:OCR
 ru:OCR
 tr:OCR
-tw:OCR
+tw:識別
 uk:OCR
 vn:OCR
 :OCR (settings navigation)
@@ -44061,3 +44061,23 @@ cn:无法生成图片
 tw:無法產生圖片
 de:Bild konnte nicht erstellt werden
 ar:تعذر إنشاء الصورة
+
+:More tools
+cn:更多工具
+tw:更多工具
+
+:Navigation
+cn:导航
+tw:導覽
+
+:Other tools
+cn:其他工具
+tw:其他工具
+
+:Reading options
+cn:朗读选项
+tw:朗讀選項
+
+:OCR options
+cn:OCR 选项
+tw:OCR 選項

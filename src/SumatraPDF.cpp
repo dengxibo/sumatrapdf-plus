@@ -9866,18 +9866,19 @@ static int wrapIdx(int idx, int max) {
 void AdvanceFocus(MainWindow* win) {
     // Tab order: Frame -> Page -> Find -> ToC -> Favorites -> Frame -> ...
 
-    bool hasToolbar = !win->isFullScreen && !win->presentation && gGlobalPrefs->showToolbar && win->IsDocLoaded();
+    bool hasToolbar = ShouldShowToolbar(win) && win->IsDocLoaded();
     int direction = IsShiftPressed() ? -1 : 1;
 
-    const int MAX_WINDOWS = 5;
+    const int MAX_WINDOWS = 6;
     HWND tabOrder[MAX_WINDOWS] = {win->hwndFrame};
     int nWindows = 1;
-    if (hasToolbar) {
+    if (hasToolbar && IsWindowVisible(win->hwndPageEdit)) {
         tabOrder[nWindows++] = win->hwndPageEdit;
     }
     if (hasToolbar && NeedsFindUI(win)) {
         tabOrder[nWindows++] = win->hwndFindEdit;
     }
+    if (hasToolbar && !win->toolbarOverflow.IsEmpty()) tabOrder[nWindows++] = win->hwndToolbar;
     if (win->tocLoaded && win->tocVisible) {
         tabOrder[nWindows++] = win->tocTreeView->hwnd;
     }
@@ -16963,18 +16964,10 @@ static void ShowDocumentImageDarkMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     SendMessageW(win->hwndFrame, WM_COMMAND, selected, 0);
 }
 
-static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
-    if (!win || !nmtb || nmtb->iItem != CmdToggleAutoOcr) {
-        return;
-    }
-
-    RECT rc{};
-    SendMessageW(nmtb->hdr.hwndFrom, TB_GETRECT, CmdToggleAutoOcr, (LPARAM)&rc);
-    MapWindowPoints(nmtb->hdr.hwndFrom, HWND_DESKTOP, (POINT*)&rc, 2);
-
+HMENU BuildOcrToolbarMenu(MainWindow* win) {
     HMENU menu = CreatePopupMenu();
     if (!menu) {
-        return;
+        return nullptr;
     }
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
@@ -17007,6 +17000,20 @@ static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     }
     AppendMenuW(menu, copyMergedFlags, CmdToggleOcrCopyMerged, ToWStrTemp(_TRA("Paragraph-merged copy")));
 
+    return menu;
+}
+
+static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
+    if (!win || !nmtb || nmtb->iItem != CmdToggleAutoOcr) {
+        return;
+    }
+
+    RECT rc{};
+    SendMessageW(nmtb->hdr.hwndFrom, TB_GETRECT, CmdToggleAutoOcr, (LPARAM)&rc);
+    MapWindowPoints(nmtb->hdr.hwndFrom, HWND_DESKTOP, (POINT*)&rc, 2);
+
+    HMENU menu = BuildOcrToolbarMenu(win);
+    if (!menu) return;
     SetForegroundWindow(win->hwndFrame);
     UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,
                                          win->hwndFrame, nullptr);

@@ -2625,12 +2625,9 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     ReportIf(!dm);
     if (IsAltPressed() && IsShiftPressed() && !IsCtrlPressed()) {
         // This gesture takes precedence over OCR, pan and annotation tools.
-        EngineBase* engine = dm->GetEngine();
         int pageNo = dm->GetPageNoByPoint(pt);
-        bool supported = engine->kind == kindEngineImage ||
-                         (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf"));
         gSupressNextAltMenuTrigger = true;
-        if (supported && HasPermission(Perm::CopySelection) && dm->ValidPageNo(pageNo)) {
+        if (HasPermission(Perm::CopySelection) && dm->ValidPageNo(pageNo)) {
             win->imageRegionPageNo = pageNo;
             win->imageRegionTab = win->CurrentTab();
             win->annotCreateDragStart = pt;

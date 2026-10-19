@@ -156,6 +156,9 @@ struct MainWindow {
     FindWindowWnd* findWindow = nullptr;
     // Permanent toolbar search box (right side). Not the old docked overlay.
     HWND hwndToolbarFind = nullptr;
+    Vec<int> toolbarOverflow;
+    bool toolbarLayoutBusy = false;
+    int toolbarPageSlotX = -1;
     // Kept for compatibility with toolbar theming code; the floating bar owns
     // the actual edit control.
     HWND hwndFindLabel = nullptr;

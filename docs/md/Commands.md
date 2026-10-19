@@ -557,10 +557,14 @@ We log information about unsuccessful parsing of a shortcut so [check the logs](
 
 ## Quick image export and cropping
 
-On PDF and image pages, hold **Alt+Shift** and drag with the left mouse button to select an area, then release to open the image save window. The selection stays on the starting page. Press **Esc** to cancel. This shortcut does not require OCR. Export uses the current page zoom and rotation with the original document colors.
+On pages of any document supported by the fixed-page renderer (including PDF, images, Word, ebooks and comics), hold **Alt+Shift** and drag with the left mouse button to select an area, then release to open the image save window. The selection stays on the starting page. Press **Esc** to cancel. This shortcut does not require OCR. Export uses the current page zoom and rotation with the original document colors.
 
 In the crop window, drag to draw a new selection, drag one of the eight handles to resize it, or hold **Space** and drag to move it. The initial selection covers the whole image. Tab moves between controls; Space toggles the focused checkbox.
 
 “Open image after saving” is off by default and remembers your choice. Successful saves close the editor, remember the destination folder, and open the result only when this option is enabled. Invalid remembered folders fall back to the normal destination; suggested filenames avoid existing files. Failed or cancelled saves keep the editor and selection.
 
 高级设置：`ImageOpenAfterSave = false` 控制保存后打开，`ImageSaveFolder` 记录最近成功保存的目录。
+
+## Responsive toolbar
+
+When the window becomes narrow, lower-priority tools move into the **More tools** menu, grouped by function. Widen the window to restore them. The menu retains checked and disabled states, custom toolbar commands, and OCR/read-aloud options. Search keeps the same edit control and query while resizing. In very narrow windows the search field collapses secondary icons; these commands remain in the menu. If the page-number field cannot fit, use **Navigation → Go to Page...** from the menu. Tab from search reaches the toolbar overflow button; Enter or Space opens the menu.

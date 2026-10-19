@@ -44,6 +44,11 @@ constexpr UINT_PTR kFindEditSubclassId = 9101;
 static LRESULT CALLBACK FindEditSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
                                              DWORD_PTR refData) {
     MainWindow* win = (MainWindow*)refData;
+    if (win && hwnd == ToolbarFindEdit(win) && msg == WM_KEYDOWN && wp == VK_TAB) {
+        AdvanceFocus(win);
+        return 0;
+    }
+    if (win && hwnd == ToolbarFindEdit(win) && msg == WM_CHAR && wp == VK_TAB) return 0;
     if (win && msg == WM_KEYDOWN && wp == VK_ESCAPE) {
         // Esc clears search and returns focus to the document.
         if (GetWindowTextLengthW(hwnd) > 0) {
@@ -881,7 +886,7 @@ static void ToolbarFindLayoutInner(ToolbarFindState* st) {
         return dx + statusW;
     };
 
-    int minEdit = HwndMeasureText(st->hwnd, "0000", font).dx;
+    int minEdit = std::max(DpiScale(st->hwnd, 80), HwndMeasureText(st->hwnd, "00000000", font).dx);
     int right = clusterW(st->showDetail);
     // Leave the outer two pixels for the border. The system edit erases one
     // pixel past its own left edge and wipes a stroke that starts at x=1.
@@ -893,6 +898,17 @@ static void ToolbarFindLayoutInner(ToolbarFindState* st) {
     if (st->hasQuery && editW < minEdit && st->showDetail) {
         st->showDetail = false;
         right = clusterW(false);
+        editW = w - editX - right - edge;
+    }
+    if (editW < minEdit && st->showStatus) {
+        st->showStatus = false;
+        statusW = 0;
+        right = clusterW(st->showDetail);
+        editW = w - editX - right - edge;
+    }
+    if (editW < minEdit && st->showNav) {
+        st->showNav = false;
+        right = clusterW(st->showDetail);
         editW = w - editX - right - edge;
     }
     if (editW < 1) {
@@ -1491,6 +1507,10 @@ static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int mar
     if (fallback < 1) {
         fallback = tbW;
     }
+    // The canvas and toolbar can use different mirrored coordinate systems.
+    // Keep the search field inside the toolbar instead of treating a physical
+    // canvas edge as a logical right edge in RTL layout.
+    if (IsUIRtl()) return fallback;
     if (!win || !toolbar || tbW <= 0 || !win->hwndCanvas) {
         return fallback;
     }
@@ -1540,7 +1560,7 @@ static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int mar
 }
 
 void ToolbarFindLayout(MainWindow* win) {
-    if (!win || !win->hwndToolbar || !win->hwndToolbarFind) {
+    if (!win || !win->hwndToolbar || !win->hwndToolbarFind || win->toolbarLayoutBusy) {
         return;
     }
     RECT trc{};
@@ -1567,7 +1587,7 @@ void ToolbarFindLayout(MainWindow* win) {
         if (br.right <= br.left) {
             continue;
         }
-        if (!gotButton) {
+        if (!gotButton && !(btn.fsStyle & BTNS_SEP)) {
             sample = br;
             gotButton = true;
         }
@@ -1601,21 +1621,23 @@ void ToolbarFindLayout(MainWindow* win) {
     if (st) {
         st->iconSlot = slot;
     }
-    int margin = sample.left > 0 ? sample.left : edge;
+    int margin = DpiScale(box, 4);
     int rightLimit = ToolbarFindRightLimit(win, win->hwndToolbar, tbW, margin);
     HFONT font = GetWindowFont(win->hwndToolbar);
-    int cue = HwndMeasureText(box, "Find in document...", font).dx;
+    int cue = HwndMeasureText(box, _TRA("Find in document..."), font).dx;
     int status = HwndMeasureText(box, "0000 / 0000", font).dx + edge * 2;
     int queryMin = HwndMeasureText(box, "0000", font).dx;
     ToolbarFindCluster cluster;
     ToolbarFindClusterMetrics(box, slot, &cluster);
     int fullRight = cluster.search + cluster.clear + cluster.gapDetailToClear + cluster.detail +
                     cluster.gapNavToDetail + cluster.nav * 2 + status;
-    int minRight = cluster.search + cluster.clear + cluster.gapNavToDetail + cluster.nav * 2 + status;
     // Cue and the full hit cluster share one width, so typing does not resize the field.
     int preferred = edge * 2 + cue + edge + fullRight;
-    // Below this the count and prev/next/clear/magnifier would overlap the query.
-    int minShow = edge * 2 + queryMin + minRight;
+    // Keep the same edit HWND. The field's secondary icons collapse before
+    // the typed query; those commands remain in the overflow search menu.
+    int minShow = edge * 2 + std::max(queryMin, DpiScale(box, 88)) + cluster.search + cluster.clear;
+    int reserve = std::max(minShow, std::min(preferred, DpiScale(box, 240)));
+    buttonsRight = LayoutToolbarOverflow(win, rightLimit - margin - reserve, rightLimit - margin - minShow);
     int avail = rightLimit - buttonsRight - margin;
     if (tbW <= 0 || tbH <= 0 || fieldH < 1 || avail < minShow) {
         ShowWindow(box, SW_HIDE);

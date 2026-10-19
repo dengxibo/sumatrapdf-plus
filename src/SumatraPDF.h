@@ -197,6 +197,7 @@ constexpr const char* kTtsSmartOnlineBilingualVoiceId = "smart-online:zh-en";
 constexpr const char* kTtsMultilingualVoiceId = "online:multilingual";
 
 void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursorPoint = false);
+HMENU BuildOcrToolbarMenu(MainWindow* win);
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
 // Settings > Read Aloud page; changes are applied on OK only
 void ReadAloudSettingsPageInit(HWND hDlg);

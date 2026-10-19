@@ -38,6 +38,7 @@ extern "C" {
 #include "FloatingPopupStyle.h"
 #include "HandwrittenSignature.h"
 #include "FindBar.h"
+#include "FindWindow.h"
 #include "TextToSpeech.h"
 #include "EbookFontConfig.h"
 #include "EbookFontMenu.h"
@@ -78,6 +79,9 @@ struct ToolbarButtonInfo {
 // covered by other HWNDs. They need the right size
 constexpr int PageInfoId = (int)CmdLast + 16;
 constexpr int WarningMsgId = (int)CmdLast + 17;
+constexpr int ToolbarMoreId = (int)CmdLast + 18;
+
+static void ShowToolbarOverflow(MainWindow* win);
 
 static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Open, CmdOpenFile, _TRN("Open")},
@@ -164,6 +168,237 @@ static int TotalButtonsCount() {
 static ToolbarButtonInfo& GetToolbarButtonInfoByIdx(int idx) {
     if (idx < kButtonsCount) return gToolbarButtons[idx];
     return gCustomButtons[idx - kButtonsCount];
+}
+
+static bool ToolbarButtonHiddenByPreference(int idx) {
+    int cmd = GetToolbarButtonInfoByIdx(idx).cmdId;
+    return !gGlobalPrefs->showAnnotToolbarButtons &&
+           ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature);
+}
+
+static int ToolbarOverflowPriority(int idx) {
+    int cmd = GetToolbarButtonInfoByIdx(idx).cmdId;
+    if ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature) return 0;
+    if (cmd == CmdRotateLeft || cmd == CmdRotateRight) return 1;
+    if (cmd == CmdEbookFontSizeIncrease || cmd == CmdEbookFontSizeDecrease) return 2;
+    if (idx >= kButtonsCount) return 4;
+    if (cmd == CmdOpenFile || cmd == CmdPrint) return 5;
+    if (cmd == CmdNavigateBack || cmd == CmdNavigateForward) return 6;
+    if (cmd == CmdZoomIn || cmd == CmdZoomOut || cmd == CmdZoomFitWidthAndContinuous ||
+        cmd == CmdZoomFitPageAndSinglePage)
+        return 7;
+    if (cmd == CmdToggleBookmarks) return 8;
+    if (cmd == CmdGoToPrevPage || cmd == CmdGoToNextPage) return 9;
+    if (cmd == PageInfoId) return 10;
+    return 3;
+}
+
+static int ToolbarVisibleRight(HWND toolbar) {
+    int right = 0;
+    int count = (int)SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0);
+    for (int i = 0; i < count; i++) {
+        TBBUTTON b{};
+        RECT r{};
+        if (SendMessageW(toolbar, TB_GETBUTTON, i, (LPARAM)&b) && !(b.fsState & TBSTATE_HIDDEN) &&
+            SendMessageW(toolbar, TB_GETITEMRECT, i, (LPARAM)&r))
+            right = std::max(right, (int)r.right);
+    }
+    return right;
+}
+
+static void NormalizeToolbarSeparators(HWND toolbar) {
+    bool hasButton = false;
+    int separator = -1;
+    for (int i = 0; i < TotalButtonsCount(); i++) {
+        auto& info = GetToolbarButtonInfoByIdx(i);
+        if (info.cmdId == 0 && SkipBuiltInButton(info)) {
+            UpdateToolbarButtonStateByIdx(toolbar, i, true, TBSTATE_HIDDEN);
+            if (hasButton && separator < 0) separator = i;
+            continue;
+        }
+        TBBUTTON b{};
+        if (!SendMessageW(toolbar, TB_GETBUTTON, i, (LPARAM)&b) || (b.fsState & TBSTATE_HIDDEN)) continue;
+        if (separator >= 0) UpdateToolbarButtonStateByIdx(toolbar, separator, false, TBSTATE_HIDDEN);
+        separator = -1;
+        hasButton = true;
+    }
+    SendMessageW(toolbar, TB_AUTOSIZE, 0, 0);
+}
+
+int LayoutToolbarOverflow(MainWindow* win, int buttonsRightLimit, int compactRightLimit) {
+    HWND toolbar = win->hwndToolbar;
+    if (win->toolbarLayoutBusy) return ToolbarVisibleRight(toolbar);
+    win->toolbarLayoutBusy = true;
+    defer {
+        win->toolbarLayoutBusy = false;
+    };
+    for (int idx : win->toolbarOverflow) {
+        UpdateToolbarButtonStateByIdx(toolbar, idx, ToolbarButtonHiddenByPreference(idx), TBSTATE_HIDDEN);
+    }
+    win->toolbarOverflow.Reset();
+    int more = TotalButtonsCount();
+    UpdateToolbarButtonStateByIdx(toolbar, more, true, TBSTATE_HIDDEN);
+    NormalizeToolbarSeparators(toolbar);
+    for (int priority = 0; priority <= 10 && ToolbarVisibleRight(toolbar) > buttonsRightLimit; priority++) {
+        if (priority == 9) {
+            buttonsRightLimit = compactRightLimit;
+            if (ToolbarVisibleRight(toolbar) <= buttonsRightLimit) break;
+        }
+        for (int i = 0; i < TotalButtonsCount(); i++) {
+            auto& info = GetToolbarButtonInfoByIdx(i);
+            if (info.cmdId == 0 || ToolbarButtonHiddenByPreference(i) || ToolbarOverflowPriority(i) != priority)
+                continue;
+            TBBUTTON b{};
+            if (!SendMessageW(toolbar, TB_GETBUTTON, i, (LPARAM)&b) || (b.fsState & TBSTATE_HIDDEN)) continue;
+            win->toolbarOverflow.Append(i);
+            UpdateToolbarButtonStateByIdx(toolbar, i, true, TBSTATE_HIDDEN);
+        }
+        UpdateToolbarButtonStateByIdx(toolbar, more, win->toolbarOverflow.IsEmpty(), TBSTATE_HIDDEN);
+        NormalizeToolbarSeparators(toolbar);
+    }
+    RECT page{};
+    bool showPage = SendMessageW(toolbar, TB_GETRECT, PageInfoId, (LPARAM)&page) != 0;
+    for (int idx : win->toolbarOverflow)
+        if (GetToolbarButtonInfoByIdx(idx).cmdId == PageInfoId) showPage = false;
+    HWND fields[] = {win->hwndPageLabel, win->hwndPageBg, win->hwndPageEdit, win->hwndPageTotal};
+    for (HWND field : fields) {
+        if (!field) continue;
+        if (showPage && win->toolbarPageSlotX >= 0) {
+            RECT r{};
+            GetWindowRect(field, &r);
+            MapWindowPoints(HWND_DESKTOP, toolbar, (POINT*)&r, 2);
+            MoveWindow(field, r.left + page.left - win->toolbarPageSlotX, r.top, r.right - r.left, r.bottom - r.top,
+                       TRUE);
+        }
+        ShowWindow(field, showPage ? SW_SHOWNA : SW_HIDE);
+    }
+    if (showPage) win->toolbarPageSlotX = page.left;
+    InvalidateRect(toolbar, nullptr, FALSE);
+    return ToolbarVisibleRight(toolbar);
+}
+
+static int ToolbarOverflowGroup(int cmd) {
+    if (cmd == CmdOpenFile || cmd == CmdPrint) return 0;
+    if (cmd == PageInfoId || cmd == CmdGoToPrevPage || cmd == CmdGoToNextPage || cmd == CmdNavigateBack ||
+        cmd == CmdNavigateForward)
+        return 1;
+    if ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature) return 3;
+    if (cmd == CmdReadAloud || cmd == CmdPauseReadAloud) return 4;
+    if (cmd == CmdToggleAutoOcr) return 5;
+    if (cmd >= CmdLast) return 6;
+    return 2;
+}
+
+static HMENU BuildToolbarOverflowMenu(MainWindow* win) {
+    if (!win || win->toolbarOverflow.IsEmpty()) return nullptr;
+    HMENU menu = CreatePopupMenu();
+    HMENU groups[7]{};
+    const char* titles[] = {_TRA("&File"),   _TRA("Navigation"), _TRA("&View"),      _TRA("Annotations"),
+                            _TRA("Reading"), _TRA("OCR"),        _TRA("Other tools")};
+    for (int idx : win->toolbarOverflow) {
+        auto& info = GetToolbarButtonInfoByIdx(idx);
+        int group = idx >= kButtonsCount ? 6 : ToolbarOverflowGroup(info.cmdId);
+        if (!groups[group]) groups[group] = CreatePopupMenu();
+        int cmd = info.cmdId == PageInfoId ? CmdGoToPage : info.cmdId;
+        TBBUTTON b{};
+        SendMessageW(win->hwndToolbar, TB_GETBUTTON, idx, (LPARAM)&b);
+        UINT state =
+            MF_STRING |
+            ((b.fsState & TBSTATE_ENABLED) || (info.cmdId == PageInfoId && win->IsDocLoaded()) ? 0 : MF_GRAYED);
+        if (b.fsState & TBSTATE_CHECKED) state |= MF_CHECKED;
+        WCHAR caption[512]{};
+        TBBUTTONINFOW text{};
+        text.cbSize = sizeof(text);
+        text.dwMask = TBIF_BYINDEX | TBIF_TEXT;
+        text.pszText = caption;
+        text.cchText = dimof(caption);
+        SendMessageW(win->hwndToolbar, TB_GETBUTTONINFOW, idx, (LPARAM)&text);
+        const char* label = info.cmdId == PageInfoId
+                                ? _TRA("Go to Page...")
+                                : (idx >= kButtonsCount ? info.toolTip : trans::GetTranslation(info.toolTip));
+        if ((cmd == CmdReadAloud || cmd == CmdPauseReadAloud) && caption[0]) label = ToUtf8Temp(caption);
+        label = AppendAccelKeyToMenuStringTemp(str::DupTemp(label), cmd);
+        AppendMenuW(groups[group], state, cmd, ToWStrTemp(label));
+        if (cmd == CmdReadAloud || cmd == CmdPauseReadAloud) {
+            HMENU reading = CreatePopupMenu();
+            RebuildReadAloudMenu(win, reading);
+            AppendMenuW(groups[group], MF_POPUP, (UINT_PTR)reading, ToWStrTemp(_TRA("Reading options")));
+        }
+        if (cmd == CmdToggleAutoOcr) {
+            HMENU ocr = BuildOcrToolbarMenu(win);
+            if (ocr) AppendMenuW(groups[group], MF_POPUP, (UINT_PTR)ocr, ToWStrTemp(_TRA("OCR options")));
+        }
+    }
+    for (int i = 0; i < dimof(groups); i++)
+        if (groups[i]) AppendMenuW(menu, MF_POPUP, (UINT_PTR)groups[i], ToWStrTemp(titles[i]));
+    HMENU search = CreatePopupMenu();
+    bool canFind = NeedsFindUI(win);
+    UINT findState = MF_STRING | (canFind ? 0 : MF_GRAYED);
+    UINT navigateState =
+        MF_STRING | (canFind && win->hwndFindEdit && HwndGetTextLen(win->hwndFindEdit) ? 0 : MF_GRAYED);
+    AppendMenuW(search, navigateState, CmdFindNext, ToWStrTemp(_TRA("Find Next")));
+    AppendMenuW(search, navigateState, CmdFindPrev, ToWStrTemp(_TRA("Find Previous")));
+    AppendMenuW(search, findState | (win->findMatchCase ? MF_CHECKED : 0), CmdFindToggleMatchCase,
+                ToWStrTemp(_TRA("Match Case")));
+    AppendMenuW(search, findState | (win->findMatchWholeWord ? MF_CHECKED : 0), CmdFindToggleMatchWholeWord,
+                ToWStrTemp(_TRA("Match Whole Word")));
+    AppendMenuW(search, findState, ToolbarMoreId + 1, ToWStrTemp(_TRA("Detailed Search")));
+    AppendMenuW(menu, MF_POPUP, (UINT_PTR)search, ToWStrTemp(_TRA("Find")));
+    return menu;
+}
+
+static void ShowToolbarOverflow(MainWindow* win) {
+    HMENU menu = BuildToolbarOverflowMenu(win);
+    if (!menu) return;
+    MarkMenuOwnerDraw(menu);
+    RECT r{};
+    SendMessageW(win->hwndToolbar, TB_GETRECT, ToolbarMoreId, (LPARAM)&r);
+    MapWindowPoints(win->hwndToolbar, HWND_DESKTOP, (POINT*)&r, 2);
+    UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON | (IsUIRtl() ? TPM_RIGHTALIGN | TPM_LAYOUTRTL : TPM_LEFTALIGN);
+    int selected = TrackPopupMenu(menu, flags, IsUIRtl() ? r.right : r.left, r.bottom, 0, win->hwndFrame, nullptr);
+    FreeMenuOwnerDrawInfoData(menu);
+    DestroyMenu(menu);
+    if (selected == ToolbarMoreId + 1)
+        ShowDetailedSearchWindow(win);
+    else if (selected)
+        HwndSendCommand(win->hwndFrame, selected);
+}
+
+static bool FindOverflowMenuItem(HMENU menu, UINT command, MENUITEMINFOW* out) {
+    for (int i = 0; i < GetMenuItemCount(menu); i++) {
+        MENUITEMINFOW item{};
+        item.cbSize = sizeof(item);
+        item.fMask = MIIM_ID | MIIM_STATE | MIIM_SUBMENU;
+        GetMenuItemInfoW(menu, i, TRUE, &item);
+        if (item.hSubMenu) {
+            if (FindOverflowMenuItem(item.hSubMenu, command, out)) return true;
+        } else if (item.wID == command) {
+            *out = item;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TestToolbarOverflowMenu(MainWindow* win) {
+    HMENU menu = BuildToolbarOverflowMenu(win);
+    if (!menu) return win->toolbarOverflow.IsEmpty();
+    defer {
+        DestroyMenu(menu);
+    };
+    for (int idx : win->toolbarOverflow) {
+        TBBUTTON b{};
+        SendMessageW(win->hwndToolbar, TB_GETBUTTON, idx, (LPARAM)&b);
+        int command = GetToolbarButtonInfoByIdx(idx).cmdId;
+        MENUITEMINFOW item{};
+        if (!FindOverflowMenuItem(menu, command == PageInfoId ? CmdGoToPage : command, &item)) return false;
+        if (command == PageInfoId) continue;
+        bool enabled = (b.fsState & TBSTATE_ENABLED) != 0;
+        bool checked = (b.fsState & TBSTATE_CHECKED) != 0;
+        if (enabled != ((item.fState & MFS_DISABLED) == 0) || checked != ((item.fState & MFS_CHECKED) != 0))
+            return false;
+    }
+    return true;
 }
 
 // more than one because users can add custom buttons with overlapping ids
@@ -584,6 +819,11 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
 void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
     TBBUTTONINFO binfo{};
     HWND hwnd = win->hwndToolbar;
+    TBBUTTONINFOW moreText{};
+    moreText.cbSize = sizeof(moreText);
+    moreText.dwMask = TBIF_TEXT;
+    moreText.pszText = (WCHAR*)_TRW("More tools");
+    SendMessageW(hwnd, TB_SETBUTTONINFOW, ToolbarMoreId, (LPARAM)&moreText);
     for (int i = 0; i < kButtonsCount; i++) {
         const ToolbarButtonInfo& bi = gToolbarButtons[i];
         if (!bi.toolTip) {
@@ -1314,6 +1554,10 @@ constexpr UINT_PTR kToolbarNotifySubclassId = 1;
 // installed after darkmodelib so toolbar NM_CUSTOMDRAW uses theme colors, not white press chrome
 static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
                                              DWORD_PTR dwRefData) {
+    if (uMsg == WM_COMMAND && LOWORD(wParam) == ToolbarMoreId) {
+        ShowToolbarOverflow(FindMainWindowByHwnd(hWnd));
+        return 0;
+    }
     if (WM_NOTIFY == uMsg) {
         NMHDR* hdr = (NMHDR*)lParam;
         auto win = FindMainWindowByHwnd(hWnd);
@@ -1568,9 +1812,26 @@ static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     }
     if (msg == WM_WINDOWPOSCHANGED || msg == WM_SIZE) {
         MainWindow* win = FindMainWindowByHwnd(hwnd);
-        if (win) {
+        if (win && !win->toolbarLayoutBusy) {
             ToolbarFindLayout(win);
         }
+    }
+    if (msg == WM_SETFOCUS) {
+        LRESULT result = CallWindowProc(DefWndProcToolbar, hwnd, msg, wp, lp);
+        MainWindow* win = FindMainWindowByHwnd(hwnd);
+        if (win && !win->toolbarOverflow.IsEmpty()) SendMessageW(hwnd, TB_SETHOTITEM, TotalButtonsCount(), 0);
+        return result;
+    }
+    if (msg == WM_KEYDOWN && wp == VK_TAB) {
+        MainWindow* win = FindMainWindowByHwnd(hwnd);
+        if (win) AdvanceFocus(win);
+        return 0;
+    }
+    if (msg == WM_CHAR && (wp == VK_TAB || wp == VK_RETURN || wp == VK_SPACE)) return 0;
+    if (msg == WM_KEYDOWN && (wp == VK_RETURN || wp == VK_SPACE) &&
+        SendMessageW(hwnd, TB_GETHOTITEM, 0, 0) == TotalButtonsCount()) {
+        ShowToolbarOverflow(FindMainWindowByHwnd(hwnd));
+        return 0;
     }
     if (msg == WM_PAINT) {
         PAINTSTRUCT ps{};
@@ -2000,16 +2261,13 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
 
     Rect pageWndRect = WindowRect(win->hwndPageBg);
 
-    // TB_GETRECT fails for hidden buttons, so anchor on a button that's still
-    // visible. CmdPrint is hidden when PrinterAccess is revoked via
-    // sumatrapdfrestrict.ini (issue #5563); fall back to CmdOpenFile in that case.
+    // Anchor on the actual page slot: Open/Print can live in the overflow menu.
     RECT r{};
-    int anchorCmd = HasPermission(Perm::PrinterAccess) ? CmdPrint : CmdOpenFile;
-    BOOL gotAnchor = (BOOL)SendMessageW(win->hwndToolbar, TB_GETRECT, anchorCmd, (LPARAM)&r);
+    BOOL gotAnchor = (BOOL)SendMessageW(win->hwndToolbar, TB_GETRECT, PageInfoId, (LPARAM)&r);
     int currX;
     int currY;
     if (gotAnchor) {
-        currX = r.right + DpiScale(win->hwndFrame, 10);
+        currX = r.left;
         currY = (r.bottom - pageWndRect.dy) / 2;
     } else {
         // anchor button is hidden (e.g. on the Home tab), so align to the left
@@ -2017,6 +2275,7 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
         currX = DpiScale(win->hwndFrame, 6);
         currY = 0;
     }
+    win->toolbarPageSlotX = currX;
 
     // Keep a compact slot for this book. Reflow may grow it when necessary,
     // but a smaller page count must not pull the following buttons left.
@@ -2569,6 +2828,12 @@ void CreateToolbar(MainWindow* win) {
         buttons[i] = TbButtonFromButtonInfo(tbi, true);
     }
     SendMessageW(hwndToolbar, TB_ADDBUTTONS, gCustomButtonsCount, (LPARAM)buttons);
+    ToolbarButtonInfo moreInfo{TbIcon::ChevronDown, ToolbarMoreId, _TRN("More tools")};
+    TBBUTTON moreButton = TbButtonFromButtonInfo(moreInfo);
+    moreButton.fsState |= TBSTATE_HIDDEN;
+    SendMessageW(hwndToolbar, TB_ADDBUTTONS, 1, (LPARAM)&moreButton);
+    win->toolbarOverflow.Reset();
+    win->toolbarPageSlotX = -1;
     SendMessageW(hwndToolbar, TB_SETBUTTONSIZE, 0, MAKELONG(iconSize, iconSize));
     SendMessageW(hwndToolbar, TB_AUTOSIZE, 0, 0);
 
@@ -2588,7 +2853,7 @@ void CreateToolbar(MainWindow* win) {
     rbBand.hbmBack = nullptr;
     rbBand.lpText = (WCHAR*)L"Toolbar"; // NOLINT
     rbBand.hwndChild = hwndToolbar;
-    rbBand.cxMinChild = (rc.right - rc.left) * kButtonsCount;
+    rbBand.cxMinChild = 0;
     rbBand.cyMinChild = (rc.bottom - rc.top) + 2 * rc.top;
     rbBand.cx = 0;
     SendMessageW(win->hwndReBar, RB_INSERTBAND, (WPARAM)-1, (LPARAM)&rbBand);
@@ -2623,6 +2888,12 @@ void CreateToolbar(MainWindow* win) {
 }
 
 void ReCreateToolbar(MainWindow* win) {
+    HWND oldEdit = ToolbarFindEdit(win);
+    AutoFreeStr query;
+    query.SetCopy(oldEdit ? HwndGetTextTemp(oldEdit) : "");
+    DWORD start = 0, end = 0;
+    bool focused = oldEdit && HwndIsFocused(oldEdit);
+    if (oldEdit) SendMessageW(oldEdit, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
     if (win->hwndReBar) {
         HwndDestroyWindowSafe(&win->hwndPageLabel);
         HwndDestroyWindowSafe(&win->hwndPageEdit);
@@ -2631,7 +2902,17 @@ void ReCreateToolbar(MainWindow* win) {
         HwndDestroyWindowSafe(&win->hwndToolbar);
         HwndDestroyWindowSafe(&win->hwndReBar);
     }
+    win->hwndToolbarFind = nullptr;
+    if (win->hwndFindEdit == oldEdit) win->hwndFindEdit = nullptr;
     CreateToolbar(win);
+    win->lastLayoutState = {};
+    RelayoutWindow(win);
+    ToolbarFindSetText(win, query.Get() ? query.Get() : "", true);
+    HWND edit = ToolbarFindEdit(win);
+    if (edit) {
+        SendMessageW(edit, EM_SETSEL, start, end);
+        if (focused) HwndSetFocus(edit);
+    }
 }
 
 // --- Menu bar as rebar control (used when tabs are in titlebar) ---

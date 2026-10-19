@@ -22,3 +22,7 @@ The native integration test is enabled by SUMATRA_TEST_IMAGE_EDIT=1 with SUMATRA
 The automated DPI round trip is a native message simulation, not a physical two-monitor drag. Physical monitor round trips, Alt+Shift mouse modifier input, Space+drag, every hover/pressed state and the full OCR/pan/annotation interaction matrix still require manual verification. Those cases are not claimed as tested by the native suite.
 
 Testing found and fixed German button-label wrapping and the original path/browse controls missing Tab stops.
+
+## Format coverage after 3.7.61
+
+Removed the PDF/image type gate. Native clipped exports passed for PDF, PNG, DOCX, FB2, HTML, TXT, CBZ and EPUB at 0/90/180/270 degrees and 50/100/200 percent zoom. This covers the shared fixed-page path; formats rendered through external browser controls are outside that path.
