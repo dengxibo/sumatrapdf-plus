@@ -50,6 +50,7 @@ struct RabBar {
     HWND hwnd = nullptr;
     ReadAloudBarSource* src = nullptr;
     HFONT font = nullptr;
+    unsigned fontGeneration = 0;
     HFONT iconFont = nullptr;
     bool haveIcons = false;
     int dpi = 0;
@@ -419,10 +420,16 @@ static const char* RabTooltip(RabBar* bar, int i) {
 static void RabEnsureFonts(RabBar* bar) {
     int dpi = bar->layoutDpi;
     bar->layoutDpi = 0;
+    // Child GetDpiForWindow can still describe the previous monitor while the
+    // frame is processing WM_DPICHANGED. Use the same DPI as the main chrome.
+    if (bar->win && bar->win->frameDpi > 0) {
+        dpi = bar->win->frameDpi;
+    }
     if (dpi < 72) {
         dpi = DpiGet(bar->hwnd);
     }
-    if (bar->font && bar->dpi == dpi) {
+    unsigned generation = GetUiFontGeneration();
+    if (bar->font && bar->dpi == dpi && bar->fontGeneration == generation) {
         return;
     }
     if (bar->iconFont) {
@@ -430,6 +437,7 @@ static void RabEnsureFonts(RabBar* bar) {
         bar->iconFont = nullptr;
     }
     bar->dpi = dpi;
+    bar->fontGeneration = generation;
     bar->font = GetAppFontForDpi(dpi);
     int h = -MulDiv(12, dpi, 72);
     bar->iconFont = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
@@ -445,6 +453,29 @@ static void RabEnsureFonts(RabBar* bar) {
         // GDI silently substitutes a missing font
         bar->haveIcons = str::EqI(face, L"Segoe MDL2 Assets");
     }
+}
+
+bool TestReadAloudBarDpiFonts() {
+    RabBar bar;
+    bool ok = true;
+    int dpis[] = {96, 144, 192, 96, 192, 144, 96};
+    for (int dpi : dpis) {
+        bar.layoutDpi = dpi;
+        RabEnsureFonts(&bar);
+        LOGFONTW expected{};
+        GetObjectW(bar.font, sizeof(expected), &expected);
+        InvalidateUiFonts();
+        GetAppFontForDpi(dpi == 96 ? 192 : 96);
+        bar.layoutDpi = dpi;
+        RabEnsureFonts(&bar);
+        LOGFONTW actual{};
+        bool valid = GetObjectW(bar.font, sizeof(actual), &actual) && actual.lfHeight == expected.lfHeight &&
+                     bar.fontGeneration == GetUiFontGeneration();
+        printf("Read aloud bar DPI %d after font cache reset: %s\n", dpi, valid ? "PASS" : "FAIL");
+        ok = ok && valid;
+    }
+    if (bar.iconFont) DeleteObject(bar.iconFont);
+    return ok;
 }
 
 static void RabDrawLabel(RabBar* bar, HDC hdc, int i) {
@@ -523,6 +554,7 @@ static void RabPaint(RabBar* bar) {
         EndPaint(bar->hwnd, &ps);
         return;
     }
+    RabEnsureFonts(bar);
     Rect rc = ClientRect(bar->hwnd);
     DoubleBuffer buffer(bar->hwnd, rc);
     HDC hdc = buffer.GetDC();
@@ -949,7 +981,7 @@ void ReadAloudBarUpdate(MainWindow* win) {
         return;
     }
     bool srcChanged = bar->src != src;
-    bool changed = srcChanged;
+    bool changed = srcChanged || bar->fontGeneration != GetUiFontGeneration();
     bar->src = src;
     bool playing = src->IsPlaying(win);
     if (playing != bar->shownPlaying) {

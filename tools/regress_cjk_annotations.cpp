@@ -4,9 +4,11 @@
 extern "C" {
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
+void install_load_windows_font_funcs(fz_context* ctx);
 }
-int main() {
+int main(int argc, char** argv) {
     fz_context* ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
+    install_load_windows_font_funcs(ctx);
     int failed = 0;
     const fz_matrix identity = {1, 0, 0, 1, 0, 0};
     fz_try(ctx) {
@@ -31,8 +33,23 @@ int main() {
                                             : row == 2 ? FZ_LANG_zh_Hans
                                             : row == 3 ? FZ_LANG_zh_Hant
                                                        : FZ_LANG_ko));
-                pdf_set_annot_contents(ctx, annot, chars[col]);
+                char text[64];
+                // A Han character followed by a line break used to select the
+                // HTML path, which wrote unsupported characters as Japan1.
+                snprintf(text, sizeof(text), "%s\n%s", chars[col], chars[col]);
+                pdf_set_annot_contents(ctx, annot, text);
                 pdf_update_annot(ctx, annot);
+                pdf_obj* ap = pdf_dict_get(ctx, pdf_annot_obj(ctx, annot), PDF_NAME(AP));
+                pdf_obj* normal = pdf_dict_get(ctx, ap, PDF_NAME(N));
+                pdf_obj* resources = pdf_dict_get(ctx, normal, PDF_NAME(Resources));
+                pdf_obj* fonts = pdf_dict_get(ctx, resources, PDF_NAME(Font));
+                // HTML uses F0 resources. These characters plus a line break
+                // are fully supported by the simple collection fallback.
+                if (pdf_dict_gets(ctx, fonts, "F0")) {
+                    fprintf(stderr, "Unexpected HTML fallback: language=%s glyph=%d\n",
+                            languages[row] ? languages[row] : "unset", col);
+                    failed++;
+                }
                 pdf_drop_annot(ctx, annot);
             }
         }
@@ -71,6 +88,21 @@ int main() {
         fz_drop_pixmap(ctx, pix);
         fz_drop_page(ctx, (fz_page*)page);
         pdf_drop_document(ctx, doc);
+        if (argc == 3) {
+            doc = pdf_open_document(ctx, argv[1]);
+            page = pdf_load_page(ctx, doc, 0);
+            for (pdf_annot* annot = pdf_first_annot(ctx, page); annot; annot = pdf_next_annot(ctx, annot)) {
+                if (pdf_annot_type(ctx, annot) != PDF_ANNOT_FREE_TEXT) continue;
+                pdf_dirty_annot(ctx, annot);
+                pdf_update_annot(ctx, annot);
+            }
+            pdf_save_document(ctx, doc, argv[2], &opts);
+            fz_pixmap* samplePix = fz_new_pixmap_from_page(ctx, (fz_page*)page, identity, fz_device_rgb(ctx), 0);
+            fz_save_pixmap_as_png(ctx, samplePix, "out/issue-111/regenerated.png");
+            fz_drop_pixmap(ctx, samplePix);
+            fz_drop_page(ctx, (fz_page*)page);
+            pdf_drop_document(ctx, doc);
+        }
     }
     fz_catch(ctx) {
         fprintf(stderr, "%s\n", fz_caught_message(ctx));

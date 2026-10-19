@@ -45,3 +45,4 @@ HFONT GetAppTabFontForHwnd(HWND hwnd);
 HFONT GetAppTabFontForDpi(int dpi);
 bool IsMenuFontSizeDefault();
 void InvalidateUiFonts();
+unsigned GetUiFontGeneration();

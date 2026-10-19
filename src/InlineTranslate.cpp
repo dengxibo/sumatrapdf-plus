@@ -683,6 +683,7 @@ struct InlineTranslatePopup {
     HWND hwndChat = nullptr;
     HWND hwndInput = nullptr;
     HFONT font = nullptr;
+    unsigned fontGeneration = 0;
     HFONT titleFont = nullptr; // owned
     HFONT bodyFont = nullptr;  // owned; translation and AI answers, two points above the UI font
     HBRUSH fieldBrush = nullptr;
@@ -1926,6 +1927,8 @@ static void LayoutAskSidebar(InlineTranslatePopup* p) {
     InvalidateRect(h, nullptr, FALSE);
 }
 
+static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi);
+
 static void LayoutPopup(InlineTranslatePopup* p) {
     if (!p || !p->hwnd || p->inLayout) {
         return;
@@ -1934,6 +1937,8 @@ static void LayoutPopup(InlineTranslatePopup* p) {
     defer {
         p->inLayout = false;
     };
+    int dpi = p->docked && p->win && p->win->frameDpi > 0 ? p->win->frameDpi : DpiGet(p->hwnd);
+    ApplyPopupFonts(p, dpi);
     if (p->docked) {
         LayoutAskSidebar(p);
         return;
@@ -2851,6 +2856,14 @@ static LRESULT CALLBACK InputSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
                 PostClosePopup();
                 return 0;
             }
+            if (wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP || wp == VK_DOWN || wp == VK_HOME || wp == VK_END) {
+                LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+                // The themed multiline EDIT can erase text during its partial
+                // caret/selection repaint. Repaint the client after navigation,
+                // preserving the native caret, selection and scroll position.
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return result;
+            }
             break;
         case WM_CHAR:
             // swallow Enter / Esc so the edit doesn't beep. A composing IME still needs Enter.
@@ -2938,10 +2951,13 @@ static HFONT CreateReadingFont(HFONT base, int dpi, int extraPoints = 2) {
 }
 
 static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi) {
-    if (!p || !p->hwnd || dpi < 72 || (p->dpi == dpi && p->font && p->bodyFont)) {
+    unsigned generation = GetUiFontGeneration();
+    if (!p || !p->hwnd || dpi < 72 || (p->dpi == dpi && p->font && p->bodyFont && p->fontGeneration == generation)) {
         return;
     }
     p->dpi = dpi;
+    // InvalidateUiFonts deletes borrowed HFONTs even when our DPI is unchanged.
+    p->fontGeneration = generation;
     if (p->titleFont) {
         DeleteObject(p->titleFont);
         p->titleFont = nullptr;
@@ -2955,13 +2971,13 @@ static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi) {
     p->bodyFont = CreateReadingFont(p->font, dpi, p->docked ? 1 : 2);
     HFONT reading = p->bodyFont ? p->bodyFont : p->font;
     if (p->hwndTrans) {
-        SendMessageW(p->hwndTrans, WM_SETFONT, (WPARAM)reading, FALSE);
+        SendMessageW(p->hwndTrans, WM_SETFONT, (WPARAM)reading, TRUE);
     }
     if (p->hwndChat) {
-        SendMessageW(p->hwndChat, WM_SETFONT, (WPARAM)reading, FALSE);
+        SendMessageW(p->hwndChat, WM_SETFONT, (WPARAM)reading, TRUE);
     }
     if (p->hwndInput) {
-        SendMessageW(p->hwndInput, WM_SETFONT, (WPARAM)p->font, FALSE);
+        SendMessageW(p->hwndInput, WM_SETFONT, (WPARAM)p->font, TRUE);
     }
     if (p->chatIsRich && (p->turns.Size() > 0 || p->asking)) {
         RebuildChatView(p);
@@ -3051,6 +3067,34 @@ bool TestAskAiChatLayout() {
         DestroyWindow(chat);
     };
     bool ok = true;
+    {
+        // Exercise both DPI changes and cache invalidation at unchanged DPI.
+        // Windows can reuse a deleted HFONT for a completely different size.
+        HWND input = CreateWindowExW(0, WC_EDITW, L"DPI test", WS_CHILD | ES_MULTILINE, 0, 0, 200, 60, chat,
+                                     nullptr, GetModuleHandleW(nullptr), nullptr);
+        InlineTranslatePopup popup;
+        popup.hwnd = chat;
+        popup.hwndInput = input;
+        popup.docked = true;
+        int dpis[] = {96, 144, 192, 96, 192, 144, 96};
+        for (int dpi : dpis) {
+            ApplyPopupFonts(&popup, dpi);
+            LOGFONTW expected{};
+            GetObjectW(GetAppFontForDpi(dpi), sizeof(expected), &expected);
+            InvalidateUiFonts();
+            GetAppFontForDpi(dpi == 96 ? 192 : 96);
+            ApplyPopupFonts(&popup, dpi);
+            LOGFONTW actual{};
+            HFONT inputFont = (HFONT)SendMessageW(input, WM_GETFONT, 0, 0);
+            bool valid = input && GetObjectW(inputFont, sizeof(actual), &actual) &&
+                         actual.lfHeight == expected.lfHeight && popup.fontGeneration == GetUiFontGeneration();
+            printf("AI composer DPI %d after font cache reset: %s\n", dpi, valid ? "PASS" : "FAIL");
+            ok = ok && valid;
+        }
+        if (input) DestroyWindow(input);
+        if (popup.titleFont) DeleteObject(popup.titleFont);
+        if (popup.bodyFont) DeleteObject(popup.bodyFont);
+    }
     const char* themes[] = {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"};
     for (const char* theme : themes) {
         SetTheme(theme);

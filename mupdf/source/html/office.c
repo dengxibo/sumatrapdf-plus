@@ -1897,9 +1897,19 @@ static void emit_extra_bookmark_anchors(fz_context* ctx, fz_xml* p, doc_info* in
 }
 
 static int is_user_word_bookmark_name(const char* name) {
+    const char* p;
     if (!name || !name[0]) return 0;
     if (name[0] == '_') return 0; /* _Toc*, _Hlk*, _GoBack, … */
     if (is_generated_word_bookmark_name(name)) return 0;
+    /* Word/WPS heading anchors are navigation targets, not visible titles.
+     * Keep their IDs, but do not synthesize a heading containing the ID. */
+    if (!ascii_strncasecmp(name, "heading_", 8)) {
+        p = name + 8;
+        if (*p >= '0' && *p <= '9') {
+            while (*p >= '0' && *p <= '9') p++;
+            if (!*p) return 0;
+        }
+    }
     return 1;
 }
 

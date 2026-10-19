@@ -43,3 +43,4 @@ ReadAloudBarSource* TextToSpeechBarSource();
 // shows, hides and relabels the bar of a window; cheap when nothing changed
 void ReadAloudBarUpdate(MainWindow* win);
 void ReadAloudBarOnWindowClosing(MainWindow* win);
+bool TestReadAloudBarDpiFonts();

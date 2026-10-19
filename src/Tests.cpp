@@ -25,6 +25,7 @@
 #include "Annotation.h"
 #include "EbookAnnotations.h"
 #include "InlineTranslate.h"
+#include "ReadAloudBar.h"
 #include "ExtractPdfToc.h"
 #include "OcrService.h"
 #include "PrintedTocModel.h"
@@ -229,6 +230,7 @@ void TestRenderPage(const Flags& i) {
     }
     if (getenv("SUMATRA_TEST_AI_CHAT")) {
         bool ok = TestAskAiChatLayout();
+        ok = TestReadAloudBarDpiFonts() && ok;
         printf("AI chat layout: %s\n", ok ? "PASS" : "FAIL");
         fflush(stdout);
         ExitProcess(ok ? 0 : 1);

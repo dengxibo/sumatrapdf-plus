@@ -2753,7 +2753,10 @@ static int text_needs_rich_layout(fz_context* ctx, fz_text_language lang, const 
     struct text_walk_state state;
     init_text_walk(ctx, &state, lang, NULL, s, NULL);
     while (next_text_walk(ctx, &state))
-        if (state.dropped) return 1;
+        /* Line breaks and tabs are layout controls, not missing glyphs. After
+         * Han text they inherit its script and have no CJK CID. Sending them
+         * through HTML loses the per-character CJK collection fallback (#111). */
+        if (state.dropped && state.u != '\n' && state.u != '\r' && state.u != '\t') return 1;
     return 0;
 }
 

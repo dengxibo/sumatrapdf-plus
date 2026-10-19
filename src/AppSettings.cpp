@@ -286,6 +286,11 @@ struct UiFontsAtDpi {
 };
 
 static Vec<UiFontsAtDpi> gFontsAtDpi;
+static unsigned gUiFontGeneration = 0;
+
+unsigned GetUiFontGeneration() {
+    return gUiFontGeneration;
+}
 
 static UiFontsAtDpi* FindFontsAtDpi(int dpi) {
     for (size_t i = 0; i < gFontsAtDpi.size(); i++) {
@@ -323,6 +328,7 @@ static void ResetCachedFonts() {
 }
 
 void InvalidateUiFonts() {
+    ++gUiFontGeneration;
     for (size_t i = 0; i < gFontsAtDpi.size(); i++) {
         if (gFontsAtDpi[i].menuFont) {
             DeleteFont(gFontsAtDpi[i].menuFont);

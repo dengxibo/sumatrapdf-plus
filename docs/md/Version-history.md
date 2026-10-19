@@ -2,6 +2,20 @@
 
 ## next
 
+## 3.7.60 (2026-10-19)
+
+- 修复 Word 文档的内部书签名称（如 heading_15）被插入正文及目录的问题；保留书签跳转目标。
+  Keep generated Word heading bookmark names out of body text and the outline while preserving navigation targets.
+
+- 修复跨不同 DPI 显示器移动窗口后，AI 对话提示、输入框及朗读条文字异常变大的问题；字体缓存失效后重新获取字体。
+  Refresh AI composer and read-aloud bar fonts after DPI changes and font cache invalidation when moving between monitors.
+
+- 修复 AI 对话输入框用方向键、Home/End 移动光标时文字暂时消失的重绘问题。
+  Repaint the AI composer after keyboard caret navigation so entered text remains visible.
+
+- 修复 Helvetica 等内置字体的多行自由文本批注仍缺失部分汉字的问题（#111）：换行不再错误触发富文本字体回退。
+  Fix missing Chinese characters in multiline free-text annotations using built-in fonts such as Helvetica; line breaks no longer incorrectly trigger rich-text font fallback.
+
 ## 3.7.59 (2026-10-17)
 
 - 同步上游中文注释修复：按文字内容选择字符集合，并为日语等语言设置下缺失的汉字切换可用映射，避免自由文本部分汉字不显示。

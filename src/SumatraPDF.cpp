@@ -17164,6 +17164,8 @@ static void RefreshWindowChromeAfterFontInvalidate(MainWindow* win) {
 
     RefreshSidebarDpiFonts(win);
     RelayoutWindow(win);
+    LayoutAskAiSidebar(win);
+    ReadAloudBarUpdate(win);
     win->RedrawAll(true);
 }
 
@@ -17225,6 +17227,8 @@ static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
         win->tabsCtrl->LayoutTabs();
     }
     ApplySidebarDpiMovePreview(win);
+    LayoutAskAiSidebar(win);
+    ReadAloudBarUpdate(win);
 
     CloseEditAnnotationsWindowsForDpiMove(win);
     CloseEbookAnnotationsWindowsForDpiMove(win);
@@ -17276,6 +17280,11 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
     FindBarReposition(win);
     FindWindowReposition(win);
 
+    // These children may keep exactly the same pixel bounds on the return
+    // trip, so WM_SIZE is not a reliable trigger for refreshing their fonts.
+    LayoutAskAiSidebar(win);
+    ReadAloudBarUpdate(win);
+
     if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
         RECT r = ToRECT(win->captionRect);
         RedrawWindow(hwnd, &r, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
@@ -17309,15 +17318,17 @@ static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* sugge
         dpi = DpiGet(hwnd);
     }
     bool dpiChanged = dpi != win->frameDpi;
+    // SetWindowPos synchronously lays out children. Publish the new DPI first
+    // so those layouts cannot restore the previous monitor's font sizes.
+    win->frameDpi = dpi;
     if (suggestedRect) {
         SetWindowPos(hwnd, nullptr, suggestedRect->left, suggestedRect->top, suggestedRect->right - suggestedRect->left,
                      suggestedRect->bottom - suggestedRect->top, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    if (!force && dpi == win->frameDpi && !suggestedRect) {
+    if (!force && !dpiChanged && !suggestedRect) {
         return;
     }
-    win->frameDpi = dpi;
     logf("OnMainWindowDpiChanged: dpi=%d\n", dpi);
     if (win->deferDpiChromeRefresh && !force) {
         win->dpiChromeRefreshPending = true;
