@@ -2,6 +2,8 @@
 
 ## 中文
 
+**2026-10-21 同版本更新：** 修复图片裁剪窗口的 Esc 逐层退出：拖动时先取消拖动，裁剪／缩放模式按 Esc 回到保存模式，再按 Esc 关闭窗口，不再受主窗口 EscToExit 设置限制。已下载早期 3.7.63 的用户请重新下载并替换 EXE。
+
 - 修复扫描 PDF 的文字选区与新建高亮范围不一致，以及页边栏、正文和旋转页面的行列误合并。保留已有批注坐标，长选区不再受旧 512 个矩形缓冲区限制。
 - PDF 矩形、圆形的标注属性支持 0–100%「不透明度」，同时影响边框与填充；更换边框颜色保留不透明度。
 - PDF 矩形、圆形、直线和墨迹支持 0.25 pt 步长的小数线宽，并按标注类型记住样式。
@@ -9,6 +11,8 @@
 - 补充四主题、多语言、模拟 DPI 及原生标注属性回归。
 
 ## English
+
+**Same-version update, 2026-10-21:** Esc first cancels an active drag, then leaves crop/resize mode, and finally closes the image editor. Closing this editor no longer depends on the main-window EscToExit preference. If you downloaded the earlier 3.7.63 EXE, download and replace it again.
 
 - Align new PDF highlights with the visible text selection. Avoid merging scan margins, body text and neighboring columns on rotated pages; retain existing annotation coordinates and support selections exceeding 512 quads.
 - Add 0–100% opacity for PDF rectangles and circles, affecting both stroke and fill. Preserve opacity when changing the border color.

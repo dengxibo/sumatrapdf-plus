@@ -1999,7 +1999,7 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 }
                 if (ew->mode != ImageEditMode::Save) {
                     SwitchToSaveMode(ew);
-                } else if (gGlobalPrefs->escToExit) {
+                } else {
                     DestroyWindow(hwnd);
                 }
                 return 0;
@@ -2505,6 +2505,55 @@ bool TestImageEditWindow() {
     RenderedBitmap rendered(hbmp, Size(240, 160));
     bool ok = true;
     const char* themes[] = {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"};
+    bool oldEscToExit = gGlobalPrefs->escToExit;
+    defer {
+        gGlobalPrefs->escToExit = oldEscToExit;
+    };
+    for (const char* theme : themes) {
+        SetTheme(theme);
+        for (bool escToExit : {false, true}) {
+            gGlobalPrefs->escToExit = escToExit;
+            for (ImageEditMode mode : {ImageEditMode::Crop, ImageEditMode::Resize, ImageEditMode::Save}) {
+                HWND hwnd =
+                    CreateImageEditWindow(owner, nullptr, mode, nullptr, &rendered, false, nullptr, nullptr, false);
+                ImageEditWindow* ew = FindImageEditWindowByHwnd(hwnd);
+                if (!ew) return false;
+                SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+                bool valid =
+                    mode == ImageEditMode::Save ? !IsWindow(hwnd) : IsWindow(hwnd) && ew->mode == ImageEditMode::Save;
+                if (mode != ImageEditMode::Save) {
+                    SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+                    valid = valid && !IsWindow(hwnd);
+                }
+                fprintf(report, "Esc layers theme=%s pref=%d mode=%d: %s\n", theme, escToExit, (int)mode,
+                        valid ? "PASS" : "FAIL");
+                ok = valid && ok;
+            }
+            HWND hwnd = CreateImageEditWindow(owner, nullptr, ImageEditMode::Crop, nullptr, &rendered, false, nullptr,
+                                              nullptr, false);
+            ImageEditWindow* ew = FindImageEditWindowByHwnd(hwnd);
+            if (!ew) return false;
+            ew->dragCropX = 40;
+            ew->dragCropY = 30;
+            ew->dragCropW = 160;
+            ew->dragCropH = 100;
+            ew->isDragging = true;
+            SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+            bool valid = IsWindow(hwnd) && !ew->isDragging && ew->mode == ImageEditMode::Crop && ew->cropX == 40 &&
+                         ew->cropY == 30 && ew->cropW == 160 && ew->cropH == 100;
+            SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+            valid = valid && IsWindow(hwnd) && ew->mode == ImageEditMode::Save;
+            SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+            valid = valid && !IsWindow(hwnd);
+            fprintf(report, "Esc cancels drag first theme=%s pref=%d: %s\n", theme, escToExit, valid ? "PASS" : "FAIL");
+            ok = valid && ok;
+        }
+    }
+    gGlobalPrefs->escToExit = oldEscToExit;
+    if (getenv("SUMATRA_TEST_IMAGE_EDIT_ESC_ONLY")) {
+        fprintf(report, "Overall: %s\n", ok ? "PASS" : "FAIL");
+        return ok;
+    }
     const char* langs[] = {"cn", "tw", "en", "de", "ar"};
     int dpis[] = {96, 120, 144, 192, 96};
     for (const char* theme : themes) {

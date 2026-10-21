@@ -1,5 +1,5 @@
 [SumatraPDF]
 Latest: 3.7.63
 PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.63/SumatraPDF-Plus.exe
-Notes: Improve scanned PDF highlight alignment; add shape opacity and fractional line widths; move crop selections with the middle mouse button.
-NotesZh: 修复扫描 PDF 高亮对齐和行列误合并，新增形状不透明度及小数线宽，支持鼠标中键移动裁剪选框。
+Notes: Same-version update: fix layered Esc exit in the image crop editor. Earlier 3.7.63 users should download the EXE again. Includes scan highlight alignment, shape opacity and fractional line widths.
+NotesZh: 同版本更新：修复裁剪窗口 Esc 逐层退出，早期 3.7.63 用户请重新下载 EXE。包含扫描高亮对齐、形状不透明度及小数线宽改进。
