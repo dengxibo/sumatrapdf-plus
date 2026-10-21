@@ -3070,8 +3070,8 @@ bool TestAskAiChatLayout() {
     {
         // Exercise both DPI changes and cache invalidation at unchanged DPI.
         // Windows can reuse a deleted HFONT for a completely different size.
-        HWND input = CreateWindowExW(0, WC_EDITW, L"DPI test", WS_CHILD | ES_MULTILINE, 0, 0, 200, 60, chat,
-                                     nullptr, GetModuleHandleW(nullptr), nullptr);
+        HWND input = CreateWindowExW(0, WC_EDITW, L"DPI test", WS_CHILD | ES_MULTILINE, 0, 0, 200, 60, chat, nullptr,
+                                     GetModuleHandleW(nullptr), nullptr);
         InlineTranslatePopup popup;
         popup.hwnd = chat;
         popup.hwndInput = input;
@@ -4070,6 +4070,12 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             if (HIWORD(wp) == EN_CHANGE && (HWND)lp == p->hwndInput) {
                 SyncInputHasText(p);
                 SyncComposerLines(p);
+                if (p->docked) {
+                    // Native multiline EDIT updates only the changed lines. Its
+                    // themed background erase can also clear earlier lines, so
+                    // repaint the whole client after any text change.
+                    InvalidateRect(p->hwndInput, nullptr, TRUE);
+                }
             }
             return 0;
         case WM_NCHITTEST:
