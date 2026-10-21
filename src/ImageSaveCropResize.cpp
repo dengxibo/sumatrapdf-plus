@@ -435,7 +435,11 @@ static void UpdateInfoLabel(ImageEditWindow* ew) {
     if (!ew->hwnd) {
         return;
     }
-    LayoutControls(ew);
+    // Dragging only changes the numbers, not the control layout. Moving all
+    // child windows here forces synchronous paints for every mouse move.
+    if (!ew->isDragging) {
+        LayoutControls(ew);
+    }
     RECT rc{ew->infoRc.x, ew->infoRc.y, ew->infoRc.x + ew->infoRc.dx, ew->infoRc.y + ew->infoRc.dy};
     RECT client{};
     GetClientRect(ew->hwnd, &client);
@@ -1691,20 +1695,22 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (paintH > cRc.dy) {
                 paintH = cRc.dy;
             }
-            HDC memDC = CreateCompatibleDC(hdc);
-            HBITMAP memBmp = CreateCompatibleBitmap(hdc, cRc.dx, paintH);
-            HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
-            if (ew->mode == ImageEditMode::Save) {
-                PaintSaveImage(ew, memDC);
-            } else if (ew->mode == ImageEditMode::Crop) {
-                PaintCropImage(ew, memDC);
-            } else {
-                PaintResizeImage(ew, memDC);
+            if (cRc.dx > 0 && paintH > 0 && ps.rcPaint.top < paintH) {
+                HDC memDC = CreateCompatibleDC(hdc);
+                HBITMAP memBmp = CreateCompatibleBitmap(hdc, cRc.dx, paintH);
+                HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
+                if (ew->mode == ImageEditMode::Save) {
+                    PaintSaveImage(ew, memDC);
+                } else if (ew->mode == ImageEditMode::Crop) {
+                    PaintCropImage(ew, memDC);
+                } else {
+                    PaintResizeImage(ew, memDC);
+                }
+                BitBlt(hdc, 0, 0, cRc.dx, paintH, memDC, 0, 0, SRCCOPY);
+                SelectObject(memDC, oldBmp);
+                DeleteObject(memBmp);
+                DeleteDC(memDC);
             }
-            BitBlt(hdc, 0, 0, cRc.dx, paintH, memDC, 0, 0, SRCCOPY);
-            SelectObject(memDC, oldBmp);
-            DeleteObject(memBmp);
-            DeleteDC(memDC);
             FillControlStrip(ew, hdc);
             PaintInfoLabel(ew, hdc);
             HFONT oldFont = (HFONT)SelectObject(hdc, ew->hFont);
@@ -1946,6 +1952,9 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_LBUTTONUP: {
             ew = FindImageEditWindowByHwnd(hwnd);
             if (ew && ew->isDragging && ew->dragWithMiddleButton == (msg == WM_MBUTTONUP)) {
+                // Include the release position even when no final mouse move
+                // was delivered before the button-up message.
+                SendMessageW(hwnd, WM_MOUSEMOVE, wp, lp);
                 ew->isDragging = false;
                 ReleaseCapture();
                 UpdateModeButtons(ew);
