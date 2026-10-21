@@ -158,6 +158,8 @@ bool AnnotationCanBeMoved(AnnotationType);
 bool AnnotationCanBeResized(AnnotationType);
 bool AnnotationContentsEqual(Annotation*, const char* text);
 bool AnnotationSupportsColor(AnnotationType);
+bool AnnotationSupportsOpacity(AnnotationType);
+bool AnnotationSupportsFractionalBorder(AnnotationType);
 bool IsPdfTextMarkupAnnotation(AnnotationType);
 bool IsPdfTextMarkupAnnotation(Annotation* annot);
 TempStr MarkupTextTemp(Annotation* annot);

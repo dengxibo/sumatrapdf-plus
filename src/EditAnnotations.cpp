@@ -197,13 +197,14 @@ static void PaintPdfStrokeOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annotat
     if (zoom < 0.05f) {
         zoom = 1.f;
     }
-    float strokePx = std::max(0.5f, lw * zoom);
+    float strokePx = lw > 0 ? lw * zoom : 1.f;
     COLORREF color = ColorRefFromPdfColor(GetColor(annot));
     u8 r, g, b;
     UnpackColor(color, r, g, b);
     Gdiplus::Graphics gs(hdc);
     gs.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    Gdiplus::Pen pen(Gdiplus::Color(255, r, g, b), strokePx);
+    int alpha = AnnotationSupportsOpacity(annot->type) ? Opacity(annot) : 255;
+    Gdiplus::Pen pen(Gdiplus::Color(alpha, r, g, b), strokePx);
     AnnotationType type = annot->type;
     if (type == AnnotationType::Ink) {
         pen.SetStartCap(Gdiplus::LineCapRound);
@@ -256,7 +257,7 @@ static void PaintPdfStrokeOverlay(HDC hdc, DisplayModel* dm, int pageNo, Annotat
         COLORREF fillCol = ColorRefFromPdfColor(interior);
         u8 fr, fg, fb;
         UnpackColor(fillCol, fr, fg, fb);
-        fillBrush.SetColor(Gdiplus::Color(255, fr, fg, fb));
+        fillBrush.SetColor(Gdiplus::Color(alpha, fr, fg, fb));
         fill = &fillBrush;
     }
     if (type == AnnotationType::Circle) {
@@ -429,7 +430,8 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
         if (entry.pageNo != pageNo || !entry.annot) {
             continue;
         }
-        if (entry.annot->type == AnnotationType::Stamp || entry.appearanceBitmap) {
+        if (entry.annot->type == AnnotationType::Stamp || entry.annot->type == AnnotationType::Square ||
+            entry.annot->type == AnnotationType::Circle || entry.appearanceBitmap) {
             float zoom = dm->GetZoomSafe(pageNo);
             int rotation = dm->GetRotation();
             if (!entry.appearanceBitmap || entry.appearanceZoom != zoom || entry.appearanceRotation != rotation) {
@@ -468,7 +470,6 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
                 pageRects.Append(r);
             }
         }
-        NormalizeNearbyHighlightHeights(pageRects);
         Vec<Rect> screenRects;
         for (RectF rect : pageRects) {
             Rect screenRect = dm->CvtToScreen(pageNo, rect);
@@ -477,7 +478,8 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
             }
         }
         COLORREF color = ColorRefFromPdfColor(GetColor(entry.annot));
-        PaintTextMarkupOverlay(hdc, tab->win->canvasRc, entry.annot->type, color, screenRects);
+        int opacity = entry.annot->type == AnnotationType::Highlight ? (Opacity(entry.annot) * 100 + 127) / 255 : 100;
+        PaintTextMarkupOverlay(hdc, tab->win->canvasRc, entry.annot->type, color, screenRects, opacity);
     }
 }
 
@@ -2268,7 +2270,7 @@ static void ButtonRestoreAnnotationDefaults(EditAnnotationsWindow* ew) {
     } else if (type == AnnotationType::Sound) {
         SetIconName(annot, "Speaker");
     }
-    if (type == AnnotationType::Highlight) {
+    if (AnnotationSupportsOpacity(type)) {
         SetOpacity(annot, 255);
     }
     EnableSaveIfAnnotationsChanged(ew);
@@ -2371,9 +2373,14 @@ static void DoBorder(EditAnnotationsWindow* ew, Annotation* annot) {
     if (ClearFreeTextHairlineBorder(annot)) {
         RerenderPdfAnnotationChange(ew->tab, nullptr);
     }
-    int borderWidth = BorderWidth(annot);
-    borderWidth = std::clamp(borderWidth, borderWidthMin, borderWidthMax);
-    TempStr s = str::FormatTemp(_TRA("Border: %d"), borderWidth);
+    bool fractional = AnnotationSupportsFractionalBorder(annot->type);
+    float width = BorderWidthF(annot);
+    if (fractional && width <= 0.15f) width = 0; // existing PDF hairline representation
+    int steps = fractional ? 4 : 1;
+    int borderWidth = std::clamp((int)(width * steps + 0.5f), borderWidthMin, borderWidthMax * steps);
+    SendMessageW(ew->trackbarBorder->hwnd, TBM_SETRANGEMAX, TRUE, borderWidthMax * steps);
+    TempStr s = fractional ? str::FormatTemp(_TRA("Border: %.2f pt"), width)
+                           : str::FormatTemp(_TRA("Border: %d"), BorderWidth(annot));
     ew->staticBorder->SetText(s);
     ew->trackbarBorder->SetValue(borderWidth);
     ew->staticBorder->SetIsVisible(true);
@@ -2390,10 +2397,12 @@ static void BorderWidthChanging(EditAnnotationsWindow* ew, Trackbar::PositionCha
     if (!annot || !annot->engine) {
         return;
     }
-    int borderWidth = ev->pos;
-    SetBorderWidth(annot, borderWidth);
+    bool fractional = AnnotationSupportsFractionalBorder(annot->type);
+    float borderWidth = (float)ev->pos / (fractional ? 4.f : 1.f);
+    SetBorderWidthFloat(annot, borderWidth);
     RememberPdfDrawStyle(annot);
-    TempStr s = str::FormatTemp(_TRA("Border: %d"), borderWidth);
+    TempStr s = fractional ? str::FormatTemp(_TRA("Border: %.2f pt"), borderWidth)
+                           : str::FormatTemp(_TRA("Border: %d"), (int)borderWidth);
     ew->staticBorder->SetText(s);
     EnableSaveIfAnnotationsChanged(ew);
     SyncInPlaceFreeTextBorder(annot, borderWidth);
@@ -2573,11 +2582,11 @@ static void InteriorColorSelectionChanged(EditAnnotationsWindow* ew) {
 }
 
 static void DoOpacity(EditAnnotationsWindow* ew, Annotation* annot) {
-    if (Type(annot) != AnnotationType::Highlight) {
+    if (!AnnotationSupportsOpacity(Type(annot))) {
         return;
     }
-    int opacity = Opacity(ew->tab->selectedAnnotation);
-    TempStr s = str::FormatTemp(_TRA("Opacity: %d"), opacity);
+    int opacity = (Opacity(annot) * 100 + 127) / 255;
+    TempStr s = str::FormatTemp(_TRA("Opacity: %d%%"), opacity);
     ew->staticOpacity->SetText(s);
     ew->staticOpacity->SetIsVisible(true);
     ew->trackbarOpacity->SetIsVisible(true);
@@ -2593,14 +2602,17 @@ static void DoSaveEmbed(EditAnnotationsWindow* ew, Annotation* annot) {
 }
 
 static void OpacityChanging(EditAnnotationsWindow* ew, Trackbar::PositionChangingEvent* ev) {
+    if (ew->updatingControls) {
+        return;
+    }
     auto annot = ew->tab->selectedAnnotation;
-    if (!annot || !annot->engine) {
+    if (!annot || !annot->engine || !AnnotationSupportsOpacity(annot->type)) {
         return;
     }
     int opacity = ev->pos;
-    SetOpacity(annot, opacity);
+    SetOpacity(annot, (opacity * 255 + 50) / 100);
     RememberPdfDrawStyle(annot);
-    TempStr s = str::FormatTemp(_TRA("Opacity: %d"), opacity);
+    TempStr s = str::FormatTemp(_TRA("Opacity: %d%%"), opacity);
     ew->staticOpacity->SetText(s);
     EnableSaveIfAnnotationsChanged(ew);
     RerenderPdfAnnotationChange(ew->tab, nullptr);
@@ -3387,7 +3399,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         Trackbar::CreateArgs args;
         args.parent = parent;
         args.rangeMin = 0;
-        args.rangeMax = 255;
+        args.rangeMax = 100;
         args.font = fnt;
         args.isRtl = IsUIRtl();
 
@@ -3544,6 +3556,132 @@ void ShowEditAnnotationsWindow(WindowTab* tab, Annotation* annot, EditAnnotFocus
     ApplyEditAnnotationsWindowTheme(ew, true);
     ew->ResumeRedraw();
     RevealAnnotationsSidebar(tab, revealInSidebar);
+}
+
+// Exercise the real inspector controls without changing system DPI settings.
+bool TestPdfAnnotationAppearance(MainWindow* win, const char* outputDir) {
+    if (!win || !win->CurrentTab() || !dir::Exists(outputDir)) return false;
+    FILE* report = fopen(path::JoinTemp(outputDir, "results.txt"), "w");
+    if (!report) return false;
+    defer {
+        fclose(report);
+    };
+    WindowTab* tab = win->CurrentTab();
+    EngineBase* engine = tab->GetEngine();
+    AnnotCreateArgs args;
+    ParseColor(args.col, "#ffff00");
+    Vec<Annotation*> shapes;
+    for (AnnotationType type :
+         {AnnotationType::Square, AnnotationType::Circle, AnnotationType::Line, AnnotationType::Ink}) {
+        args.annotType = type;
+        Annotation* shape;
+        if (type == AnnotationType::Ink) {
+            PointF points[] = {{20, 20}, {60, 60}};
+            shape = EngineMupdfCreateAnnotationInkStroke(engine, 1, points, dimof(points), &args);
+        } else {
+            shape = EngineMupdfCreateAnnotationInRect(engine, 1, RectF(20, 20, 80, 40), &args);
+        }
+        if (!shape) return false;
+        SetBorderWidthFloat(shape, .25f);
+        if (AnnotationSupportsOpacity(type)) SetOpacity(shape, 64);
+        shapes.Append(shape);
+    }
+    bool ok = true;
+    for (const char* theme : {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"}) {
+        SetTheme(theme);
+        for (const char* lang : {"cn", "tw", "en", "de", "ar"}) {
+            trans::SetCurrentLangByCode(lang);
+            bool testedLanguageDpi = false;
+            for (int dpi : {96, 120, 144, 192, 240, 96}) {
+                if (!str::Eq(lang, "cn") && testedLanguageDpi) continue;
+                testedLanguageDpi = true;
+                // Exercise the editor's actual close/reopen path used on a
+                // frame DPI move. This simulates metrics, not a physical move.
+                CloseEditAnnotationsWindowsForDpiMove(win);
+                win->frameDpi = dpi;
+                ReopenEditAnnotationsWindowsAfterDpiMove(win);
+                ShowEditAnnotationsWindow(tab, shapes.at(0), EditAnnotFocus::Default, false);
+                auto ew = tab->editAnnotsWindow;
+                if (!ew) return false;
+                ew->skipGoToPage = true;
+                bool valid = ew->dpi == dpi;
+                COLORREF text, background;
+                GetEditAnnotationsThemeColors(text, background);
+                valid = valid && abs((int)GetRValue(text) - (int)GetRValue(background)) > 80;
+                for (int width : {240, 360}) {
+                    SetWindowPos(ew->hwnd, nullptr, 0, 0, MulDiv(width, dpi, 96), MulDiv(900, dpi, 96),
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+                    for (Annotation* shape : shapes) {
+                        SetSelectedAnnotation(tab, shape, false, EditAnnotFocus::Default);
+                        RelayoutEditAnnotations(ew, false);
+                        valid = valid && ew->trackbarBorder->getRangeMax() == 48;
+                        for (Wnd* control : {(Wnd*)ew->staticBorder, (Wnd*)ew->trackbarBorder}) {
+                            RECT rect{};
+                            GetWindowRect(control->hwnd, &rect);
+                            MapWindowPoints(HWND_DESKTOP, GetParent(control->hwnd), (POINT*)&rect, 2);
+                            Rect client = ClientRect(GetParent(control->hwnd));
+                            valid = valid && rect.left >= 0 && rect.right <= client.dx && rect.bottom > rect.top;
+                        }
+                        bool opacity = AnnotationSupportsOpacity(shape->type);
+                        valid = valid && ew->staticOpacity->IsVisible() == opacity &&
+                                ew->trackbarOpacity->IsVisible() == opacity;
+                        LOGFONTW actual{}, expected{};
+                        GetObjectW((HFONT)SendMessageW(ew->staticBorder->hwnd, WM_GETFONT, 0, 0), sizeof(actual),
+                                   &actual);
+                        GetObjectW(GetAppFontForDpi(dpi), sizeof(expected), &expected);
+                        valid = valid && actual.lfHeight == expected.lfHeight;
+                        Trackbar::PositionChangingEvent change{};
+                        change.pos = 1;
+                        bool exerciseChanges = str::Eq(lang, "cn") && dpi == 96 && width == 240;
+                        if (exerciseChanges) BorderWidthChanging(ew, &change);
+                        valid = valid && fabsf(BorderWidthF(shape) - .25f) < .001f;
+                        Size label = HwndMeasureText(ew->staticBorder->hwnd, HwndGetTextTemp(ew->staticBorder->hwnd));
+                        Rect labelRect = ClientRect(ew->staticBorder->hwnd);
+                        valid = valid && label.dx <= labelRect.dx && label.dy <= labelRect.dy;
+                        if (opacity) {
+                            change.pos = 25;
+                            if (exerciseChanges) OpacityChanging(ew, &change);
+                            valid = valid && Opacity(shape) == 64 && ew->trackbarOpacity->getRangeMax() == 100;
+                            Size opacityText =
+                                HwndMeasureText(ew->staticOpacity->hwnd, HwndGetTextTemp(ew->staticOpacity->hwnd));
+                            Rect opacityRect = ClientRect(ew->staticOpacity->hwnd);
+                            valid = valid && opacityText.dx <= opacityRect.dx && opacityText.dy <= opacityRect.dy;
+                        }
+                        if (exerciseChanges) {
+                            ButtonRestoreAnnotationDefaults(ew);
+                            valid = valid && (!opacity || Opacity(shape) == 255);
+                            SetBorderWidthFloat(shape, .25f);
+                            if (opacity) SetOpacity(shape, 64);
+                            DoBorder(ew, shape);
+                            DoOpacity(ew, shape);
+                        }
+                    }
+                    if (str::Eq(lang, "cn") && width == 360) {
+                        SetSelectedAnnotation(tab, shapes.at(0), false, EditAnnotFocus::Default);
+                        RelayoutEditAnnotations(ew, false);
+                        Rect client = ClientRect(ew->hwnd);
+                        HBITMAP bitmap = CreateMemoryBitmap(client.Size());
+                        HDC dc = CreateCompatibleDC(nullptr);
+                        HGDIOBJ old = SelectObject(dc, bitmap);
+                        SendMessageW(ew->hwnd, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_CHILDREN | PRF_ERASEBKGND);
+                        ByteSlice bytes = SerializeBitmap(bitmap);
+                        valid =
+                            valid && bytes.size() > 0 &&
+                            file::WriteFile(path::JoinTemp(outputDir, str::FormatTemp("%s-%d.png", theme, dpi)), bytes);
+                        bytes.Free();
+                        SelectObject(dc, old);
+                        DeleteDC(dc);
+                        DeleteObject(bitmap);
+                    }
+                }
+                fprintf(report, "%s lang=%s dpi=%d widths=240,360: %s\n", theme, lang, dpi, valid ? "PASS" : "FAIL");
+                fflush(report);
+                ok = valid && ok;
+            }
+        }
+    }
+    fprintf(report, "Overall: %s\n", ok ? "PASS" : "FAIL");
+    return ok;
 }
 
 //--- in-place free text editing

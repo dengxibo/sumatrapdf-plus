@@ -4,6 +4,17 @@
 
 You can add / edit annotations in PDF files.
 
+## Shape opacity and line width
+
+In the annotation editor, rectangles and circles support **Opacity** from 0% (invisible) to 100% (opaque).
+Opacity affects both the border and fill. Choose a fill color and lower the opacity to mark an area on a scanned page without relying on its OCR text layer.
+
+Rectangles, circles, lines, and ink support border widths from 0 to 12 PDF points in 0.25-point steps, including 0.25, 0.5, and 0.75 pt. Zero retains the hairline behavior. Existing widths are displayed without rewriting the annotation when it is selected.
+
+The last opacity, fill, color, and line width are remembered separately for each annotation type. Restoring defaults returns shape opacity to 100% and restores the usual default border and fill.
+
+New text highlights use the same page geometry as the visible text selection, including its configured height. Saved highlights keep these coordinates when reopened; existing annotations are not resized automatically. Incorrect OCR text positions in the source PDF can still require recognizing the page again.
+
 ## Highlight text with `a`
 
 Most common annotation is highlighting of text: select text and press `a`. This creates a highlight annotation in yellow color:

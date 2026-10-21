@@ -21,8 +21,10 @@
 #include "PdfDarkMode.h"
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
+#include "Selection.h"
 #include "TextSearch.h"
 #include "Annotation.h"
+#include "EditAnnotations.h"
 #include "EbookAnnotations.h"
 #include "InlineTranslate.h"
 #include "ReadAloudBar.h"
@@ -387,9 +389,219 @@ static bool TestResponsiveToolbar(const Flags& flags) {
     return ok;
 }
 
+static void AnnotationTestSaveError(const char* message) {
+    printf("Annotation save: %s\n", message);
+}
+
+static bool TestPdfAnnotationGeometry(const Flags& flags) {
+    const char* dir = getenv("SUMATRA_TEST_PDF_ANNOTATIONS");
+    if (flags.fileNames.IsEmpty() || !dir || !dir::Exists(dir)) return false;
+    FILE* report = fopen(path::JoinTemp(dir, "results.txt"), "w");
+    if (!report) return false;
+    defer {
+        fclose(report);
+    };
+    auto check = [&](bool condition, const char* label) {
+        fprintf(report, "%s: %s\n", label, condition ? "PASS" : "FAIL");
+        fflush(report);
+        return condition;
+    };
+    EngineBase* engine = CreateEngineFromFile(flags.fileNames[0], nullptr, true);
+    if (!engine) return check(false, "open");
+    defer {
+        SafeEngineRelease(&engine);
+    };
+    int pageNo = flags.pageNumber;
+    if (pageNo < 1 || pageNo > engine->PageCount()) return check(false, "page");
+    if (!engine->PageHasUsableText(pageNo) || getenv("SUMATRA_TEST_ANNOTATIONS_FORCE_OCR")) {
+        if (!OcrRecognizeEnginePage(engine, pageNo, true, OcrOperation::CurrentPage)) return check(false, "OCR");
+    }
+    int len = 0;
+    engine->GetTextForPage(pageNo, &len);
+    if (!check(len > 10, "text available")) return false;
+    TextSelection selection(engine);
+    int start = std::min(150, len / 3);
+    selection.SelectGlyphRange(pageNo, start, std::min(len, start + 160));
+    Vec<SelectionOnPage>* selected = SelectionOnPage::FromTextSelect(&selection.result);
+    if (!selected) return check(false, "select glyph range");
+    defer {
+        delete selected;
+    };
+    Vec<RectF> raw;
+    for (auto& item : *selected) raw.Append(item.rect);
+    Vec<RectF> finalRects = raw;
+    PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
+    RectF clip;
+    for (RectF r : finalRects) clip = clip.IsEmpty() ? r : clip.Union(r);
+    clip.Inflate(12, 12);
+    clip = clip.Intersect(engine->PageMediabox(pageNo));
+    auto dumpRects = [&](const char* stage, const Vec<RectF>& rects) {
+        for (int n = 0; n < rects.Size(); n++) {
+            RectF r = rects.at(n);
+            fprintf(report, "%s %d %.6f %.6f %.6f %.6f\n", stage, n, r.x, r.y, r.dx, r.dy);
+        }
+    };
+    dumpRects("raw", raw);
+    dumpRects("selection", finalRects);
+    SetTheme("Light-White");
+    SetPdfDocumentColorMode(PdfDocumentColorMode::Light);
+    auto saveBitmap = [&](const char* name, HBITMAP bitmap) {
+        ByteSlice data = SerializeBitmap(bitmap);
+        bool saved = data.size() > 0 && file::WriteFile(path::JoinTemp(dir, name), data);
+        data.Free();
+        return saved;
+    };
+    RenderPageArgs plainArgs(pageNo, 1.f, 0, &clip, RenderTarget::Export);
+    RenderedBitmap* plain = engine->RenderPage(plainArgs);
+    if (!plain) return check(false, "unmarked render");
+    bool ok = saveBitmap("unmarked.png", plain->GetBitmap());
+    delete plain;
+    AnnotCreateArgs create;
+    create.annotType = AnnotationType::Highlight;
+    ParseColor(create.col, "#ffff00");
+    Annotation* highlight = EngineMupdfCreateAnnotation(engine, pageNo, {}, &create);
+    if (!highlight) return check(false, "create highlight");
+    // Fine-grained OCR runs can exceed the old fixed 512-quad stack buffer.
+    Vec<RectF> largeSelection;
+    for (int n = 0; n < 600; n++) largeSelection.Append(finalRects.at(0));
+    SetQuadPointsAsRect(highlight, largeSelection);
+    ok = check(GetQuadPointsAsRect(highlight).Size() == 600, "600-quad selection retained") && ok;
+    SetQuadPointsAsRect(highlight, finalRects);
+    int highlightId = EngineMupdfAnnotationId(highlight);
+    dumpRects("quads", GetQuadPointsAsRect(highlight));
+    auto saveError = MkFunc1Void(AnnotationTestSaveError);
+    TempStr savedPath = path::JoinTemp(dir, "marked.pdf");
+    ok = EngineMupdfSaveUpdated(engine, savedPath, saveError) && ok;
+    EngineBase* reopened = CreateEngineFromFile(savedPath, nullptr, true);
+    if (!reopened) return check(false, "reopen");
+    defer {
+        SafeEngineRelease(&reopened);
+    };
+    Annotation* saved = EngineMupdfFindAnnotation(reopened, pageNo, highlightId);
+    if (!saved) return check(false, "find saved highlight");
+    Vec<RectF> savedRects = GetQuadPointsAsRect(saved);
+    dumpRects("reopened", savedRects);
+    ok = check(savedRects.Size() == finalRects.Size(), "quad count") && ok;
+    for (int n = 0; n < std::min(savedRects.Size(), finalRects.Size()); n++) {
+        RectF a = finalRects.at(n), b = savedRects.at(n);
+        ok = check(fabsf(a.x - b.x) < .001f && fabsf(a.y - b.y) < .001f && fabsf(a.dx - b.dx) < .001f &&
+                       fabsf(a.dy - b.dy) < .001f,
+                   "quad round trip") &&
+             ok;
+    }
+    for (int mode = 0; mode < 4; mode++) {
+        SetTheme(mode == 0 ? "Light-White" : "Dark-Black");
+        SetPdfDocumentColorMode(mode == 0 || mode == 1 ? PdfDocumentColorMode::Light
+                                : mode == 2            ? PdfDocumentColorMode::Black
+                                                       : PdfDocumentColorMode::Auto);
+        SetPdfImageDarkStrategy(PdfImageDarkStrategy::Tone);
+        EngineMupdfEnsureFollowThemeProbeDone(reopened);
+        for (int rotation : {0, 90, 180, 270}) {
+            for (float zoom : {1.f, 1.75f, 4.f}) {
+                DarkModeProfile profile;
+                BuildViewDarkModeProfile(reopened, &profile);
+                fprintf(report, "profile mode%d: %s\n", mode, PageColorModeLabel(profile.mode));
+                RenderPageArgs args(pageNo, zoom, rotation, &clip, RenderTarget::View);
+                if (mode != 0) args.darkProfile = &profile;
+                RenderedBitmap* bitmap = reopened->RenderPage(args);
+                bool valid = bitmap != nullptr;
+                for (int n = 0; n < savedRects.Size(); n++) {
+                    Rect a = engine->Transform(finalRects.at(n), pageNo, zoom, rotation).Round();
+                    Rect b = reopened->Transform(savedRects.at(n), pageNo, zoom, rotation).Round();
+                    valid = valid && abs(a.x - b.x) <= 1 && abs(a.y - b.y) <= 1 && abs(a.dx - b.dx) <= 1 &&
+                            abs(a.dy - b.dy) <= 1;
+                }
+                if (bitmap) {
+                    if (DarkModeProfileUsesLegacyPostProcess(&profile)) {
+                        UpdateBitmapColors(bitmap->GetBitmap(), profile.foreground, profile.pageBackground,
+                                           profile.linkColor, nullptr);
+                    }
+                    TempStr name = str::FormatTemp("mode%d-rot%d-zoom%d.png", mode, rotation, (int)(zoom * 100));
+                    valid = saveBitmap(name, bitmap->GetBitmap()) && valid;
+                    delete bitmap;
+                }
+                ok = check(valid, str::FormatTemp("mode%d rotation%d zoom%.2f", mode, rotation, zoom)) && ok;
+            }
+        }
+    }
+    struct PropertyCase {
+        int id;
+        float width;
+        int opacity;
+    };
+    Vec<PropertyCase> properties;
+    for (AnnotationType type :
+         {AnnotationType::Square, AnnotationType::Circle, AnnotationType::Line, AnnotationType::Ink}) {
+        for (float width : {0.f, .25f, .5f, .75f, 1.f, 12.f}) {
+            for (int percent : {0, 25, 50, 100}) {
+                create.annotType = type;
+                RectF bounds(20, 20, 80, 40);
+                Annotation* shape = nullptr;
+                if (type == AnnotationType::Ink) {
+                    PointF points[] = {{20, 20}, {60, 60}, {100, 20}};
+                    int count = dimof(points);
+                    shape = EngineMupdfCreateAnnotationInkStrokes(reopened, pageNo, points, &count, 1, &create, width);
+                } else {
+                    shape = EngineMupdfCreateAnnotationInRect(reopened, pageNo, bounds, &create);
+                }
+                if (!shape) {
+                    ok = check(false, "create property fixture") && ok;
+                    continue;
+                }
+                SetBorderWidthFloat(shape, width);
+                if (AnnotationSupportsOpacity(type)) {
+                    SetInteriorColor(shape, 0xffffff00);
+                    SetOpacity(shape, (percent * 255 + 50) / 100);
+                    SetColor(shape, 0xff00ff00);
+                    SetColor(shape, 0xffffff00);
+                }
+                RememberPdfDrawStyle(shape);
+                AnnotDrawStyle style;
+                bool valid = FindAnnotDrawStyle(type, &style) && fabsf(style.border - BorderWidthF(shape)) < .001f;
+                if (AnnotationSupportsOpacity(type)) valid = valid && style.opacityPercent == percent;
+                // Mutate then restore through the production remembered-style path.
+                SetBorderWidthFloat(shape, 3.f);
+                if (AnnotationSupportsOpacity(type)) SetOpacity(shape, 255);
+                ApplyRememberedPdfDrawStyle(shape);
+                valid = valid && fabsf(BorderWidthF(shape) - style.border) < .001f;
+                int alpha = AnnotationSupportsOpacity(type) ? (percent * 255 + 50) / 100 : 255;
+                valid = valid && (!AnnotationSupportsOpacity(type) || Opacity(shape) == alpha);
+                ok = check(valid, "property style round trip") && ok;
+                properties.Append({EngineMupdfAnnotationId(shape), BorderWidthF(shape), alpha});
+            }
+        }
+    }
+    TempStr propertiesPath = path::JoinTemp(dir, "properties.pdf");
+    ok = EngineMupdfSaveUpdated(reopened, propertiesPath, saveError) && ok;
+    EngineBase* propEngine = CreateEngineFromFile(propertiesPath, nullptr, true);
+    if (!propEngine) return check(false, "reopen properties");
+    defer {
+        SafeEngineRelease(&propEngine);
+    };
+    for (auto& item : properties) {
+        Annotation* shape = EngineMupdfFindAnnotation(propEngine, pageNo, item.id);
+        bool valid = shape && fabsf(BorderWidthF(shape) - item.width) < .001f && Opacity(shape) == item.opacity;
+        ok = check(valid, "property PDF round trip") && ok;
+    }
+    check(ok, "Overall");
+    return ok;
+}
+
 void TestRenderPage(const Flags& i) {
     if (i.showConsole) {
         RedirectIOToConsole();
+    }
+    if (const char* outputDir = getenv("SUMATRA_TEST_ANNOTATION_UI")) {
+        if (i.fileNames.IsEmpty()) ExitProcess(1);
+        LoadArgs args(i.fileNames[0], nullptr);
+        args.syncLoad = true;
+        args.showWin = false;
+        args.noSavePrefs = true;
+        MainWindow* win = LoadDocument(&args);
+        ExitProcess(TestPdfAnnotationAppearance(win, outputDir) ? 0 : 1);
+    }
+    if (getenv("SUMATRA_TEST_PDF_ANNOTATIONS")) {
+        ExitProcess(TestPdfAnnotationGeometry(i) ? 0 : 1);
     }
     if (getenv("SUMATRA_TEST_TEXT_MARKUP")) {
         TestTextMarkupOverlay();

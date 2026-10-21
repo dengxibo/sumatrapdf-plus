@@ -573,7 +573,7 @@ void RememberPdfDrawStyle(Annotation* annot) {
             style.border = BorderWidthF(annot);
             style.flags |= kDrawStyleBorder;
         }
-        if (annot->type == AnnotationType::Highlight) {
+        if (AnnotationSupportsOpacity(annot->type)) {
             int opacity = Opacity(annot);
             style.opacityPercent = std::clamp((opacity * 100 + 127) / 255, 0, 100);
             style.flags |= kDrawStyleOpacity;
@@ -642,8 +642,8 @@ void ApplyRememberedPdfDrawStyle(Annotation* annot) {
     if ((style.flags & kDrawStyleBorder) && AnnotationSupportsBorder(annot->type)) {
         SetBorderWidthFloat(annot, style.border);
     }
-    if ((style.flags & kDrawStyleOpacity) && annot->type == AnnotationType::Highlight) {
-        SetOpacity(annot, std::clamp(style.opacityPercent * 255 / 100, 0, 255));
+    if ((style.flags & kDrawStyleOpacity) && AnnotationSupportsOpacity(annot->type)) {
+        SetOpacity(annot, std::clamp((style.opacityPercent * 255 + 50) / 100, 0, 255));
     }
     if ((style.flags & kDrawStyleInterior) && AnnotationSupportsInteriorColor(annot->type)) {
         SetInteriorColor(annot, style.interiorTransparent ? 0 : DrawPdfFromColorRef(style.interior));
@@ -1330,21 +1330,19 @@ void SetQuadPointsAsRect(Annotation* annot, const Vec<RectF>& rects) {
     {
         auto ctx = e->Ctx();
         ScopedCritSec cs(&e->docLock);
-        fz_quad quads[512];
         int n = rects.Size();
         if (n == 0) {
             return;
         }
-        constexpr int kMaxQuads = (int)dimof(quads);
-        for (int i = 0; i < n && i < kMaxQuads; i++) {
-            RectF rect = rects[i];
+        Vec<fz_quad> quads(n);
+        for (RectF rect : rects) {
             fz_rect r = ToFzRect(rect);
             fz_quad q = fz_quad_from_rect(r);
-            quads[i] = q;
+            quads.Append(q);
         }
         fz_try(ctx) {
             pdf_clear_annot_quad_points(ctx, a);
-            pdf_set_annot_quad_points(ctx, a, n, quads);
+            pdf_set_annot_quad_points(ctx, a, n, quads.LendData());
             pdf_update_annot(ctx, a);
         }
         fz_catch(ctx) {
@@ -1695,6 +1693,11 @@ bool SetColor(Annotation* annot, PdfColor c) {
         float newColor[3];
         PdfColorToFloat(c, newColor);
         float opacity = GetOpacityFloat(c);
+        // Shapes expose an independent opacity control. Changing their border
+        // RGB must not silently make an existing translucent fill opaque.
+        if (annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle) {
+            opacity = oldOpacity;
+        }
         didChange = (n != 3);
         if (!didChange) {
             for (int i = 0; i < n; i++) {
@@ -2188,6 +2191,15 @@ void SetFreeTextBorderColor(Annotation* annot, PdfColor col) {
     MarkNotificationAsModified(e, annot);
 }
 
+bool AnnotationSupportsOpacity(AnnotationType type) {
+    return type == AnnotationType::Highlight || type == AnnotationType::Square || type == AnnotationType::Circle;
+}
+
+bool AnnotationSupportsFractionalBorder(AnnotationType type) {
+    return type == AnnotationType::Square || type == AnnotationType::Circle || type == AnnotationType::Line ||
+           type == AnnotationType::Ink;
+}
+
 int Opacity(Annotation* annot) {
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
@@ -2201,7 +2213,7 @@ int Opacity(Annotation* annot) {
         fz_report_error(ctx);
         logf("Opacity: pdf_annot_opacity() failed\n");
     }
-    int res = (int)(fopacity * 255.f);
+    int res = (int)(fopacity * 255.f + 0.5f);
     return res;
 }
 

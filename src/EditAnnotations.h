@@ -31,6 +31,7 @@ void RefreshEditAnnotationsWindowsTheme();
 void DockOpenEditAnnotationsWindows(MainWindow* win);
 void CloseEditAnnotationsWindowsForDpiMove(MainWindow* win);
 void ReopenEditAnnotationsWindowsAfterDpiMove(MainWindow* win);
+bool TestPdfAnnotationAppearance(MainWindow* win, const char* outputDir);
 bool PdfAnnotationsExportNotes(WindowTab* tab, HWND hwndParent);
 void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 void PaintPdfFreeTextResizePreview(HDC hdc, DisplayModel* dm, Annotation* annot);

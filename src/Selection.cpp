@@ -201,6 +201,16 @@ void NormalizeNearbyHighlightHeights(Vec<RectF>& rects) {
     }
 }
 
+void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical) {
+    // A vertical selection is a column, not a horizontal text band. Extending
+    // its height by a font-size ratio can run past the entire page.
+    if (vertical) return;
+    NormalizeNearbyHighlightHeights(rects);
+    for (RectF& rect : rects) {
+        rect = ScaleHighlightBandRect(rect, HighlightBandRatio());
+    }
+}
+
 SelectionOnPage::SelectionOnPage(int pageNo, const RectF* const rect) {
     this->pageNo = pageNo;
     if (rect) {
@@ -619,9 +629,10 @@ void PaintSelection(MainWindow* win, HDC hdc) {
                 if (pageRects.Size() == 0) {
                     continue;
                 }
-                NormalizeNearbyHighlightHeights(pageRects);
+                bool verticalPdf = str::EqI(dm->GetEngine()->defaultExt, ".pdf") &&
+                                   PageHasVerticalGlyphLayout(dm->GetEngine(), pageNo);
+                PreparePdfHighlightRects(pageRects, verticalPdf);
                 for (RectF& rf : pageRects) {
-                    rf = ScaleHighlightBandRect(rf, HighlightBandRatio());
                     Rect sr = dm->CvtToScreen(pageNo, rf);
                     if (!sr.IsEmpty()) {
                         rects.Append(sr);

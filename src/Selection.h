@@ -57,6 +57,10 @@ RectF ScaleHighlightBandRect(RectF r, float bandRatio);
 // Selection, find, and read-aloud all use this.
 float HighlightBandRatio();
 
+// Raw PDF text selection -> final highlight quads. Apply only before creating
+// a new highlight; saved annotation quads are already in their final geometry.
+void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical = false);
+
 // OCR line boxes hug the x-height, so a marker through "that" misses the top of t/h
 // and the tail of g/y. weight is the number of letters in the box (CJK weight 2).
 // A box that is already about an em tall is left alone.

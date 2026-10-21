@@ -1755,7 +1755,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     FileWatcherInit();
 
     if (flags.testRenderPage) {
-        if (getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW")) {
+        if (getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW") || getenv("SUMATRA_TEST_ANNOTATION_UI")) {
             RegisterWinClass();
             InstanceInit();
         }

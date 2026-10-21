@@ -44081,3 +44081,15 @@ tw:朗讀選項
 :OCR options
 cn:OCR 选项
 tw:OCR 選項
+
+:Border: %.2f pt
+cn:边框：%.2f 磅
+tw:邊框：%.2f 點
+de:Rahmen: %.2f pt
+ar:الحدود: %.2f نقطة
+
+:Opacity: %d%%
+cn:不透明度：%d%%
+tw:不透明度：%d%%
+de:Deckkraft: %d%%
+ar:التعتيم: %d%%

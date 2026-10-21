@@ -174,6 +174,7 @@ struct ImageEditWindow {
 
     // drag state
     bool isDragging = false;
+    bool dragWithMiddleButton = false;
     DragEdge dragEdge = DragEdge::None;
     DragEdge hoverEdge = DragEdge::None; // edge under mouse, for arrow key nudging
     POINT dragStart{};
@@ -1899,15 +1900,23 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
+        case WM_MBUTTONDOWN:
         case WM_LBUTTONDOWN: {
             ew = FindImageEditWindowByHwnd(hwnd);
-            if (!ew || ew->mode == ImageEditMode::Save) {
+            if (!ew || ew->mode == ImageEditMode::Save || ew->isDragging) {
                 break;
             }
             int mx = GET_X_LPARAM(lp);
             int my = GET_Y_LPARAM(lp);
             DragEdge edge;
-            if (ew->mode == ImageEditMode::Crop) {
+            if (msg == WM_MBUTTONDOWN) {
+                if (ew->mode != ImageEditMode::Crop || mx < ImageToDisplayX(ew, ew->cropX) ||
+                    mx > ImageToDisplayX(ew, ew->cropX + ew->cropW) || my < ImageToDisplayY(ew, ew->cropY) ||
+                    my > ImageToDisplayY(ew, ew->cropY + ew->cropH)) {
+                    return 0;
+                }
+                edge = DragEdge::Move;
+            } else if (ew->mode == ImageEditMode::Crop) {
                 edge = HitTestCropEdge(ew, mx, my);
             } else {
                 edge = HitTestResizeEdge(ew, mx, my);
@@ -1915,7 +1924,9 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (edge != DragEdge::None) {
                 SetFocus(hwnd);
                 ew->isDragging = true;
+                ew->dragWithMiddleButton = msg == WM_MBUTTONDOWN;
                 ew->dragEdge = edge;
+                SetCursor(GetCursorForEdge(edge));
                 ew->dragStart = {mx, my};
                 if (ew->mode == ImageEditMode::Crop) {
                     ew->dragCropX = ew->cropX;
@@ -1931,9 +1942,10 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
+        case WM_MBUTTONUP:
         case WM_LBUTTONUP: {
             ew = FindImageEditWindowByHwnd(hwnd);
-            if (ew && ew->isDragging) {
+            if (ew && ew->isDragging && ew->dragWithMiddleButton == (msg == WM_MBUTTONUP)) {
                 ew->isDragging = false;
                 ReleaseCapture();
                 UpdateModeButtons(ew);
@@ -1944,6 +1956,10 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SETCURSOR: {
             ew = FindImageEditWindowByHwnd(hwnd);
             if (ew && ew->mode != ImageEditMode::Save && LOWORD(lp) == HTCLIENT) {
+                if (ew->isDragging) {
+                    SetCursor(GetCursorForEdge(ew->dragEdge));
+                    return TRUE;
+                }
                 POINT pt;
                 GetCursorPos(&pt);
                 ScreenToClient(hwnd, &pt);
@@ -2537,6 +2553,20 @@ bool TestImageEditWindow() {
                 ew->cropW = 160;
                 ew->cropH = 100;
                 int x = ImageToDisplayX(ew, 80), y = ImageToDisplayY(ew, 60);
+                int moveX = ImageToDisplayX(ew, 100), moveY = ImageToDisplayY(ew, 70);
+                SendMessageW(hwnd, WM_MBUTTONDOWN, MK_MBUTTON, MAKELPARAM(x, y));
+                SendMessageW(hwnd, WM_MOUSEMOVE, MK_MBUTTON, MAKELPARAM(moveX, moveY));
+                SendMessageW(hwnd, WM_LBUTTONUP, MK_MBUTTON, MAKELPARAM(moveX, moveY));
+                valid = valid && ew->isDragging && abs(ew->cropX - 60) <= 2 && abs(ew->cropY - 40) <= 2 &&
+                        ew->cropW == 160 && ew->cropH == 100;
+                SendMessageW(hwnd, WM_MBUTTONUP, 0, MAKELPARAM(moveX, moveY));
+                valid = valid && !ew->isDragging && GetCapture() != hwnd;
+                ew->cropX = 40;
+                ew->cropY = 30;
+                SendMessageW(hwnd, WM_MBUTTONDOWN, MK_MBUTTON, MAKELPARAM(x, y));
+                SendMessageW(hwnd, WM_MOUSEMOVE, MK_MBUTTON, MAKELPARAM(moveX, moveY));
+                SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);
+                valid = valid && !ew->isDragging && ew->cropX == 40 && ew->cropY == 30;
                 SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
                 SendMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x + ImgPx(ew, 30), y + ImgPx(ew, 30)));
                 SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE, 0);

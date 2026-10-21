@@ -920,6 +920,8 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
     // glyph, so visual lines must additionally be split geometrically. Vertical
     // glyph layouts stack glyphs along Y inside a column and must not be split.
     bool geoSplit = !PageUsesVerticalGlyphLayout(ts, pageNo);
+    bool scannedPdf = str::EqI(ts->engine->defaultExt, ".pdf") &&
+                      (ts->engine->HasCachedOcrText(pageNo) || EngineMupdfIsScannedTextPage(ts->engine, pageNo));
     Rect *c = &coords[glyph], *end = c + length;
     while (c < end) {
         // skip line breaks
@@ -936,7 +938,30 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
             if (geoSplit && c != c0 && GlyphJumpsToNextBandLine(band, *c)) {
                 break;
             }
-            band = band.Union(*c);
+            if (scannedPdf && geoSplit && c != c0) {
+                float minHeight = (float)std::min(band.dy, c->dy);
+                float maxHeight = (float)std::max(band.dy, c->dy);
+                float centerDelta = fabsf((float)(band.y - c->y) + (float)(band.dy - c->dy) * .5f);
+                bool nextRow = c->x < band.x && centerDelta > minHeight * .35f;
+                bool nextColumn = c->x - band.BR().x > maxHeight * 2.f;
+                bool marginalText = minHeight * 2.f < maxHeight && centerDelta > minHeight * .35f;
+                if (nextRow || nextColumn || marginalText) break;
+            }
+            if (scannedPdf && !geoSplit && c != c0) {
+                // Rotated horizontal scans and vertical books both progress
+                // down a column. A new column needs the transposed row test;
+                // otherwise OCR runs without separators merge whole columns.
+                int overlap = std::min(band.BR().x, c->BR().x) - std::max(band.x, c->x);
+                float minWidth = (float)std::min(band.dx, c->dx);
+                float maxWidth = (float)std::max(band.dx, c->dx);
+                float centerDelta = fabsf((float)(band.x - c->x) + (float)(band.dx - c->dx) * .5f);
+                bool nextColumn = overlap * 10 < minWidth * 3 || (c->y < band.y && centerDelta > minWidth * .35f);
+                bool gap = c->y - band.BR().y > maxWidth * 2.f;
+                if (nextColumn || gap) break;
+            }
+            // A tall OCR box (e.g. marginal vertical text) must not grow the
+            // row reference until it swallows the next horizontal body line.
+            band = scannedPdf ? *c : band.Union(*c);
             // find the end of this visual line
         }
 

@@ -2264,7 +2264,7 @@ static float PreviewShapeStrokePx(MainWindow* win, DisplayModel* dm, bool ebook,
     AnnotDrawStyle style;
     float points = FindAnnotDrawStyle(type, &style) && (style.flags & kDrawStyleBorder) ? style.border
                                                                                         : NewStrokeWidthPoints(zoom);
-    return std::max(0.5f, points * zoom);
+    return points > 0 ? points * zoom : 1.f;
 }
 
 static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) {
@@ -2287,6 +2287,10 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
     } else if (stroked) {
         rgb = ebook ? GetDefaultEbookPointAnnotationColor(type) : RGB(255, 0, 0);
         strokePx = PreviewShapeStrokePx(win, dm, ebook, type);
+        AnnotDrawStyle style;
+        if (!ebook && FindAnnotDrawStyle(type, &style) && (style.flags & kDrawStyleColor)) {
+            rgb = style.color;
+        }
     }
     u8 r, g, b;
     UnpackColor(rgb, r, g, b);
@@ -2384,6 +2388,51 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
     float y = (float)rc.y + shapeInset;
     float w = std::max(1.f, (float)rc.dx - 2.f * shapeInset);
     float h = std::max(1.f, (float)rc.dy - 2.f * shapeInset);
+    if (!ebook && (type == AnnotationType::Square || type == AnnotationType::Circle)) {
+        // Composite fill and border as one transparency group, like the PDF
+        // appearance. Drawing two translucent primitives darkens their overlap.
+        Rect layerRect = rc.Intersect(win->canvasRc);
+        if (layerRect.IsEmpty()) return;
+        Gdiplus::Bitmap layer(layerRect.dx, layerRect.dy, PixelFormat32bppPARGB);
+        if (layer.GetLastStatus() != Gdiplus::Ok) return;
+        AnnotDrawStyle style;
+        bool remembered = FindAnnotDrawStyle(type, &style);
+        int opacity = remembered && (style.flags & kDrawStyleOpacity) ? style.opacityPercent : 100;
+        {
+            Gdiplus::Graphics paint(&layer);
+            paint.Clear(Gdiplus::Color(0, 0, 0, 0));
+            paint.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            paint.TranslateTransform((float)-layerRect.x, (float)-layerRect.y);
+            Gdiplus::SolidBrush fill(
+                Gdiplus::Color(255, GetRValue(style.interior), GetGValue(style.interior), GetBValue(style.interior)));
+            bool filled = remembered && (style.flags & kDrawStyleInterior) && !style.interiorTransparent;
+            if (type == AnnotationType::Circle) {
+                if (filled) paint.FillEllipse(&fill, x, y, w, h);
+                paint.DrawEllipse(&pen, x, y, w, h);
+            } else {
+                int pageNo = dm->GetPageNoByPoint(win->annotCreateDragStart);
+                float zoom = dm->ValidPageNo(pageNo) ? dm->GetZoomSafe(pageNo) : 1.f;
+                float radius = std::min(6.f * zoom, std::min(w, h) / 4.f);
+                float diameter = radius * 2.f;
+                Gdiplus::GraphicsPath path;
+                path.AddArc(x, y, diameter, diameter, 180.f, 90.f);
+                path.AddArc(x + w - diameter, y, diameter, diameter, 270.f, 90.f);
+                path.AddArc(x + w - diameter, y + h - diameter, diameter, diameter, 0.f, 90.f);
+                path.AddArc(x, y + h - diameter, diameter, diameter, 90.f, 90.f);
+                path.CloseFigure();
+                if (filled) paint.FillPath(&fill, &path);
+                paint.DrawPath(&pen, &path);
+            }
+            paint.Flush();
+        }
+        Gdiplus::ColorMatrix matrix = {
+            {{1, 0, 0, 0, 0}, {0, 1, 0, 0, 0}, {0, 0, 1, 0, 0}, {0, 0, 0, (float)opacity / 100.f, 0}, {0, 0, 0, 0, 1}}};
+        Gdiplus::ImageAttributes attributes;
+        attributes.SetColorMatrix(&matrix);
+        gs.DrawImage(&layer, Gdiplus::Rect(layerRect.x, layerRect.y, layerRect.dx, layerRect.dy), 0, 0, layerRect.dx,
+                     layerRect.dy, Gdiplus::UnitPixel, &attributes);
+        return;
+    }
     if (cmdId == CmdCreateAnnotCircle) {
         gs.DrawEllipse(&pen, x, y, w, h);
     } else if (cmdId == CmdCreateAnnotSquare) {

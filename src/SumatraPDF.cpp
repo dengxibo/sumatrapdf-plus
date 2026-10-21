@@ -10170,6 +10170,9 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
             }
             rects.Append(sel.rect);
         }
+        if (args->annotType == AnnotationType::Highlight && dm->textSelection->result.len > 0) {
+            PreparePdfHighlightRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
+        }
         Annotation* annot = EngineMupdfCreateAnnotation(engine, pageNo, PointF{}, args);
         if (!annot) {
             // TODO: leaking if created annots before
