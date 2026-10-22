@@ -806,7 +806,7 @@ static int word_looks_like_fake_center_indent(const char* plain, float indent_em
     return 1;
 }
 
-/* Half-points in w:sz / w:szCs → pt (defined below; used by run metrics). */
+/* Effective direct run size in points (defined below; used by run metrics). */
 static float word_rpr_font_pt(fz_xml* rpr);
 
 /* Scan paragraph runs: max font pt and min character scale (w:w, percent, 100 = none). */
@@ -2360,14 +2360,14 @@ static void word_ppr_text_indent(fz_xml* ppr, float* em_out, float* pt_out, floa
     }
 }
 
-/* Half-points in w:sz / w:szCs → pt. Prefer sz (CJK body) then szCs. */
+/* sz is inherited independently of szCs. A Chinese run with only szCs still
+ * uses its inherited sz; szCs applies only when complex-script formatting is on. */
 static float word_rpr_font_pt(fz_xml* rpr) {
     fz_xml* sz_n;
     const char* sv;
 
     if (!rpr) return 0;
-    sz_n = fz_xml_find_down(rpr, "sz");
-    if (!sz_n) sz_n = fz_xml_find_down(rpr, "szCs");
+    sz_n = fz_xml_find_down(rpr, (rpr_flag_on(rpr, "cs") || rpr_flag_on(rpr, "rtl")) ? "szCs" : "sz");
     if (!sz_n) return 0;
     sv = fz_xml_att_alt(sz_n, "w:val", "val");
     if (!sv || !sv[0]) return 0;
@@ -2702,6 +2702,139 @@ static void emit_drawing(fz_context* ctx, fz_xml* drawing, doc_info* info) {
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
+static int word_vml_style_property(const char* style, const char* key, char* value, size_t cap) {
+    size_t key_len = strlen(key);
+    const char* p = style;
+    if (!p) return 0;
+    while (*p) {
+        const char* end = strchr(p, ';');
+        const char* colon;
+        const char* start;
+        size_t len;
+        if (!end) end = p + strlen(p);
+        while (p < end && (*p == ' ' || *p == '\t')) p++;
+        colon = memchr(p, ':', end - p);
+        if (colon && (size_t)(colon - p) == key_len && !strncmp(p, key, key_len)) {
+            start = colon + 1;
+            while (start < end && *start == ' ') start++;
+            while (end > start && end[-1] == ' ') end--;
+            if (end - start >= 2 && ((*start == '"' && end[-1] == '"') || (*start == '\'' && end[-1] == '\''))) {
+                start++;
+                end--;
+            }
+            len = end - start;
+            if (len >= cap) return 0;
+            memcpy(value, start, len);
+            value[len] = 0;
+            return 1;
+        }
+        p = *end ? end + 1 : end;
+    }
+    return 0;
+}
+
+static float word_vml_points(const char* value) {
+    float n = value ? fz_atof(value) : 0;
+    const char* unit = value ? value + strspn(value, " +-0123456789.eE") : "";
+    if (!strncmp(unit, "in", 2)) return n * 72;
+    if (!strncmp(unit, "cm", 2)) return n * 72 / 2.54f;
+    if (!strncmp(unit, "mm", 2)) return n * 72 / 25.4f;
+    if (!strncmp(unit, "px", 2)) return n * 0.75f;
+    return n;
+}
+
+static void word_vml_attribute(fz_context* ctx, fz_output* out, const char* value) {
+    while (*value) {
+        switch (*value) {
+            case '&':
+                fz_write_string(ctx, out, "&amp;");
+                break;
+            case '<':
+                fz_write_string(ctx, out, "&lt;");
+                break;
+            case '>':
+                fz_write_string(ctx, out, "&gt;");
+                break;
+            case '"':
+                fz_write_string(ctx, out, "&quot;");
+                break;
+            default:
+                fz_write_byte(ctx, out, *value);
+                break;
+        }
+        value++;
+    }
+}
+
+/* Straight WordArt and rules have no imagedata. Use SVG so both remain
+ * vector graphics, including the horizontal stretching of a letterhead. */
+static int word_emit_vml_vector(fz_context* ctx, fz_xml* pict, doc_info* info) {
+    fz_xml* shape = fz_xml_find_dfs(pict, "shape", NULL, NULL);
+    fz_xml* textpath = shape ? fz_xml_find_dfs(shape, "textpath", NULL, NULL) : NULL;
+    char value[256];
+    if (textpath) {
+        const char* type = fz_xml_att(shape, "type");
+        const char* text = fz_xml_att(textpath, "string");
+        const char* style = fz_xml_att(shape, "style");
+        const char* text_style = fz_xml_att(textpath, "style");
+        const char* color = fz_xml_att(shape, "fillcolor");
+        const char* family;
+        const char* alias;
+        float width, height;
+        int glyphs = text ? word_plain_glyph_count(text) : 0;
+        if (!type || strcmp(type, "#_x0000_t136") || glyphs <= 0) return 0;
+        if (!word_vml_style_property(style, "width", value, sizeof value)) return 0;
+        width = word_vml_points(value);
+        if (!word_vml_style_property(style, "height", value, sizeof value)) return 0;
+        height = word_vml_points(value);
+        if (!(width > 0 && width < 4096 && height > 0 && height < 4096)) return 0;
+        family = word_vml_style_property(text_style, "font-family", value, sizeof value) ? value : "SimSun";
+        alias = word_font_win_alias(family);
+        fz_write_printf(ctx, info->out,
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%gpt\" height=\"%gpt\" viewBox=\"0 0 %g "
+                        "%g\"><text x=\"0\" y=\"88\" font-size=\"100\" transform=\"scale(%g %g)\" font-family=\"",
+                        width, height, width, height, width / (100 * glyphs), height / 100);
+        word_vml_attribute(ctx, info->out, alias ? alias : family);
+        fz_write_string(ctx, info->out, "\" fill=\"");
+        word_vml_attribute(ctx, info->out, color ? color : "black");
+        fz_write_string(ctx, info->out, "\">");
+        doc_escape(ctx, info->out, text);
+        fz_write_string(ctx, info->out, "</text></svg>");
+        return 1;
+    }
+    {
+        fz_xml* line = fz_xml_find_dfs(pict, "line", NULL, NULL);
+        const char *from, *to, *comma1, *comma2, *color, *weight;
+        float x1, y1, x2, y2, stroke, left, top, width, height;
+        if (!line) return 0;
+        from = fz_xml_att(line, "from");
+        to = fz_xml_att(line, "to");
+        comma1 = from ? strchr(from, ',') : NULL;
+        comma2 = to ? strchr(to, ',') : NULL;
+        if (!comma1 || !comma2) return 0;
+        x1 = word_vml_points(from);
+        y1 = word_vml_points(comma1 + 1);
+        x2 = word_vml_points(to);
+        y2 = word_vml_points(comma2 + 1);
+        color = fz_xml_att(line, "strokecolor");
+        weight = fz_xml_att(line, "strokeweight");
+        stroke = weight ? word_vml_points(weight) : 1;
+        if (!(stroke > 0 && stroke < 100)) return 0;
+        left = fz_min(x1, x2) - stroke;
+        top = fz_min(y1, y2) - stroke;
+        width = fz_abs(x2 - x1) + 2 * stroke;
+        height = fz_abs(y2 - y1) + 2 * stroke;
+        if (!(width > 0 && width < 4096 && height > 0 && height < 4096)) return 0;
+        fz_write_printf(ctx, info->out,
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%gpt\" height=\"%gpt\" viewBox=\"%g %g %g "
+                        "%g\"><line x1=\"%g\" y1=\"%g\" x2=\"%g\" y2=\"%g\" stroke-width=\"%g\" stroke=\"",
+                        width, height, left, top, width, height, x1, y1, x2, y2, stroke);
+        word_vml_attribute(ctx, info->out, color ? color : "black");
+        fz_write_string(ctx, info->out, "\"/></svg>");
+        return 1;
+    }
+}
+
 /* Legacy VML pictures (Word 2003-compat drawings inside OOXML). */
 static void emit_pict(fz_context* ctx, fz_xml* pict, doc_info* info) {
     fz_xml* imagedata;
@@ -2710,7 +2843,10 @@ static void emit_pict(fz_context* ctx, fz_xml* pict, doc_info* info) {
     char* path = NULL;
 
     imagedata = fz_xml_find_dfs(pict, "imagedata", NULL, NULL);
-    if (!imagedata) return;
+    if (!imagedata) {
+        word_emit_vml_vector(ctx, pict, info);
+        return;
+    }
 
     embed = fz_xml_att_alt(imagedata, "r:id", "id");
     if (!embed) embed = fz_xml_att_alt(imagedata, "r:embed", "embed");
@@ -2968,9 +3104,8 @@ static void emit_word_tab(fz_context* ctx, doc_info* info, fz_xml* run, fz_xml* 
 static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
     fz_xml* rpr;
     fz_xml* n;
-    fz_xml* sz_n;
     fz_xml* color_n;
-	int bold = 0, italic = 0, underline = 0, strike = 0;
+    int bold = 0, italic = 0, underline = 0, strike = 0;
     int opened_color = 0;
     int opened_size = 0;
     int opened_font = 0;
@@ -2986,30 +3121,32 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
 
 	rpr = fz_xml_find_down(r, "rPr");
     if (rpr) {
-        fz_xml* rstyle = fz_xml_find_down(rpr, "rStyle");
-		bold = rpr_flag_on(rpr, "b") || rpr_flag_on(rpr, "bCs");
-		italic = rpr_flag_on(rpr, "i") || rpr_flag_on(rpr, "iCs");
-		underline = rpr_flag_on(rpr, "u");
-		strike = rpr_flag_on(rpr, "strike") || rpr_flag_on(rpr, "dstrike");
+        fz_xml *rstyle = fz_xml_find_down(rpr, "rStyle");
+        bold = rpr_flag_on(rpr, "b") || rpr_flag_on(rpr, "bCs");
+        italic = rpr_flag_on(rpr, "i") || rpr_flag_on(rpr, "iCs");
+        underline = rpr_flag_on(rpr, "u");
+        strike = rpr_flag_on(rpr, "strike") || rpr_flag_on(rpr, "dstrike");
         if (rstyle) {
-            const char* val = fz_xml_att_alt(rstyle, "w:val", "val");
-            if (val && !strcmp(val, "VerbatimChar")) inline_style = "tt";
+            const char *val = fz_xml_att_alt(rstyle, "w:val", "val");
+            if (val && !strcmp(val, "VerbatimChar"))
+                inline_style = "tt";
         }
-        sz_n = fz_xml_find_down(rpr, "sz");
-        if (!sz_n) sz_n = fz_xml_find_down(rpr, "szCs");
-        if (sz_n) {
-            const char* sv = fz_xml_att_alt(sz_n, "w:val", "val");
-            /* Half-points → pt */
-            if (sv) font_pt = (float)fz_atoi(sv) / 2.0f;
-        }
+        font_pt = word_rpr_font_pt(rpr);
+        if (font_pt < 0.5f && rstyle)
+            font_pt = word_style_resolve_font_pt(
+                info, fz_xml_att_alt(rstyle, "w:val", "val"));
         color_n = fz_xml_find_down(rpr, "color");
-        if (color_n) color_hex = fz_xml_att_alt(color_n, "w:val", "val");
+        if (color_n)
+            color_hex = fz_xml_att_alt(color_n, "w:val", "val");
         word_rpr_font_names(info, rpr, &east, &latin);
     }
 
-    /* Run omitted w:sz — use paragraph style / pPr size (e.g. 公文 recipient). */
-    if (font_pt < 0.5f && info && info->run_default_font_pt > 0.5f) font_pt = info->run_default_font_pt;
-    /* Run omitted w:rFonts — inherit paragraph / style eastAsia (仿宋、小标宋). */
+    /* Run omitted w:sz — use paragraph style / pPr size (e.g. 公文 recipient).
+     */
+    if (font_pt < 0.5f && info && info->run_default_font_pt > 0.5f)
+        font_pt = info->run_default_font_pt;
+    /* Run omitted w:rFonts — inherit paragraph / style eastAsia (仿宋、小标宋).
+     */
     if (info) {
         if (!east && info->run_default_ea[0]) east = info->run_default_ea;
         if (!latin && info->run_default_latin[0]) latin = info->run_default_latin;

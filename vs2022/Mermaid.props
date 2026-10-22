@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalDependencies>$(OutDir)sumatra_mermaid.lib;bcrypt.lib;ntdll.lib;userenv.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <Target Name="BuildMermaidStaticLibrary" BeforeTargets="PrepareForBuild">
+    <Exec WorkingDirectory="$(MSBuildThisFileDirectory).." Command="bun cmd/build-mermaid.ts &quot;$(OutDir).&quot; $(Platform)" />
+  </Target>
+</Project>

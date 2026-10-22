@@ -111,6 +111,12 @@ jxldec          dist       2026-07-28
   amalgamated dist/jxl.c + dist/jxl.h only
   Replaces libjxl + highway + skcms for JPEG XL decode.
 
+mermaid-rs-renderer 0.3.1 2026-10-22
+  https://github.com/1jehuang/mermaid-rs-renderer
+  Static Rust wrapper in ext/mermaid; dependency versions in Cargo.lock.
+  SVG normalization: usvg 0.47.0 (https://github.com/linebender/resvg).
+  License notices: ext/mermaid/THIRD-PARTY-NOTICES.txt.
+
 zopfli         1.0.3+     2024-04-11
   https://github.com/google/zopfli
   https://github.com/google/zopfli/commit/ccf9f0588d4a4509cb1040310ec122243e670ee6

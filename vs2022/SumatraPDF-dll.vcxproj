@@ -1851,6 +1851,7 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
       <Project>{DD65880B-496F-887C-D2EA-9E7C3EF3937C}</Project>
     </ProjectReference>
   </ItemGroup>
+  <Import Project="Mermaid.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

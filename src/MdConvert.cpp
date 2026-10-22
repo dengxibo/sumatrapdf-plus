@@ -4,6 +4,8 @@
 #include "utils/BaseUtil.h"
 #include "utils/FileUtil.h"
 #include "utils/WinUtil.h"
+#include "utils/HtmlParserLookup.h"
+#include "utils/TrivialHtmlParser.h"
 
 #include "MdConvert.h"
 #include "Md4cHtml.h"
@@ -108,6 +110,49 @@ static TempStr EscapeHtmlTextTemp(const char* s) {
     return t;
 }
 
+// Statically linked Rust C ABI. Returned strings belong to the Rust allocator.
+extern "C" char* __cdecl sumatra_mermaid_render(const char* source, size_t len);
+extern "C" void __cdecl sumatra_mermaid_free(char* svg);
+
+static void AppendMarkdownBody(StrBuilder& out, const char* body) {
+    const char* marker = "<pre><code class=\"language-mermaid\">";
+    const char* closing = "</code></pre>";
+    const char* cursor = body;
+    while (const char* start = strstr(cursor, marker)) {
+        out.Append(cursor, start - cursor);
+        const char* source = start + str::Len(marker);
+        const char* end = strstr(source, closing);
+        if (!end) {
+            out.Append(start);
+            return;
+        }
+        bool rendered = false;
+        if (end - source <= 256 * 1024) {
+            TempStr escaped = str::DupTemp(source, end - source);
+            TempStr decoded = DecodeHtmlEntititesTemp(escaped, CP_UTF8);
+            char* svg = decoded ? sumatra_mermaid_render(decoded, str::Len(decoded)) : nullptr;
+            if (svg) {
+                // Strip the XML declaration: the SVG is part of an HTML document.
+                const char* root = strstr(svg, "<svg");
+                const char* tail = root ? strstr(root, "</svg>") : nullptr;
+                if (tail) {
+                    out.Append("<div class=\"mermaid\">");
+                    out.Append(root, tail + 6 - root);
+                    out.Append("</div>");
+                    rendered = true;
+                }
+                sumatra_mermaid_free(svg);
+            }
+        }
+        cursor = end + str::Len(closing);
+        if (!rendered) {
+            out.Append(start, cursor - start);
+            logf("Markdown: Mermaid rendering failed; keeping source\n");
+        }
+    }
+    out.Append(cursor);
+}
+
 ByteSlice MdFileToHTML(const char* path) {
     if (str::IsEmpty(path)) {
         return {};
@@ -154,9 +199,7 @@ ByteSlice MdFileToHTML(const char* path) {
         return {};
     }
     d.Append("\n</style>\n</head>\n<body>\n");
-    if (!d.Append(bodyHtml, bodyLen)) {
-        return {};
-    }
+    AppendMarkdownBody(d, bodyHtml);
     d.Append("\n</body>\n</html>\n");
 
     size_t sz = d.size();

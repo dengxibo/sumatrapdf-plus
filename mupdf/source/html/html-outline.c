@@ -700,7 +700,10 @@ cat_html_text(fz_context *ctx, struct outline_parser *x, fz_html_box *box)
 	else
 		fz_clear_buffer(ctx, x->cat);
 
-	cat_html_flow(ctx, x->cat, box->u.flow.head);
+	/* Block margins share this union with the flow pointer. After layout,
+	 * reading a heading block as a flow dereferences the margin values. */
+	if (box->type == BOX_FLOW)
+		cat_html_flow(ctx, x->cat, box->u.flow.head);
 	cat_html_box(ctx, x->cat, box->down);
 
 	return fz_string_from_buffer(ctx, x->cat);
