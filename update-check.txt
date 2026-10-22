@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.65
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.65/SumatraPDF-Plus.exe
-Notes: Fix text above the edited line temporarily disappearing when typing in the multiline AI sidebar input.
-NotesZh: 修复 AI 栏多行输入时，编辑某行导致上方文字暂时消失、移动光标后才恢复的问题。
+Latest: 3.7.66
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.66/SumatraPDF-Plus.exe
+Notes: Add built-in Mermaid diagrams in Markdown, fix overlapping multiline labels, restore Word letterheads and font sizes, and fix a Markdown/HTML outline crash.
+NotesZh: Markdown 内置 Mermaid 图表，修复多行标签重叠；恢复 Word 红头及正确字号，并修复 Markdown/HTML 目录崩溃。
