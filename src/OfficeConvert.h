@@ -5,8 +5,8 @@
 
 #pragma once
 
-// Returns a newly allocated path to a temporary .docx (caller frees with
-// str::Free), or nullptr if Word is unavailable / conversion fails.
+// Returns a temporary .docx for DOC documents or .pdf for WPS/presentations
+// (caller frees with str::Free), or nullptr if automation/conversion fails.
 // outErr may receive a short English reason (optional, static/owned by caller buffer).
 char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen);
 

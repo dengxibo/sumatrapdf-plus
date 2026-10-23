@@ -8367,7 +8367,7 @@ static TempWStr GetFileFilterTemp() {
         {_TRA("Images"), "*.bmp;*.dib;*.gif;*.jpg;*.jpeg;*.jxr;*.png;*.tga;*.tif;*.tiff;*.webp;*.heic;*.avif", true},
         {_TRA("Text documents"), "*.txt;*.log;*.nfo;file_id.diz;read.me;*.tcr", true},
         {_TRA("Markdown documents"), "*.md;*.markdown", true},
-        {_TRA("Office documents"), "*.doc;*.docx;*.xlsx;*.pptx;*.hwpx", true},
+        {_TRA("Office documents"), "*.doc;*.docx;*.wps;*.xlsx;*.ppt;*.pptx;*.dps;*.hwpx", true},
     };
     // Prepare the file filters (use \1 instead of \0 so that the
     // double-zero terminated string isn't cut by the string handling
@@ -8750,8 +8750,11 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         oldTocDx = ClientRect(win->hwndTocBox).dx;
     }
 
-    OverlayScrollbarHide(win->overlayScrollV);
-    OverlayScrollbarHide(win->overlayScrollH);
+    // Avoid a hide/show cycle on every interactive resize step.
+    if (!win->inSizeMove) {
+        OverlayScrollbarHide(win->overlayScrollV);
+        OverlayScrollbarHide(win->overlayScrollH);
+    }
 
     // WM_SETREDRAW changes WS_VISIBLE on the top-level window. Toggling it
     // on every interactive resize makes DWM discard/present the frame again,
@@ -8947,10 +8950,16 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         // InvalidateRect pipeline (coalesced by the message loop), just like
         // a main-window resize; no forced repaint per mouse move.
     } else if (tocVisible) {
-        RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
+        // Native tree controls already buffer their paint. Do not force a
+        // separate erase pass through all children on every resize step.
+        UINT flags = RDW_INVALIDATE | RDW_ALLCHILDREN;
+        if (!win->inSizeMove) flags |= RDW_ERASE;
+        RedrawWindow(win->hwndTocBox, nullptr, nullptr, flags);
     }
     if (!liveSidebarDrag && favVisible) {
-        RedrawWindow(win->hwndFavBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
+        UINT flags = RDW_INVALIDATE | RDW_ALLCHILDREN;
+        if (!win->inSizeMove) flags |= RDW_ERASE;
+        RedrawWindow(win->hwndFavBox, nullptr, nullptr, flags);
     }
     if (!liveSidebarDrag && (tocVisible || favVisible)) {
         InvalidateRect(win->sidebarSplitter->hwnd, nullptr, TRUE);

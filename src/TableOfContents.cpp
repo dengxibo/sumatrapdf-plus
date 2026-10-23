@@ -4180,6 +4180,14 @@ static void PlaceContainerChild(HWND hwnd, int x, int y, int dx, int dy) {
     if (!hwnd) {
         return;
     }
+    RECT current{};
+    if (GetWindowRect(hwnd, &current)) {
+        MapWindowPoints(nullptr, GetParent(hwnd), (LPPOINT)&current, 2);
+        if (current.left == x && current.top == y && current.right - current.left == dx &&
+            current.bottom - current.top == dy) {
+            return;
+        }
+    }
     UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
     if (TreeWrapUpdatesSuspended()) {
         flags |= SWP_NOCOPYBITS | SWP_NOREDRAW;

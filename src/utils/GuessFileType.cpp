@@ -109,6 +109,9 @@ Kind kindFileAvif = "fileAvif";
     V(".doc", kindFileOffice)     \
     V(".docx", kindFileOffice)    \
     V(".xlsx", kindFileOffice)    \
+    V(".wps", kindFileOffice)     \
+    V(".dps", kindFileOffice)     \
+    V(".ppt", kindFileOffice)     \
     V(".pptx", kindFileOffice)    \
     V(".hwpx", kindFileOffice)    \
     V(".svg", kindFileSvg)        \

@@ -3936,15 +3936,16 @@ static bool IsUnsupportedOfficeFilePath(const char* path) {
         return false;
     }
     // MuPDF's office handler converts OOXML (docx/xlsx/pptx/hwpx) to HTML.
-    // Classic .doc is opened via Word COM → temp docx in EngineMupdf::Load.
-    // .xls/.ppt/.wps remain unsupported.
-    return str::EqI(ext, ".wps") || str::EqI(ext, ".xls") || str::EqI(ext, ".ppt");
+    // Writer documents and presentations use installed Office automation.
+    // Legacy spreadsheets remain unsupported.
+    return str::EqI(ext, ".xls");
 }
 
 static bool IsClassicOleWordDocPath(const char* path) {
     TempStr ext = path::GetExtTemp(path);
-    // .docx must not match — only bare .doc
-    return str::EqI(ext, ".doc");
+    // Keep DOCX on the native path; presentations need fixed-layout export.
+    return str::EqI(ext, ".doc") || str::EqI(ext, ".wps") || str::EqI(ext, ".ppt") || str::EqI(ext, ".pptx") ||
+           str::EqI(ext, ".dps");
 }
 
 bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
@@ -15246,6 +15247,11 @@ static bool EngineMupdfSaveWordToc(EngineMupdf* epdf, const char* path, const Sh
     return true;
 }
 
+bool EngineMupdfIsOfficeViewingPdf(EngineBase* engine) {
+    auto* e = AsEngineMupdf(engine);
+    return e && e->convertedOfficeTempPath && str::EqI(path::GetExtTemp(e->convertedOfficeTempPath), ".pdf");
+}
+
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
                             char** overwriteTempOut) {
     ReportIf(!engine);
@@ -15263,6 +15269,11 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
         return EngineMupdfSaveWordToc(epdf, path, showErrorFunc, overwriteTempOut);
     }
     if (!epdf->pdfdoc) {
+        return false;
+    }
+    if (epdf->convertedOfficeTempPath && str::EqI(path::GetExtTemp(epdf->convertedOfficeTempPath), ".pdf") &&
+        (str::IsEmpty(path) || path::IsSame(path, engine->FilePath()) || !str::EqI(path::GetExtTemp(path), ".pdf"))) {
+        // The PDF is a viewing derivative, never the original Office document.
         return false;
     }
     if (!EngineMupdfHasUnsavedPdfChanges(engine)) {
@@ -17050,6 +17061,11 @@ bool EngineMupdfHasUnsavedAnnotations(EngineBase* engine) {
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     if (!epdf) {
+        return false;
+    }
+    if (epdf->convertedOfficeTempPath && str::EqI(path::GetExtTemp(epdf->convertedOfficeTempPath), ".pdf")) {
+        // Edits belong to the in-memory viewing derivative. There is no
+        // supported round trip from PDF outlines back to WPS/PowerPoint.
         return false;
     }
     if (!epdf->pdfdoc && epdf->modifiedPdfToc && EngineMupdfIsWordDocument(engine)) {

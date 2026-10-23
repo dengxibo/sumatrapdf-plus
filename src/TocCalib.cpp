@@ -6480,7 +6480,8 @@ static bool TocCalibWriteBookmarks(MainWindow* win) {
         return false;
     }
     str::Free(pushErr);
-    if (s->persistToDisk) {
+    bool sessionOnly = EngineMupdfIsOfficeViewingPdf(s->engine);
+    if (s->persistToDisk && !sessionOnly) {
         tab->ignoreNextAutoReload = true;
         TocCalibSaveErrCapture saveErr;
         auto saveErrCb = MkFunc1<TocCalibSaveErrCapture, const char*>(TocCalibOnSaveError, &saveErr);
@@ -6508,7 +6509,10 @@ static bool TocCalibWriteBookmarks(MainWindow* win) {
     TocCalibCloneForest(s->roots, s->backup);
     ToolbarUpdateStateForWindow(win, false);
     const char* path = s->engine->FilePath();
-    if (s->persistToDisk && path && path[0]) {
+    if (sessionOnly) {
+        ShowTemporaryNotification(win->hwndCanvas, "目录仅保留在当前会话中，不会写入原文件。关闭后需重新提取。",
+                                  kNotif5SecsTimeOut);
+    } else if (s->persistToDisk && path && path[0]) {
         ShowTemporaryNotification(win->hwndCanvas, str::FormatTemp(_TRA("Saved PDF changes to '%s'"), path),
                                   kNotif5SecsTimeOut);
     } else {

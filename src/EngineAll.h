@@ -164,6 +164,7 @@ const char* EngineMupdfGetPassword(EngineBase* engine);
 // rewrite is written next to dest (or %TEMP% as a .pdf) and that path is returned
 // for the caller to replace-and-reload (same pattern as OCR save). Caller frees
 // with str::Free.
+bool EngineMupdfIsOfficeViewingPdf(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
                             char** overwriteTempOut = nullptr);
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* path, char** errOut);

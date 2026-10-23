@@ -31114,6 +31114,9 @@ bool WriteExtractedPdfToc(MainWindow* win, EngineBase* engine, Vec<ExtractedTocI
     if (!win || !engine) {
         return false;
     }
+    if (EngineMupdfIsOfficeViewingPdf(engine)) {
+        persistToDisk = false;
+    }
     InheritMissingExtractedDests(roots);
     char* err = nullptr;
     bool ok = EngineMupdfReplacePdfToc(engine, roots, &err);

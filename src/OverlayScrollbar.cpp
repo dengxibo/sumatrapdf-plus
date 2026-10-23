@@ -953,7 +953,15 @@ void OverlayScrollbarUpdatePos(OverlayScrollbar* sb) {
     if (!IsVisible(sb)) {
         swpFlags |= SWP_NOZORDER;
     }
+    RECT current{};
+    GetWindowRect(sb->hwnd, &current);
+    bool resized = current.right - current.left != w || current.bottom - current.top != h;
+    if (current.left == x && current.top == y) swpFlags |= SWP_NOMOVE;
+    if (!resized) swpFlags |= SWP_NOSIZE;
     SetWindowPos(sb->hwnd, IsVisible(sb) ? HWND_TOP : nullptr, x, y, w, h, swpFlags);
+    // A layered window retains the old bitmap after SetWindowPos. Refresh
+    // the thumb for the new track dimensions before presenting stale pixels.
+    if (resized && IsVisible(sb)) PaintScrollbar(sb);
 }
 
 // Hide the scrollbar window without stealing activation from other windows.

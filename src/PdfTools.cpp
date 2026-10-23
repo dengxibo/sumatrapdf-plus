@@ -1997,6 +1997,9 @@ static void PdfRotateNavigate(PdfRotatePagesDialog* dlg, int step, int requested
     for (int p : pages)
         if (p == next) found = true;
     if (!found) return;
+    // Carry the current adjustment forward when creating a per-page crop.
+    // Capture it before navigation switches the preview and current page.
+    auto previousCrop = *PdfRotateCropForPage(dlg, dlg->currentPageNo);
     if (next != dlg->currentPageNo) {
         if (dlg->dragging) {
             dlg->dragging = false;
@@ -2009,6 +2012,7 @@ static void PdfRotateNavigate(PdfRotatePagesDialog* dlg, int step, int requested
     if (continueIndividual && dlg->gdiPreview) {
         auto copy = *PdfRotateCropForPage(dlg, dlg->currentPageNo);
         if (!copy.pageNo) {
+            copy = previousCrop;
             copy.pageNo = dlg->currentPageNo;
             dlg->cropOverrides.Append(copy);
         }

@@ -14,40 +14,62 @@
 #define wdFormatXMLDocument 12
 #endif
 
-// Avoid launching Word twice when the main window and the thumbnail thread
-// both open the same .doc within a short window.
-static char* gOleConvertSrc = nullptr;
-static char* gOleConvertDst = nullptr;
+// Keep conversions for all documents opened in this process, not only the last
+// one. Serialize conversion so thumbnail/main-window requests cannot launch
+// duplicate Office instances for the same source.
+static SRWLOCK gOfficeConvertLock = SRWLOCK_INIT;
+struct OfficeConvertGuard {
+    OfficeConvertGuard() { AcquireSRWLockExclusive(&gOfficeConvertLock); }
+    ~OfficeConvertGuard() { ReleaseSRWLockExclusive(&gOfficeConvertLock); }
+};
+struct OfficeConversion {
+    char* source = nullptr;
+    char* output = nullptr;
+    FILETIME modified{};
+    i64 size = 0;
+};
+static Vec<OfficeConversion> gOfficeConversions;
 
 bool IsCachedOleOfficeDocx(const char* path) {
-    return path && gOleConvertDst && str::EqI(path, gOleConvertDst) && file::Exists(gOleConvertDst);
+    OfficeConvertGuard guard;
+    for (auto& entry : gOfficeConversions) {
+        if (path && str::EqI(path, entry.output) && file::Exists(entry.output)) return true;
+    }
+    return false;
 }
 
 void ForgetCachedOleOfficeDocx(const char* srcPath) {
-    if (!srcPath || !gOleConvertSrc || !str::EqI(gOleConvertSrc, srcPath)) {
+    OfficeConvertGuard guard;
+    for (int i = 0; i < gOfficeConversions.Size(); i++) {
+        auto& entry = gOfficeConversions[i];
+        if (!srcPath || !str::EqI(srcPath, entry.source)) continue;
+        str::Free(entry.source);
+        str::Free(entry.output);
+        gOfficeConversions.RemoveAt(i);
         return;
     }
-    str::Free(gOleConvertSrc);
-    gOleConvertSrc = nullptr;
-    str::Free(gOleConvertDst);
-    gOleConvertDst = nullptr;
 }
 
 static char* CachedOleDocx(const char* srcPath) {
-    if (!gOleConvertSrc || !gOleConvertDst || !str::EqI(gOleConvertSrc, srcPath)) {
-        return nullptr;
+    FILETIME modified = file::GetModificationTime(srcPath);
+    i64 size = file::GetSize(srcPath);
+    for (auto& entry : gOfficeConversions) {
+        if (str::EqI(srcPath, entry.source) && entry.size == size && CompareFileTime(&modified, &entry.modified) == 0 &&
+            file::Exists(entry.output)) {
+            return str::Dup(entry.output);
+        }
     }
-    if (!file::Exists(gOleConvertDst)) {
-        return nullptr;
-    }
-    return str::Dup(gOleConvertDst);
+    return nullptr;
 }
 
 static void RememberOleDocx(const char* srcPath, const char* dstPath) {
-    str::ReplaceWithCopy(&gOleConvertSrc, srcPath);
-    str::ReplaceWithCopy(&gOleConvertDst, dstPath);
+    OfficeConversion entry;
+    entry.source = str::Dup(srcPath);
+    entry.output = str::Dup(dstPath);
+    entry.modified = file::GetModificationTime(srcPath);
+    entry.size = file::GetSize(srcPath);
+    gOfficeConversions.Append(entry);
 }
-
 static void SetErr(char* errOut, int errOutLen, const char* msg) {
     if (errOut && errOutLen > 0 && msg) {
         str::BufSet(errOut, errOutLen, msg);
@@ -124,11 +146,18 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
         return nullptr;
     }
 
+    OfficeConvertGuard guard;
+    ULONGLONG started = GetTickCount64();
     if (char* cached = CachedOleDocx(srcPath)) {
         logf("OfficeConvert: cache hit %s -> %s\n", srcPath, cached);
         return cached;
     }
 
+    const char* ext = path::GetExtTemp(srcPath);
+    bool presentation = str::EqI(ext, ".ppt") || str::EqI(ext, ".pptx") || str::EqI(ext, ".dps");
+    // Preserve WPS's page layout. Its fixed line spacing and positioned text
+    // do not survive the DOCX-to-HTML reflow path reliably.
+    bool fixedLayout = presentation || str::EqI(ext, ".wps");
     bool comOwned = false;
     HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (SUCCEEDED(hrInit)) {
@@ -162,8 +191,8 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
         stem = str::DupTemp(stem);
         stem[str::Len(stem) - 4] = 0;
     }
-    TempStr destA =
-        path::JoinTemp(tmpDir, str::FormatTemp("smp-doc-%u-%s.docx", (unsigned)GetTickCount(), stem ? stem : "doc"));
+    TempStr destA = path::JoinTemp(tmpDir, str::FormatTemp("smp-office-%u-%s.%s", (unsigned)GetTickCount(),
+                                                           stem ? stem : "office", fixedLayout ? "pdf" : "docx"));
     WCHAR destW[MAX_PATH]{};
     if (!MultiByteToWideChar(CP_UTF8, 0, destA, -1, destW, dimof(destW))) {
         SetErr(errOut, errOutLen, "dest utf8");
@@ -179,22 +208,36 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
     char* result = nullptr;
 
     CLSID clsid{};
-    HRESULT hr = CLSIDFromProgID(L"Word.Application", &clsid);
-    if (FAILED(hr)) {
-        SetErr(errOut, errOutLen, "Word not installed");
-        goto cleanup;
+    HRESULT hr = E_FAIL;
+    const WCHAR* progIds[] = {presentation ? L"PowerPoint.Application" : L"Word.Application",
+                              presentation ? L"Kwpp.Application" : L"Kwps.Application",
+                              presentation ? L"Wpp.Application" : L"Wps.Application"};
+    // Native WPS formats should not first cold-start Microsoft Office and
+    // run its foreign-format importer when WPS automation is available.
+    if (str::EqI(ext, ".wps") || str::EqI(ext, ".dps")) {
+        const WCHAR* microsoft = progIds[0];
+        progIds[0] = progIds[1];
+        progIds[1] = progIds[2];
+        progIds[2] = microsoft;
     }
-
-    hr = CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, IID_IDispatch, (void**)&app);
+    for (const WCHAR* progId : progIds) {
+        if (SUCCEEDED(CLSIDFromProgID(progId, &clsid))) {
+            hr = CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, IID_IDispatch, (void**)&app);
+            if (SUCCEEDED(hr) && app) break;
+        }
+    }
     if (FAILED(hr) || !app) {
-        SetErr(errOut, errOutLen, "Word.Application create failed");
+        SetErr(errOut, errOutLen, "Microsoft Word or WPS Writer automation unavailable");
         goto cleanup;
     }
 
     InvokePutBool(app, L"Visible", false);
+    InvokePutBool(app, L"ScreenUpdating", false);
     InvokePutI4(app, L"DisplayAlerts", 0);
+    InvokePutI4(app, L"AutomationSecurity", 3);
+    logf("OfficeConvert: startup %llu ms\n", GetTickCount64() - started);
 
-    docs = InvokeGetDispatch(app, L"Documents");
+    docs = InvokeGetDispatch(app, presentation ? L"Presentations" : L"Documents");
     if (!docs) {
         SetErr(errOut, errOutLen, "Documents missing");
         goto cleanup;
@@ -212,9 +255,21 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
         VariantInit(&arg);
         arg.vt = VT_BSTR;
         arg.bstrVal = SysAllocString(srcW);
+        VARIANT openArgs[4]{};
+        int count = presentation ? 4 : 3;
+        openArgs[count - 1] = arg;
+        for (int i = 0; i < count - 1; i++) {
+            openArgs[i].vt = presentation ? VT_I4 : VT_BOOL;
+        }
+        // PowerPoint: FileName, ReadOnly, Untitled, WithWindow.
+        // Word/WPS Writer: FileName, ConfirmConversions, ReadOnly.
+        if (presentation)
+            openArgs[2].lVal = -1;
+        else
+            openArgs[0].boolVal = VARIANT_TRUE;
         DISPPARAMS dp{};
-        dp.cArgs = 1;
-        dp.rgvarg = &arg;
+        dp.cArgs = count;
+        dp.rgvarg = openArgs;
         VARIANT resultV;
         VariantInit(&resultV);
         hr = docs->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &dp, &resultV, nullptr, nullptr);
@@ -227,12 +282,13 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
             goto cleanup;
         }
         doc = resultV.pdispVal;
+        logf("OfficeConvert: opened at %llu ms\n", GetTickCount64() - started);
     }
 
     // Document.SaveAs2(FileName, FileFormat:=12) — args reverse order for Invoke.
     {
         DISPID id = 0;
-        LPOLESTR n = (LPOLESTR)L"SaveAs2";
+        LPOLESTR n = (LPOLESTR)(presentation ? L"SaveAs" : L"SaveAs2");
         if (FAILED(doc->GetIDsOfNames(IID_NULL, &n, 1, LOCALE_USER_DEFAULT, &id))) {
             n = (LPOLESTR)L"SaveAs";
             if (FAILED(doc->GetIDsOfNames(IID_NULL, &n, 1, LOCALE_USER_DEFAULT, &id))) {
@@ -246,7 +302,7 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
         args[1].vt = VT_BSTR;
         args[1].bstrVal = SysAllocString(destW);
         args[0].vt = VT_I4;
-        args[0].lVal = wdFormatXMLDocument;
+        args[0].lVal = presentation ? 32 : fixedLayout ? 17 : wdFormatXMLDocument;
         DISPPARAMS dp{};
         dp.cArgs = 2;
         dp.rgvarg = args;
@@ -255,6 +311,7 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
             SysFreeString(args[1].bstrVal);
         }
         VariantClear(&args[0]);
+        logf("OfficeConvert: exported at %llu ms\n", GetTickCount64() - started);
         if (FAILED(hr)) {
             SetErr(errOut, errOutLen, "SaveAs docx failed");
             goto cleanup;
@@ -270,8 +327,8 @@ char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
             arg.vt = VT_BOOL;
             arg.boolVal = VARIANT_FALSE;
             DISPPARAMS dp{};
-            dp.cArgs = 1;
-            dp.rgvarg = &arg;
+            dp.cArgs = presentation ? 0 : 1;
+            dp.rgvarg = presentation ? nullptr : &arg;
             doc->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &dp, nullptr, nullptr, nullptr);
             VariantClear(&arg);
         }
