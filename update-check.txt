@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.68
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.68/SumatraPDF-Plus.exe
-Notes: Fix flashing annotation headings and page numbers while moving or resizing the window.
-NotesZh: 修复拖动和调整窗口大小时，标注侧栏标题及页码数字闪烁的问题。
+Latest: 3.7.69
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.69/SumatraPDF-Plus.exe
+Notes: Office/WPS presentation viewing, session-only outlines, batch crop inheritance and sidebar flicker fixes.
+NotesZh: 新增 Office/WPS 演示文档页面显示及会话目录保护，改善侧栏闪烁，批量裁剪沿用当前裁剪框。
