@@ -8753,7 +8753,10 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     OverlayScrollbarHide(win->overlayScrollV);
     OverlayScrollbarHide(win->overlayScrollH);
 
-    bool suppressIntermediateRedraws = !win->suppressFrameRedraw && !liveSidebarDrag;
+    // WM_SETREDRAW changes WS_VISIBLE on the top-level window. Toggling it
+    // on every interactive resize makes DWM discard/present the frame again,
+    // causing flashes. Let the deferred child moves repaint normally instead.
+    bool suppressIntermediateRedraws = !win->suppressFrameRedraw && !liveSidebarDrag && !win->inSizeMove;
     if (suppressIntermediateRedraws) {
         // suppress intermediate repaints during relayout
         SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
@@ -8963,7 +8966,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     }
     if (updateToolbars && win->tabsInTitlebar && !win->isFullScreen) {
         RECT r = ToRECT(win->captionRect);
-        InvalidateRect(win->hwndFrame, &r, TRUE);
+        InvalidateRect(win->hwndFrame, &r, FALSE);
         if (win->hwndMenuReBar && IsWindowVisible(win->hwndMenuReBar)) {
             RedrawWindow(win->hwndMenuReBar, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
         }
@@ -14076,6 +14079,17 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             return 0;
         }
 
+        case WM_ERASEBKGND:
+            if (!win->isFullScreen && !win->presentation) {
+                // WM_PAINT draws the caption background and buttons together
+                // from a buffer, and fills the remaining exposed frame gaps.
+                // Erasing first makes the app icon and menu glyph disappear
+                // between resize paints.
+                *callDef = false;
+                return TRUE;
+            }
+            break;
+
         case WM_PAINT: {
             if (win->isFullScreen || win->presentation) {
                 break; // no custom caption painting in fullscreen
@@ -17465,6 +17479,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_ENTERSIZEMOVE:
             if (win) {
+                win->inSizeMove = true;
                 win->deferDpiChromeRefresh = true;
                 win->dpiChromeRefreshPending = false;
                 // Keep the annotations panel up. Closing it here made it vanish
@@ -17474,6 +17489,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_EXITSIZEMOVE:
             if (win) {
+                win->inSizeMove = false;
                 if (win->dpiChromeRefreshPending) {
                     if (!PostMessageW(hwnd, WM_MAIN_WINDOW_DPI_SETTLED, 0, 0)) {
                         FinishDeferredMainWindowDpiRefresh(win, hwnd);
