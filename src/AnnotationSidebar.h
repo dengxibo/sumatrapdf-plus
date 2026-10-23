@@ -49,8 +49,7 @@ inline void PlaceAnnotResetButton(HWND button) {
     if (x != wr.left || y != wr.top) {
         // The layout pass just parked the button. Move it without copying bits
         // or painting; the inspector redraws once at the final position.
-        SetWindowPos(button, nullptr, x, y, bw, bh,
-                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+        SetWindowPos(button, nullptr, x, y, bw, bh, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
     }
 }
 
@@ -1184,6 +1183,24 @@ struct AnnotationSidebarShell {
     AnnotInspectorPane* pane = nullptr;
 };
 
+inline LRESULT CALLBACK AnnotationHeaderProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    if (msg == WM_ERASEBKGND) return 1;
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC dc = BeginPaint(hwnd, &ps);
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        if (rc.right > 0 && rc.bottom > 0) {
+            DoubleBuffer buffer(hwnd, ToRect(rc));
+            DefSubclassProc(hwnd, WM_PRINTCLIENT, (WPARAM)buffer.GetDC(), PRF_CLIENT | PRF_ERASEBKGND);
+            buffer.Flush(dc);
+        }
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
 inline AnnotationSidebarShell CreateAnnotationSidebarShell(HWND parent, HFONT font, HFONT headingFont, bool rtl,
                                                            Func1<ListBox::DrawItemEvent*> draw, Func0 select,
                                                            const char* title) {
@@ -1201,6 +1218,7 @@ inline AnnotationSidebarShell CreateAnnotationSidebarShell(HWND parent, HFONT fo
     headerArgs.isRtl = rtl;
     headerArgs.text = title;
     header->Create(headerArgs);
+    SetWindowSubclass(header->hwnd, AnnotationHeaderProc, 1, 0);
     header->SetColors(text, bg);
     header->SetInsetsPt(0, 0, 6, 0);
     root->AddChild(header);

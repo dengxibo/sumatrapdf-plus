@@ -314,14 +314,13 @@ async function buildPreRelease(
       await runLogged(testUtil, [], outDir);
     }
 
-    // build all targets
-    const targets = ["PdfFilter", "PdfPreview", "SumatraPDF", "SumatraPDF-dll"];
+    // Build the Plus executable, matching build.ts. The legacy DLL packaging
+    // target depends on shell extensions that are not maintained by Plus.
+    const targets = ["SumatraPDF"];
     const t = `/t:${targets.map((t) => t + ":Rebuild").join(";")}`;
     await runLogged(msbuildPath, [slnPath, t, p, `/m`]);
 
-    // create PDB archives
-    await createPdbZip(outDir);
-    await createPdbLzsa(outDir);
+    // Keep the executable and its symbols available for diagnosing CI builds.
   } finally {
     await revertBuildConfig();
   }

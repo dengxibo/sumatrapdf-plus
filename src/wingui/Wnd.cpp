@@ -533,6 +533,15 @@ void Wnd::SetBounds(Rect bounds) {
     bounds.dy -= (insets.bottom + insets.top);
 
     auto r = ToRECT(bounds);
+    // A parent move can run layout without changing child geometry. Avoid
+    // erasing native labels and edits when they are already in place.
+    RECT current{};
+    if (GetWindowRect(hwnd, &current)) {
+        MapWindowPoints(nullptr, GetParent(hwnd), (LPPOINT)&current, 2);
+        if (EqualRect(&current, &r)) {
+            return;
+        }
+    }
     if (gLayoutSuspendPaint) {
         // Do not CopyBits or erase here. A live splitter drag otherwise smears
         // combo/trackbar internals, then the next paint fights the leftover.

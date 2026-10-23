@@ -1,6 +1,9 @@
 name: Build
 on:
   push:
+    branches: ['**']
+    paths-ignore:
+      - 'update-check.txt'
   pull_request:
   repository_dispatch:
     types: [build-pre-rel]
@@ -26,3 +29,11 @@ jobs:
           BB_SECRET: ${{ secrets.BB_SECRET }}
           BB_ACCESS: ${{ secrets.BB_ACCESS }}
         run: bun .\cmd\build-ci.ts
+      - name: Upload Plus build
+        uses: actions/upload-artifact@v6
+        with:
+          name: SumatraPDF-Plus-x64
+          path: |
+            out/rel64/SumatraPDF-Plus.exe
+            out/rel64/SumatraPDF-Plus.pdb
+          if-no-files-found: error
