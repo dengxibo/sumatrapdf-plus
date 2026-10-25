@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.70
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.70/SumatraPDF-Plus.exe
-Notes: Prepare SAPI reading chunks ahead, isolate obsolete playback events, keep HD and regular voices selectable, and pin light native menu colors.
-NotesZh: 改善 SAPI 分段衔接及停止跳转后的事件隔离，保留 HD 和普通音色，并固定浅色菜单配色。
+Latest: 3.7.71
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.71/SumatraPDF-Plus.exe
+Notes: Drag detached tabs as full windows, improve positioning across monitors, and preserve tab reordering and dropping onto another window.
+NotesZh: 标签拖出后完整窗口随鼠标移动，改善双屏定位，保留标签排序及拖入其他窗口。
