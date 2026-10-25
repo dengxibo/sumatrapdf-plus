@@ -15,6 +15,7 @@
 #include <sapi.h>
 
 #include <TextToSpeech.h>
+#include "SapiSpeechWorker.h"
 
 #include "utils/Log.h"
 #include "utils/FileUtil.h"
@@ -101,9 +102,23 @@ static void TtsSortVoicesByLanguage(Vec<TtsVoiceInfo>& voices) {
 
 //--- SAPI 5 implementation
 
-static ISpVoice* gSapiVoice = nullptr;
+static SapiSpeechWorker gSapiWorker;
+static ULONGLONG gSapiGeneration = 1;
+static ULONG gSapiNextChunk = 0;
+static LONG gSapiQueuedRate = 0;
+static char* gSapiQueuedVoice = nullptr;
+static int gSapiWordEnd = -1;
 static bool gSapiCoInitialized = false;
 static ULONG gSapiStreamNum = 0;
+static ULONG gSapiQueuedStreamNum = 0;
+static WCHAR* gSapiQueuedText = nullptr;
+static void SapiClearQueuedText() {
+    gSapiQueuedStreamNum = 0;
+    str::Free(gSapiQueuedVoice);
+    gSapiQueuedVoice = nullptr;
+    str::Free(gSapiQueuedText);
+    gSapiQueuedText = nullptr;
+}
 static ULONG gSapiLastWordPos = 0;
 static Vec<ULONG> gSapiWordStarts;
 
@@ -193,94 +208,41 @@ static char* SapiGetVoiceLanguage(ISpObjectToken* token) {
 }
 
 static void SapiSetNotify() {
-    if (!gSapiVoice) {
-        return;
-    }
-
-    ISpEventSource* eventSource = nullptr;
-    HRESULT hr = gSapiVoice->QueryInterface(IID_ISpEventSource, (void**)&eventSource);
-    if (FAILED(hr) || !eventSource) {
-        return;
-    }
-
-    const ULONGLONG events = SPFEI(SPEI_END_INPUT_STREAM) | SPFEI(SPEI_WORD_BOUNDARY);
-    eventSource->SetInterest(events, events);
-
-    if (gTtsNotifyHwnd && gTtsNotifyMsg) {
-        eventSource->SetNotifyWindowMessage(gTtsNotifyHwnd, gTtsNotifyMsg, gTtsNotifyWParam, gTtsNotifyLParam);
-    }
-
-    eventSource->Release();
+    gSapiWorker.Notify(gTtsNotifyHwnd, gTtsNotifyMsg, gTtsNotifyWParam, gTtsNotifyLParam);
 }
 
-static void SapiApplySpeakingRate() {
-    if (!gSapiVoice) {
-        return;
-    }
-
-    float rate = gTtsSpeakingRate;
-    if (rate <= 0) {
-        rate = 1.0f;
-    }
-
-    long sapiRate = (long)((rate - 1.0f) * 10.0f + (rate >= 1.0f ? 0.5f : -0.5f));
-    if (sapiRate < -10) {
-        sapiRate = -10;
-    }
-    if (sapiRate > 10) {
-        sapiRate = 10;
-    }
-    gSapiVoice->SetRate(sapiRate);
+static LONG SapiRate() {
+    float rate = gTtsSpeakingRate > 0 ? gTtsSpeakingRate : 1.0f;
+    long result = (long)((rate - 1.0f) * 10.0f + (rate >= 1.0f ? 0.5f : -0.5f));
+    return result < -10 ? -10 : result > 10 ? 10 : result;
 }
 
+// UI COM is used only to enumerate/validate tokens. Playback, purge and prepare
+// belong exclusively to SapiSpeechWorker, including its COM lifetime.
 static bool SapiInit() {
-    if (gSapiVoice) {
-        return true;
-    }
-
+    if (gSapiCoInitialized) return true;
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    if (SUCCEEDED(hr)) {
-        gSapiCoInitialized = true;
-    } else if (hr != RPC_E_CHANGED_MODE) {
-        return false;
+    if (SUCCEEDED(hr)) gSapiCoInitialized = true;
+    return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+}
+
+static void SapiStop() {
+    gSapiGeneration = gSapiWorker.Advance();
+    // A second Stop may supersede a still queued first Stop. Always leave a
+    // barrier for the newest generation, even after the UI has cleared its IDs.
+    if (gSapiWorker.IsRunning()) {
+        gSapiWorker.Submit(gSapiGeneration, 0, nullptr, nullptr, 0, false);
     }
-
-    hr = CoCreateInstance(CLSID_SpVoice, nullptr, CLSCTX_ALL, IID_ISpVoice, (void**)&gSapiVoice);
-    if (FAILED(hr)) {
-        gSapiVoice = nullptr;
-
-        if (gSapiCoInitialized) {
-            CoUninitialize();
-            gSapiCoInitialized = false;
-        }
-
-        return false;
-    }
-
-    if (!str::IsEmpty(gTtsVoiceId)) {
-        ISpObjectToken* token = SapiFindVoiceTokenById(gTtsVoiceId);
-        if (token) {
-            gSapiVoice->SetVoice(token);
-            token->Release();
-        }
-    }
-
-    SapiSetNotify();
-    SapiApplySpeakingRate();
-    return true;
+    SapiClearQueuedText();
+    gSapiStreamNum = 0;
+    gSapiLastWordPos = 0;
+    gSapiWordEnd = -1;
+    gSapiWordStarts.Reset();
 }
 
 static void SapiRelease() {
-    if (gSapiVoice) {
-        gSapiVoice->Speak(nullptr, SPF_PURGEBEFORESPEAK, nullptr);
-        gSapiVoice->Release();
-        gSapiVoice = nullptr;
-    }
-
-    gSapiStreamNum = 0;
-    gSapiLastWordPos = 0;
-    gSapiWordStarts.Reset();
-
+    SapiStop();
+    gSapiWorker.Shutdown();
     if (gSapiCoInitialized) {
         CoUninitialize();
         gSapiCoInitialized = false;
@@ -348,127 +310,59 @@ static void SapiGetVoices(Vec<TtsVoiceInfo>& voices) {
 }
 
 static bool SapiSetVoiceById(const char* voiceId) {
-    if (!SapiInit()) {
-        return false;
-    }
-
-    HRESULT hr = E_FAIL;
-
-    if (str::IsEmpty(voiceId)) {
-        hr = gSapiVoice->SetVoice(nullptr);
-    } else {
-        ISpObjectToken* token = SapiFindVoiceTokenById(voiceId);
-        if (!token) {
-            return false;
-        }
-
-        hr = gSapiVoice->SetVoice(token);
-        token->Release();
-    }
-
-    return SUCCEEDED(hr);
-}
-
-static void SapiClearEvent(SPEVENT* eventItem) {
-    if (!eventItem) {
-        return;
-    }
-
-    switch (eventItem->elParamType) {
-        case SPET_LPARAM_IS_TOKEN:
-        case SPET_LPARAM_IS_OBJECT:
-            if (eventItem->lParam) {
-                IUnknown* unknown = reinterpret_cast<IUnknown*>(eventItem->lParam);
-                unknown->Release();
-            }
-            break;
-
-        case SPET_LPARAM_IS_POINTER:
-        case SPET_LPARAM_IS_STRING:
-            if (eventItem->lParam) {
-                CoTaskMemFree(reinterpret_cast<void*>(eventItem->lParam));
-            }
-            break;
-
-        default:
-            break;
-    }
-
-    eventItem->eEventId = SPEI_UNDEFINED;
-    eventItem->elParamType = SPET_LPARAM_IS_UNDEFINED;
-    eventItem->ulStreamNum = 0;
-    eventItem->ullAudioStreamOffset = 0;
-    eventItem->wParam = 0;
-    eventItem->lParam = 0;
-}
-
-static void SapiProcessEvents() {
-    if (!gSapiVoice) {
-        return;
-    }
-
-    ISpEventSource* eventSource = nullptr;
-    HRESULT hr = gSapiVoice->QueryInterface(IID_ISpEventSource, (void**)&eventSource);
-    if (FAILED(hr) || !eventSource) {
-        return;
-    }
-
-    SPEVENT eventItem = {};
-    ULONG fetched = 0;
-
-    while (eventSource->GetEvents(1, &eventItem, &fetched) == S_OK && fetched > 0) {
-        if (eventItem.eEventId == SPEI_END_INPUT_STREAM && gSapiStreamNum != 0 &&
-            eventItem.ulStreamNum == gSapiStreamNum) {
-            gTtsActive = false;
-            gSapiStreamNum = 0;
-            gTtsChunkFinished = true;
-        }
-
-        if (eventItem.eEventId == SPEI_WORD_BOUNDARY && eventItem.ulStreamNum == gSapiStreamNum) {
-            // lParam is the character position of the word in the spoken text
-            ULONG pos = (ULONG)eventItem.lParam;
-            gSapiLastWordPos = pos;
-            if (gSapiWordStarts.size() == 0 || gSapiWordStarts.Last() != pos) {
-                gSapiWordStarts.Append(pos);
-            }
-        }
-
-        SapiClearEvent(&eventItem);
-
-        eventItem = {};
-        fetched = 0;
-    }
-
-    eventSource->Release();
-}
-
-static bool SapiSpeak(const WCHAR* textW, bool isXml = false) {
-    if (!SapiInit()) {
-        return false;
-    }
-
-    ULONG streamNum = 0;
-    DWORD flags = SPF_ASYNC | SPF_PURGEBEFORESPEAK | (isXml ? SPF_IS_XML : SPF_IS_NOT_XML);
-    HRESULT hr = gSapiVoice->Speak(textW, flags, &streamNum);
-    if (FAILED(hr)) {
-        return false;
-    }
-
-    gSapiLastWordPos = 0;
-    gSapiStreamNum = streamNum;
-    gSapiWordStarts.Reset();
-    gSapiWordStarts.Append(0);
+    if (!SapiInit()) return false;
+    if (str::IsEmpty(voiceId)) return true;
+    ISpObjectToken* token = SapiFindVoiceTokenById(voiceId);
+    if (!token) return false;
+    token->Release();
     return true;
 }
 
-static void SapiStop() {
-    if (gSapiVoice) {
-        gSapiVoice->Speak(nullptr, SPF_ASYNC | SPF_PURGEBEFORESPEAK, nullptr);
+static void SapiProcessEvents() {
+    SapiSpeechWorker::Event event;
+    // Leave following-chunk events buffered until the UI advances its text and
+    // pronunciation map. Wakeup messages themselves carry no stream identity.
+    while (gSapiStreamNum && gSapiWorker.Pop(gSapiGeneration, gSapiStreamNum, event)) {
+        if (event.kind == SPEI_START_INPUT_STREAM) {
+            logf("TTS: SAPI generation=%llu chunk=%lu prepared=%d buffer=0x%08x\n", event.generation, event.chunk,
+                 event.prepared, (unsigned)event.bufferStatus);
+        } else if (event.kind == SPEI_WORD_BOUNDARY) {
+            gSapiLastWordPos = event.position;
+            gSapiWordEnd = (int)(event.position + event.length);
+            if (gSapiWordStarts.Size() == 0 || gSapiWordStarts.Last() != event.position) {
+                gSapiWordStarts.Append(event.position);
+            }
+        } else if (event.kind == SPEI_END_INPUT_STREAM) {
+            if (FAILED(event.error)) logf("TTS: SAPI chunk failed: 0x%08x\n", (unsigned)event.error);
+            gTtsActive = false;
+            gSapiStreamNum = 0;
+            gTtsChunkFinished = true;
+            break;
+        }
     }
+}
 
-    gSapiStreamNum = 0;
+static bool SapiSpeak(const WCHAR* textW, bool isXml = false) {
+    if (!SapiInit()) return false;
+    bool adopt = !isXml && !gSapiStreamNum && gSapiQueuedStreamNum && str::Eq(textW, gSapiQueuedText) &&
+                 str::Eq(gSapiQueuedVoice, gTtsVoiceId ? gTtsVoiceId : "") && gSapiQueuedRate == SapiRate();
+    if (adopt) {
+        gSapiStreamNum = gSapiQueuedStreamNum;
+        SapiClearQueuedText();
+    } else {
+        SapiStop();
+        ULONG chunk = ++gSapiNextChunk;
+        if (!gSapiWorker.Submit(gSapiGeneration, chunk, textW, ToWStrTemp(gTtsVoiceId ? gTtsVoiceId : ""), SapiRate(),
+                                false, isXml))
+            return false;
+        gSapiStreamNum = chunk;
+    }
     gSapiLastWordPos = 0;
+    gSapiWordEnd = -1;
     gSapiWordStarts.Reset();
+    gSapiWordStarts.Append(0);
+    TtsPostNotifyMsg();
+    return true;
 }
 
 //--- Windows.Media.SpeechSynthesis implementation
@@ -1303,7 +1197,11 @@ static TempStr TtsVoiceDedupKeyTemp(const TtsVoiceInfo& voice) {
     TempStr langKey = TtsNormalizeLangKeyTemp(voice.lang);
     TempStr nameKey = TtsNormalizeVoiceNameKeyTemp(voice.name);
     TempStr variantKey = TtsVoiceVariantKeyTemp(voice.name);
-    return str::FormatTemp("%s|%s|%s", langKey, nameKey, variantKey);
+    // HD and ordinary versions of the same speaker have different delivery.
+    // Keep both selectable, even when both are labelled Natural/Multilingual.
+    bool isHd = str::ContainsI(voice.id ? voice.id : "", "TtsApplicationHD-") ||
+                str::ContainsI(voice.name ? voice.name : "", " HD");
+    return str::FormatTemp("%s|%s|%s|%s", langKey, nameKey, variantKey, isHd ? "hd" : "regular");
 }
 
 static int TtsVoiceDedupPriority(const TtsVoiceInfo& voice) {
@@ -1575,6 +1473,27 @@ bool TtsSpeakUtf8(const char* text) {
     return true;
 }
 
+bool TtsQueueNextUtf8(const char* text) {
+    if (str::IsEmpty(text) || gTtsActiveBackend != TtsBackend::Sapi || !gSapiStreamNum || gSapiQueuedStreamNum) {
+        return false;
+    }
+    TtsPronunciationEnsureLoaded();
+    Vec<int> sourceMap;
+    char* rewritten = TtsPronunciationApply(text, &sourceMap);
+    TempWStr textW = ToWStrTemp(rewritten ? rewritten : text);
+    ULONG chunk = ++gSapiNextChunk;
+    const char* voiceId = gTtsVoiceId ? gTtsVoiceId : "";
+    bool ok = textW && gSapiWorker.Submit(gSapiGeneration, chunk, textW, ToWStrTemp(voiceId), SapiRate(), true);
+    if (ok) {
+        gSapiQueuedText = str::Dup(textW);
+        gSapiQueuedStreamNum = chunk;
+        gSapiQueuedVoice = str::Dup(voiceId);
+        gSapiQueuedRate = SapiRate();
+    }
+    str::Free(rewritten);
+    return ok;
+}
+
 bool TtsConsumeChunkFinished() {
     if (!gTtsChunkFinished) {
         return false;
@@ -1645,6 +1564,7 @@ static int TtsGetNextWordStartWide(int wordStartWide) {
         return len > wordStartWide ? len : wordStartWide;
     }
 
+    if (gSapiWordEnd > wordStartWide) return gSapiWordEnd;
     for (ULONG pos : gSapiWordStarts) {
         if ((int)pos > wordStartWide) {
             return (int)pos;
@@ -1734,6 +1654,8 @@ bool TtsSetVoiceById(const char* voiceId) {
         return false;
     }
 
+    if (!str::EqI(gTtsVoiceId ? gTtsVoiceId : "", voiceId ? voiceId : "") && (gSapiStreamNum || gSapiQueuedStreamNum))
+        SapiStop();
     gTtsConfiguredBackend = backend;
     str::ReplaceWithCopy(&gTtsVoiceId, voiceId ? voiceId : "");
     return true;
@@ -1747,14 +1669,15 @@ bool TtsSetSpeakingRate(float rate) {
     if (rate <= 0) {
         rate = 1.0f;
     }
+    bool changed = rate != gTtsSpeakingRate;
     gTtsSpeakingRate = rate;
 
     if (WinTtsInit()) {
         WinTtsApplySpeakingRate();
     }
-    if (SapiInit()) {
-        SapiApplySpeakingRate();
-    }
+    // Cached audio has its rate baked in. The caller restarts at its saved
+    // position; immediately discard all old playback/preparation events.
+    if (changed && (gSapiStreamNum || gSapiQueuedStreamNum)) SapiStop();
     return true;
 }
 

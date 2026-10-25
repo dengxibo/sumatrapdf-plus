@@ -14711,8 +14711,13 @@ static void ReadAloudApplyMultilingualVoice(const char* voiceId) {
     if (!modeIsPseudo) {
         str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, kTtsMultilingualVoiceId);
     }
-    TtsSetVoiceById(voiceId);
-    ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    // Save the old playback position before changing the synthesizer. SAPI
+    // invalidates the old generation when voice/rate settings change.
+    if (TtsIsSpeaking()) {
+        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    } else {
+        TtsSetVoiceById(voiceId);
+    }
 }
 
 // fills empty zh/en prefs with the first matching voice for each language
@@ -15412,6 +15417,12 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
 
     tab->readAloudChunkStart = start;
     tab->readAloudChunkEnd = end;
+    // Bilingual mode can change voice/rate at the next boundary.
+    if (!IsSmartBilingualVoicePref() && end < textLen) {
+        int nextEnd = ReadAloudFindChunkEnd(tab->readAloudText, end, kReadAloudMaxChunkLen);
+        TempStr nextChunk = str::DupTemp(tab->readAloudText + end, (size_t)(nextEnd - end));
+        TtsQueueNextUtf8(nextChunk);
+    }
     ToolbarUpdateStateForWindow(tab->win, true);
     InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
     ReadAloudBarUpdate(tab->win);
@@ -15460,9 +15471,12 @@ static void ReadAloudSaveSpeakingRatesPrefs(float zhRate, float enRate) {
     gGlobalPrefs->readAloudSpeakingRateEn = enRate;
     // Keep legacy field in sync as a fallback average for older settings readers.
     gGlobalPrefs->readAloudSpeakingRate = (zhRate + enRate) / 2.0f;
-    ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(TtsGetVoiceId()));
     SaveSettings();
-    ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    if (TtsIsSpeaking()) {
+        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    } else {
+        ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(TtsGetVoiceId()));
+    }
 }
 
 static void ReadAloudSaveSpeakingRatePref(bool isZh, float rate) {

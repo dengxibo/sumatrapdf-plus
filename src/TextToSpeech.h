@@ -9,6 +9,9 @@ struct TtsVoiceInfo {
 };
 
 bool TtsSpeakUtf8(const char* text);
+// Queue one following SAPI chunk; the next matching Speak adopts it.
+// Other backends do not queue. TtsStop purges both chunks.
+bool TtsQueueNextUtf8(const char* text);
 // Speak Chinese with an explicit reading from dictionary pinyin (tone marks or digits).
 // Builds SSML <phoneme alphabet="sapi" ph="..."> for WinRT/SAPI; falls back to plain text.
 bool TtsSpeakUtf8WithChinesePinyin(const char* text, const char* pinyin);

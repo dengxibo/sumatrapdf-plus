@@ -275,17 +275,15 @@ bool dmlib_win32api::IsColorSchemeChangeMessage(UINT uMsg, LPARAM lParam) noexce
 	return false;
 }
 
-static void AllowDarkModeForApp(bool allow) noexcept
-{
-	if (pfSetPreferredAppMode != nullptr)
-	{
-		pfSetPreferredAppMode(allow ? PreferredAppMode::ForceDark : PreferredAppMode::Default);
-	}
+static void AllowDarkModeForApp(bool allow) noexcept {
+    if (pfSetPreferredAppMode != nullptr) {
+        // An explicitly light application must not inherit dark native menus from the OS.
+        pfSetPreferredAppMode(allow ? PreferredAppMode::ForceDark : PreferredAppMode::ForceLight);
+    }
 #if defined(_DARKMODELIB_ALLOW_OLD_OS) && (_DARKMODELIB_ALLOW_OLD_OS > 0)
-	else if (pfAllowDarkModeForApp != nullptr)
-	{
-		pfAllowDarkModeForApp(allow);
-	}
+    else if (pfAllowDarkModeForApp != nullptr) {
+        pfAllowDarkModeForApp(allow);
+    }
 #endif
 }
 

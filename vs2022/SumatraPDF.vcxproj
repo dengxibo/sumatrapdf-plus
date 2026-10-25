@@ -1203,6 +1203,8 @@
     <ClInclude Include="..\src\TextSearch.h" />
     <ClInclude Include="..\src\TextSelection.h" />
     <ClInclude Include="..\src\TextToSpeech.h" />
+    <ClInclude Include="..\src\SapiSpeechWorker.h" />
+    <ClInclude Include="..\src\HdPrepare.h" />
     <ClInclude Include="..\src\TtsPronunciation.h" />
     <ClInclude Include="..\src\AppDialogTheme.h" />
     <ClInclude Include="..\src\Theme.h" />
