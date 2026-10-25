@@ -591,7 +591,7 @@ static bool TriggerSelectionChanging(TabsCtrl* tabs) {
     return (LRESULT)ev.preventChanging;
 }
 
-static void TriggerTabMigration(TabsCtrl* tabs, int tabIdx, Point p) {
+static void TriggerTabMigration(TabsCtrl* tabs, int tabIdx, Point p, bool moveWindow = false) {
     if (!tabs->onTabMigration.IsValid()) {
         return;
     }
@@ -599,6 +599,9 @@ static void TriggerTabMigration(TabsCtrl* tabs, int tabIdx, Point p) {
     ev.tabs = tabs;
     ev.tabIdx = tabIdx;
     ev.releasePoint = p;
+    ev.moveWindow = moveWindow;
+    ev.grabOffset = tabs->grabLocation;
+    ev.sourceDpi = DpiGetForHwnd(tabs->hwnd);
     tabs->onTabMigration.Call(&ev);
 }
 
@@ -693,6 +696,18 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         p.y = mousePos.y;
         MapWindowPoints(hwnd, NULL, &p, 1);
         // logfa("%s moving to: %d %d\n", WinMsgNameTemp(msg), p.x, p.y);
+        Rect strip = ClientRect(hwnd);
+        int margin = GetSystemMetrics(SM_CYDRAG);
+        if (mousePos.x < 0 || mousePos.x >= strip.dx || mousePos.y < -margin || mousePos.y >= strip.dy + margin) {
+            int selected = GetSelected();
+            draggingTab = false;
+            ImageList_DragLeave(nullptr);
+            ImageList_EndDrag();
+            ReleaseCapture();
+            TriggerTabMigration(this, selected, Point(p.x, p.y), true);
+            // Migration may destroy this control and its source window.
+            return 0;
+        }
         ImageList_DragMove(p.x, p.y);
         return 0;
     }
@@ -709,6 +724,19 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     switch (msg) {
+        case WM_CANCELMODE:
+        case WM_CAPTURECHANGED:
+            if (draggingTab) {
+                draggingTab = false;
+                ImageList_DragLeave(nullptr);
+                ImageList_EndDrag();
+                HwndScheduleRepaint(hwnd);
+            }
+            if (msg == WM_CANCELMODE && GetCapture() == hwnd) {
+                ReleaseCapture();
+            }
+            break;
+
         case WM_NCHITTEST: {
             if (false) {
                 return HTCLIENT;
@@ -761,11 +789,13 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 ImageList_Add(himl, hbmp, NULL);
                 ImageList_BeginDrag(himl, 0, grabLocation.x, grabLocation.y);
                 DeleteObject(hbmp);
-                DeleteObject(himl);
+                ImageList_Destroy(himl);
                 POINT p(mousePos.x, mousePos.y);
                 MapWindowPoints(hwnd, NULL, &p, 1);
                 ImageList_DragEnter(NULL, p.x, p.y);
-                return 0;
+                // Process leaving the strip immediately, even if the next event
+                // is a button release rather than another mouse move.
+                return WndProc(hwnd, msg, wp, lp);
             }
 
             if (hl != tabUnderMouse) {
@@ -866,6 +896,8 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_LBUTTONUP: {
             bool isDragging = (GetCapture() == hwnd);
+            bool wasDraggingTab = draggingTab;
+            draggingTab = false;
             if (isDragging) {
                 ReleaseCapture();
             }
@@ -888,11 +920,11 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             // update tabHighlighted
             tabHighlighted = tabUnderMouse;
 
-            if (!draggingTab) {
+            if (!wasDraggingTab) {
                 HwndScheduleRepaint(hwnd);
                 return 0;
             }
-            draggingTab = false;
+            ImageList_DragLeave(nullptr);
             ImageList_EndDrag();
             int selectedTab = GetSelected();
             if (tabUnderMouse < 0) {

@@ -792,6 +792,9 @@ struct TabsCtrl : Wnd {
         TabsCtrl* tabs = nullptr;
         int tabIdx;
         Point releasePoint;
+        bool moveWindow = false;
+        Point grabOffset;
+        int sourceDpi = 96;
     };
 
     struct DraggedEvent {

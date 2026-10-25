@@ -204,7 +204,7 @@ static void CloseWindowIfNoDocuments(MainWindow* win) {
     CloseWindow(win, true, false);
 }
 
-static void MaybeMigrateTab(WindowTab* tab, MainWindow* newWin) {
+static MainWindow* MaybeMigrateTab(WindowTab* tab, MainWindow* newWin, const Point* position = nullptr) {
     MainWindow* oldWin = tab->win;
 
     // don't migrate if it's only one document tab and not
@@ -214,21 +214,29 @@ static void MaybeMigrateTab(WindowTab* tab, MainWindow* newWin) {
         if (t->IsAboutTab()) continue;
         nDocTabs++;
     }
-    if (nDocTabs == 1 && !newWin) return;
+    if (nDocTabs == 1 && !newWin) return position ? oldWin : nullptr;
 
     auto engine = tab->GetEngine();
     if (EngineHasUnsavedAnnotations(engine)) {
-        return;
+        return nullptr;
     }
-
-    RemoveTab(tab);
 
     if (!newWin) {
-        newWin = CreateAndShowMainWindow(nullptr);
+        newWin = CreateAndShowMainWindow(nullptr, false);
         if (!newWin) {
-            return;
+            return nullptr;
         }
     }
+
+    if (position) {
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        GetWindowPlacement(oldWin->hwndFrame, &placement);
+        RECT rc = placement.rcNormalPosition;
+        SetWindowPos(newWin->hwndFrame, nullptr, position->x - 80, position->y - 16, rc.right - rc.left,
+                     rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    RemoveTab(tab);
 
     // TODO: we should be able to just slide the existing tab
     // into the new window, preserving its controller and
@@ -249,10 +257,16 @@ static void MaybeMigrateTab(WindowTab* tab, MainWindow* newWin) {
     LoadArgs args(tab->filePath, newWin);
     args.forceReuse = true;
     args.noSavePrefs = true;
+    args.noPlaceWindow = position != nullptr;
+    args.showWin = position == nullptr;
     LoadDocument(&args);
     delete tab;
 
     CloseWindowIfNoDocuments(oldWin);
+    if (position) {
+        ShowMainWindow(newWin, SW_NORMAL);
+    }
+    return newWin;
 }
 
 // Selects the given tab (0-based index)
@@ -551,6 +565,67 @@ static void MainWindowTabSelectionChanged(MainWindow* win, TabsCtrl::SelectionCh
 
 static void MainWindowTabMigration(MainWindow* win, TabsCtrl::MigrationEvent* ev) {
     WindowTab* tab = win->GetTab(ev->tabIdx);
+    if (ev->moveWindow) {
+        MainWindow* moving = MaybeMigrateTab(tab, nullptr, &ev->releasePoint);
+        if (!moving) {
+            return;
+        }
+        HWND frame = moving->hwndFrame;
+        if (IsZoomed(frame)) {
+            ShowWindow(frame, SW_RESTORE);
+        }
+        RECT rc;
+        GetWindowRect(frame, &rc);
+        TabInfo* selected = moving->tabsCtrl->GetTab(moving->tabsCtrl->GetSelected());
+        int dpi = DpiGetForHwnd(frame);
+        int grabX = MulDiv(ev->grabOffset.x, dpi, ev->sourceDpi);
+        int grabY = MulDiv(ev->grabOffset.y, dpi, ev->sourceDpi);
+        if (grabX >= selected->r.dx) {
+            grabX = selected->r.dx - 1;
+        }
+        POINT anchor = {selected->r.x + grabX, selected->r.y + grabY};
+        if (HwndIsRtl(moving->tabsCtrl->hwnd)) {
+            anchor.x = ClientRect(moving->tabsCtrl->hwnd).dx - 1 - anchor.x;
+        }
+        ClientToScreen(moving->tabsCtrl->hwnd, &anchor);
+        POINT cursor;
+        GetCursorPos(&cursor);
+        SetWindowPos(frame, HWND_TOP, cursor.x - (anchor.x - rc.left), cursor.y - (anchor.y - rc.top), 0, 0,
+                     SWP_NOSIZE);
+        UpdateWindow(frame);
+        if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
+            SendMessageW(frame, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, 0);
+        }
+        // The native move loop pumps messages; revalidate before using the window.
+        moving = FindMainWindowByHwnd(frame);
+        if (!moving) {
+            return;
+        }
+        GetCursorPos(&cursor);
+        MainWindow* target = nullptr;
+        for (HWND h = GetTopWindow(nullptr); h; h = GetWindow(h, GW_HWNDNEXT)) {
+            if (h == frame || !IsWindowVisible(h) || IsIconic(h)) {
+                continue;
+            }
+            RECT bounds;
+            GetWindowRect(h, &bounds);
+            if (!PtInRect(&bounds, cursor)) {
+                continue;
+            }
+            MainWindow* candidate = FindMainWindowByHwnd(h);
+            if (candidate && candidate->tabsCtrl) {
+                GetWindowRect(candidate->tabsCtrl->hwnd, &bounds);
+                if (PtInRect(&bounds, cursor)) {
+                    target = candidate;
+                }
+            }
+            break;
+        }
+        if (target) {
+            MaybeMigrateTab(moving->CurrentTab(), target);
+        }
+        return;
+    }
     MainWindow* releaseWnd = nullptr;
     POINT p;
     p.x = ev->releasePoint.x;
@@ -563,7 +638,7 @@ static void MainWindowTabMigration(MainWindow* win, TabsCtrl::MigrationEvent* ev
         // don't re-add to the same window
         releaseWnd = nullptr;
     }
-    MaybeMigrateTab(tab, releaseWnd);
+    MaybeMigrateTab(tab, releaseWnd, releaseWnd ? nullptr : &ev->releasePoint);
 }
 
 void CreateTabbar(MainWindow* win) {
