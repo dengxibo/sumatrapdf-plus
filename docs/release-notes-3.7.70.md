@@ -2,6 +2,8 @@
 
 ## 中文
 
+[NaturalVoiceSAPIAdapter 已升级支持本地 HD TTS](https://github.com/dengxibo/NaturalVoiceSAPIAdapter/releases/tag/v0.2.9-secv2-hd.1)，同时整合联网语音 secv2 认证修复，HD 与普通同名音色可分别选择。需要本地 HD 语音的用户可前往该项目下载测试版，安装后重启 SumatraPDF Plus。
+
 - 改善 SAPI 分段朗读衔接，提前准备下一段。安装兼容的 HD SAPI 适配器后，可使用其公开预合成服务；未安装、准备失败或未及时完成时自动回退普通 SAPI。
 - SAPI 播放、取消和事件处理移到串行工作线程，隔离停止、跳转、变速、换声后的旧事件，避免旧词边界影响新段高亮。
 - 同名 HD 与普通音色分别保留、独立选择；变速和换声时先保存朗读位置。
@@ -12,6 +14,8 @@
 [下载 Windows x64 EXE](https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.70/SumatraPDF-Plus.exe)。退出程序后替换完整安装目录中的 EXE，保留配置及配套文件；重启后生效。
 
 ## English
+
+[NaturalVoiceSAPIAdapter now supports local HD TTS](https://github.com/dengxibo/NaturalVoiceSAPIAdapter/releases/tag/v0.2.9-secv2-hd.1), alongside the secv2 authentication fix for online voices. HD and regular variants remain independently selectable. Download the adapter test release from that project and restart SumatraPDF Plus after installation.
 
 - Reduce gaps between SAPI reading chunks by preparing the next chunk ahead of playback. Use the optional public HD preparation service when a compatible adapter is installed; fall back to ordinary SAPI when unavailable, failed or not ready in time.
 - Serialize playback, cancellation and event handling on a worker thread. Reject obsolete events after stopping, seeking, changing rate or switching voices, and preserve the reading position before restarting.
