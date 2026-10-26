@@ -1,7 +1,8 @@
 /* Copyright 2026 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
-// Standalone integration test. Only drives the child process it starts, with
+// Debug-build integration test: Canvas.cpp intentionally disables the custom
+// document UIA provider in release builds. Only drives the child it starts, with
 // an isolated -appdata directory. Two MTA clients retain document/text providers
 // while the child's STA switches tabs, closes documents and returns to Home.
 // Usage: test_uia_lifecycle.exe exe appdata pdf1 pdf2 nextCmd prevCmd closeCmd rounds
