@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.73
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.73/SumatraPDF-Plus.exe
-Notes: Restore the toolbar page-number font while preserving the page input dimensions.
-NotesZh: 修复工具栏页码数字字号变小的问题，保持页码输入框原有尺寸。
+Latest: 3.7.74
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.74/SumatraPDF-Plus.exe
+Notes: Adjust Markdown font sizes with A+ and A-, remember sizes per file, and restore the default from the context menu.
+NotesZh: Markdown 支持 A+ / A− 调整字号、按文件记忆及右键恢复默认，保留标题和代码相对字号。
