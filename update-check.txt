@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.72
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.72/SumatraPDF-Plus.exe
-Notes: Fix page-number flicker, improve cross-monitor tab dragging, and export PDF pages as PNG or JPEG with selectable DPI.
-NotesZh: 修复页码闪烁，改善跨屏标签拖动，新增可选 DPI 的 PDF 页面图片导出。
+Latest: 3.7.73
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.73/SumatraPDF-Plus.exe
+Notes: Restore the toolbar page-number font while preserving the page input dimensions.
+NotesZh: 修复工具栏页码数字字号变小的问题，保持页码输入框原有尺寸。
