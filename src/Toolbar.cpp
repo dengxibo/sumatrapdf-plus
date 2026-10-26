@@ -2234,8 +2234,12 @@ static LRESULT CALLBACK WndProcPageBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         GetClientRect(hwnd, &rc);
         if (rc.right > 0 && rc.bottom > 0) {
             DoubleBuffer buffer(hwnd, ToRect(rc));
-            CallWindowProc(DefWndProcPageBox, hwnd, WM_PRINTCLIENT, (WPARAM)buffer.GetDC(),
-                           PRF_CLIENT | PRF_ERASEBKGND);
+            HDC bufferDC = buffer.GetDC();
+            // WM_PRINTCLIENT uses the supplied DC, including its selected font.
+            HFONT font = GetWindowFont(hwnd);
+            HGDIOBJ oldFont = font ? SelectObject(bufferDC, font) : nullptr;
+            CallWindowProc(DefWndProcPageBox, hwnd, WM_PRINTCLIENT, (WPARAM)bufferDC, PRF_CLIENT | PRF_ERASEBKGND);
+            if (oldFont) SelectObject(bufferDC, oldFont);
             buffer.Flush(dc, &ps.rcPaint);
         }
         EndPaint(hwnd, &ps);
@@ -2243,7 +2247,8 @@ static LRESULT CALLBACK WndProcPageBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     }
     MainWindow* win = FindMainWindowByHwnd(hwnd);
     if (!win || !win->IsDocLoaded()) {
-        return DefWindowProc(hwnd, msg, wp, lp);
+        // Keep native edit state (especially WM_SETFONT) valid on the Home tab.
+        return CallWindowProc(DefWndProcPageBox, hwnd, msg, wp, lp);
     }
 
     if (ExtendedEditWndProc(hwnd, msg, wp, lp)) {
