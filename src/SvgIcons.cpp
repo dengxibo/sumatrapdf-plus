@@ -607,6 +607,7 @@ static const char* gIconResetAppearance =
 
 static const char* gIconCapturePageRegion =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none" />
   <circle cx="7.1" cy="16.8" r="2.4" />
   <circle cx="16.9" cy="16.8" r="2.4" />
   <path d="M15.4 14.9L6.7 4.8M17.3 4.8L12.8 10M11.1 12L8.6 14.9" />
