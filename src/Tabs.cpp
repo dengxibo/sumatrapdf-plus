@@ -263,9 +263,7 @@ static MainWindow* MaybeMigrateTab(WindowTab* tab, MainWindow* newWin, const Poi
     delete tab;
 
     CloseWindowIfNoDocuments(oldWin);
-    if (position) {
-        ShowMainWindow(newWin, SW_NORMAL);
-    }
+    // A detached window stays hidden until its real tab grab point is known.
     return newWin;
 }
 
@@ -563,6 +561,94 @@ static void MainWindowTabSelectionChanged(MainWindow* win, TabsCtrl::SelectionCh
     }
 }
 
+struct TabDragPosition {
+    MainWindow* win;
+    HWND frame;
+    TabDragPosition(MainWindow* window, Point offset, int dpi) : win(window), frame(window->hwndFrame) {
+        win->tabDragGrabOffset = offset;
+        win->tabDragSourceDpi = dpi > 0 ? dpi : 96;
+        win->tabDragActive = true;
+        win->tabDragAnchorValid = false;
+    }
+    ~TabDragPosition() {
+        // The native move loop dispatches messages and may destroy the frame.
+        MainWindow* current = FindMainWindowByHwnd(frame);
+        if (current) current->tabDragActive = false;
+    }
+};
+
+bool TabsAdjustDragWindowRect(MainWindow* win, RECT* rect) {
+    if (!win || !win->tabDragActive || !win->tabsCtrl || !rect) return false;
+    HWND frame = win->hwndFrame;
+    TabInfo* selected = win->tabsCtrl->GetTab(win->tabsCtrl->GetSelected());
+    if (!selected || selected->r.dx <= 0 || selected->r.dy <= 0) return false;
+    if (!win->tabDragAnchorValid || win->tabDragAnchorTabRect != selected->r) {
+        RECT rc;
+        if (!GetWindowRect(frame, &rc)) return false;
+        int dpi = DpiGetForHwnd(frame);
+        int grabX = MulDiv(win->tabDragGrabOffset.x, dpi, win->tabDragSourceDpi);
+        int grabY = MulDiv(win->tabDragGrabOffset.y, dpi, win->tabDragSourceDpi);
+        if (grabX < 0) grabX = 0;
+        if (grabY < 0) grabY = 0;
+        if (grabX >= selected->r.dx) grabX = selected->r.dx - 1;
+        if (grabY >= selected->r.dy) grabY = selected->r.dy - 1;
+        POINT anchor = {selected->r.x + grabX, selected->r.y + grabY};
+        if (HwndIsRtl(win->tabsCtrl->hwnd)) {
+            anchor.x = ClientRect(win->tabsCtrl->hwnd).dx - 1 - anchor.x;
+        }
+        if (!ClientToScreen(win->tabsCtrl->hwnd, &anchor)) return false;
+        win->tabDragFrameOffset = Point(anchor.x - rc.left, anchor.y - rc.top);
+        win->tabDragAnchorTabRect = selected->r;
+        win->tabDragAnchorValid = true;
+    }
+    POINT cursor;
+    if (!GetCursorPos(&cursor)) return false;
+    // WM_MOVING supplies a proposed screen rectangle. Preserve its dimensions
+    // but replace the native loop's stale offset with the actual tab geometry.
+    OffsetRect(rect, cursor.x - win->tabDragFrameOffset.x - rect->left,
+               cursor.y - win->tabDragFrameOffset.y - rect->top);
+    return true;
+}
+
+void TabsUpdateDragPosition(MainWindow* win) {
+    if (!win || !win->tabDragActive || win->tabDragPositioning) return;
+    win->tabDragPositioning = true;
+    // Moving to another monitor can synchronously change the DPI and lay out
+    // the tab strip again. Re-measure instead of keeping the pre-move offset.
+    for (int i = 0; i < 3; i++) {
+        win->tabDragAnchorValid = false;
+        RECT rc;
+        GetWindowRect(win->hwndFrame, &rc);
+        RECT target = rc;
+        if (!TabsAdjustDragWindowRect(win, &target) || EqualRect(&rc, &target)) break;
+        SetWindowPos(win->hwndFrame, nullptr, target.left, target.top, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    win->tabDragPositioning = false;
+}
+
+static void PositionTabDragWindow(TabDragPosition* data) {
+    TabsUpdateDragPosition(data->win);
+}
+
+// Limit this to the detached frame and this gesture. DWM's show/restore zoom
+// animation otherwise fights the mouse as it takes over moving the window.
+struct TabDragTransitions {
+    HWND frame;
+    bool disabled = false;
+    explicit TabDragTransitions(HWND hwnd) : frame(hwnd) {
+        BOOL disable = TRUE;
+        disabled = DynDwmSetWindowAttribute && SUCCEEDED(DynDwmSetWindowAttribute(
+                                                   frame, DWMWA_TRANSITIONS_FORCEDISABLED, &disable, sizeof(disable)));
+    }
+    ~TabDragTransitions() {
+        if (disabled && IsWindow(frame)) {
+            BOOL disable = FALSE;
+            DynDwmSetWindowAttribute(frame, DWMWA_TRANSITIONS_FORCEDISABLED, &disable, sizeof(disable));
+        }
+    }
+};
+
 static void MainWindowTabMigration(MainWindow* win, TabsCtrl::MigrationEvent* ev) {
     WindowTab* tab = win->GetTab(ev->tabIdx);
     if (ev->moveWindow) {
@@ -571,30 +657,38 @@ static void MainWindowTabMigration(MainWindow* win, TabsCtrl::MigrationEvent* ev
             return;
         }
         HWND frame = moving->hwndFrame;
-        if (IsZoomed(frame)) {
+        TabDragTransitions transitions(frame);
+        TabDragPosition position{moving, ev->grabOffset, ev->sourceDpi};
+        Func0 prepare = MkFunc0(PositionTabDragWindow, &position);
+        bool newWindow = moving != win;
+        bool restoreWindow = IsZoomed(frame);
+        bool previousSuppressFrameRedraw = moving->suppressFrameRedraw;
+        if (restoreWindow) {
+            moving->suppressFrameRedraw = true;
+            SendMessageW(frame, WM_SETREDRAW, FALSE, 0);
             ShowWindow(frame, SW_RESTORE);
         }
-        RECT rc;
-        GetWindowRect(frame, &rc);
-        TabInfo* selected = moving->tabsCtrl->GetTab(moving->tabsCtrl->GetSelected());
-        int dpi = DpiGetForHwnd(frame);
-        int grabX = MulDiv(ev->grabOffset.x, dpi, ev->sourceDpi);
-        int grabY = MulDiv(ev->grabOffset.y, dpi, ev->sourceDpi);
-        if (grabX >= selected->r.dx) {
-            grabX = selected->r.dx - 1;
+        if (newWindow) {
+            ShowMainWindow(moving, SW_NORMAL, &prepare);
+        } else {
+            PositionTabDragWindow(&position);
+            if (restoreWindow) {
+                moving->suppressFrameRedraw = previousSuppressFrameRedraw;
+                SendMessageW(frame, WM_SETREDRAW, TRUE, 0);
+            }
+            RedrawWindow(frame, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
         }
-        POINT anchor = {selected->r.x + grabX, selected->r.y + grabY};
-        if (HwndIsRtl(moving->tabsCtrl->hwnd)) {
-            anchor.x = ClientRect(moving->tabsCtrl->hwnd).dx - 1 - anchor.x;
-        }
-        ClientToScreen(moving->tabsCtrl->hwnd, &anchor);
         POINT cursor;
-        GetCursorPos(&cursor);
-        SetWindowPos(frame, HWND_TOP, cursor.x - (anchor.x - rc.left), cursor.y - (anchor.y - rc.top), 0, 0,
-                     SWP_NOSIZE);
+        // Showing the frame can dispatch deferred DPI and caption layouts
+        // after its before-first-paint callback. Measure their final geometry.
+        TabsUpdateDragPosition(moving);
         UpdateWindow(frame);
         if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
-            SendMessageW(frame, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, 0);
+            // The native move loop takes its grab point from lParam. Passing
+            // (0, 0) offsets the frame from the mouse, especially on monitors
+            // with negative screen coordinates.
+            GetCursorPos(&cursor);
+            SendMessageW(frame, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, MAKELPARAM(cursor.x, cursor.y));
         }
         // The native move loop pumps messages; revalidate before using the window.
         moving = FindMainWindowByHwnd(frame);
@@ -638,7 +732,13 @@ static void MainWindowTabMigration(MainWindow* win, TabsCtrl::MigrationEvent* ev
         // don't re-add to the same window
         releaseWnd = nullptr;
     }
-    MaybeMigrateTab(tab, releaseWnd, releaseWnd ? nullptr : &ev->releasePoint);
+    MainWindow* detached = MaybeMigrateTab(tab, releaseWnd, releaseWnd ? nullptr : &ev->releasePoint);
+    if (!releaseWnd && detached && detached != win) {
+        TabDragTransitions transitions(detached->hwndFrame);
+        TabDragPosition position{detached, ev->grabOffset, ev->sourceDpi};
+        Func0 prepare = MkFunc0(PositionTabDragWindow, &position);
+        ShowMainWindow(detached, SW_NORMAL, &prepare);
+    }
 }
 
 void CreateTabbar(MainWindow* win) {

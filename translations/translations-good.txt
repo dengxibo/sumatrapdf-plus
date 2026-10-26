@@ -47713,3 +47713,71 @@ cn:不透明度：%d%%
 tw:不透明度：%d%%
 de:Deckkraft: %d%%
 ar:التعتيم: %d%%
+
+:Export pages as images...
+cn:导出页面为图片...
+tw:匯出頁面為圖片...
+
+:Export pages as images
+cn:导出页面为图片
+tw:匯出頁面為圖片
+
+:All pages
+cn:全部页面
+tw:全部頁面
+
+:Current page
+cn:当前页
+tw:目前頁面
+
+:Image format:
+cn:图片格式：
+tw:圖片格式：
+
+:Resolution (DPI):
+cn:分辨率（DPI）：
+tw:解析度（DPI）：
+
+:Save in folder:
+cn:保存文件夹：
+tw:儲存資料夾：
+
+:A new subfolder is created for each export.
+cn:每次导出会创建新的子文件夹，不覆盖已有图片。
+tw:每次匯出會建立新的子資料夾，不覆寫既有圖片。
+
+:Exported %d of %d pages.
+cn:已导出 %d / %d 页。
+tw:已匯出 %d / %d 頁。
+
+:Could not export page %d.
+cn:无法导出第 %d 页。
+tw:無法匯出第 %d 頁。
+
+:Page is too large. Choose a lower DPI.
+cn:页面过大，请选择较低的 DPI。
+tw:頁面過大，請選擇較低的 DPI。
+
+:Export failed. Check the output folder and free disk space.
+cn:导出失败，请检查输出文件夹权限及磁盘剩余空间。
+tw:匯出失敗，請檢查輸出資料夾權限及磁碟剩餘空間。
+
+:Cancelled. %d pages exported.
+cn:已取消，已导出 %d 页。
+tw:已取消，已匯出 %d 頁。
+
+:Cancelling after the current page...
+cn:正在取消，等待当前页面处理完成...
+tw:正在取消，等待目前頁面處理完成...
+
+:Choose an existing output folder.
+cn:请选择已存在的输出文件夹。
+tw:請選擇已存在的輸出資料夾。
+
+:Could not create the output folder.
+cn:无法创建输出文件夹。
+tw:無法建立輸出資料夾。
+
+:Could not start image export.
+cn:无法启动图片导出。
+tw:無法啟動圖片匯出。

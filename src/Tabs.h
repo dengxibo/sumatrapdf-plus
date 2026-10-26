@@ -24,3 +24,5 @@ void CollectTabsToClose(MainWindow* win, WindowTab* currTab, Vec<WindowTab*>& to
                         Vec<WindowTab*>& toCloseRight, Vec<WindowTab*>& toCloseLeft);
 void CloseAllTabs(MainWindow*);
 void MoveTab(MainWindow* win, int dir);
+bool TabsAdjustDragWindowRect(MainWindow* win, RECT* rect);
+void TabsUpdateDragPosition(MainWindow* win);

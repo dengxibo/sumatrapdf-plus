@@ -6,6 +6,8 @@ enum class TbIcon;
 
 void CreateToolbar(MainWindow*);
 void ReCreateToolbar(MainWindow* win);
+// Update monitor metrics without destroying the page/search controls.
+void RefreshToolbarForDpi(MainWindow* win);
 void ToolbarUpdateStateForWindow(MainWindow*, bool setButtonsVisibility, bool pageChangeOnly = false);
 void UpdateToolbarButtonsToolTipsForWindow(MainWindow*);
 void UpdateToolbarFindText(MainWindow*);
@@ -13,6 +15,7 @@ void UpdateToolbarFindText(MainWindow*);
 int LayoutToolbarOverflow(MainWindow*, int buttonsRightLimit, int compactRightLimit);
 bool TestToolbarOverflowMenu(MainWindow*);
 void UpdateToolbarPageText(MainWindow*, int pageCount, bool updateOnly = false);
+void UpdateToolbarCurrentPageText(MainWindow* win, int pageNo);
 void UpdateFindbox(MainWindow*);
 void SetToolbarButtonEnableState(MainWindow*, int cmdId, bool isEnabled);
 void SetToolbarButtonCheckedState(MainWindow*, int cmdId, bool isChecked);

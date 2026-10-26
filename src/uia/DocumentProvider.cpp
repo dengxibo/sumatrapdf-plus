@@ -40,10 +40,16 @@ SumatraUIAutomationDocumentProvider::SumatraUIAutomationDocumentProvider(HWND ca
 
 SumatraUIAutomationDocumentProvider::~SumatraUIAutomationDocumentProvider() {
     this->FreeDocument();
+    str::Free(documentName);
 }
 
 void SumatraUIAutomationDocumentProvider::LoadDocument(DisplayModel* newDm) {
     this->FreeDocument();
+
+    EngineBase* engine = newDm->GetEngine();
+    const char* name = engine ? path::GetBaseNameTemp(engine->FilePath()) : "";
+    str::Free(documentName);
+    documentName = str::Dup(ToWStrTemp(name));
 
     // no mutexes needed, this function is called from thread that created dm
 
@@ -138,6 +144,8 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::Navigate(enum Nav
     if (pRetVal == nullptr) {
         return E_POINTER;
     }
+    *pRetVal = nullptr;
+    if (released) return UIA_E_ELEMENTNOTAVAILABLE;
 
     if (direction == NavigateDirection_NextSibling || direction == NavigateDirection_PreviousSibling) {
         *pRetVal = nullptr;
@@ -154,7 +162,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::Navigate(enum Nav
         } else {
             *pRetVal = child_last;
         }
-        (*pRetVal)->AddRef();
+        if (*pRetVal) (*pRetVal)->AddRef();
         return S_OK;
     } else if (direction == NavigateDirection_Parent) {
         *pRetVal = root;
@@ -201,6 +209,8 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::SetFocus() {
 }
 
 HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::get_BoundingRectangle(struct UiaRect* pRetVal) {
+    if (!pRetVal) return E_POINTER;
+    if (released) return UIA_E_ELEMENTNOTAVAILABLE;
     // share area with the canvas uia provider
     return root->get_BoundingRectangle(pRetVal);
 }
@@ -210,6 +220,8 @@ SumatraUIAutomationDocumentProvider::get_FragmentRoot(IRawElementProviderFragmen
     if (pRetVal == nullptr) {
         return E_POINTER;
     }
+    *pRetVal = nullptr;
+    if (released) return UIA_E_ELEMENTNOTAVAILABLE;
 
     // return the root node
     *pRetVal = root;
@@ -245,8 +257,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::GetPropertyValue(
     if (propertyId == UIA_NamePropertyId) {
         // typically filename
         pRetVal->vt = VT_BSTR;
-        TempStr s = path::GetBaseNameTemp(dm->GetEngine()->FilePath());
-        pRetVal->bstrVal = SysAllocString(ToWStrTemp(s));
+        pRetVal->bstrVal = SysAllocString(documentName);
         return S_OK;
     } else if (propertyId == UIA_IsTextPatternAvailablePropertyId) {
         pRetVal->vt = VT_BOOL;
@@ -287,7 +298,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::get_ProviderOptio
     if (pRetVal == nullptr) {
         return E_POINTER;
     }
-    *pRetVal = ProviderOptions_ServerSideProvider;
+    *pRetVal = kSumatraUiaProviderOptions;
     return S_OK;
 }
 
@@ -381,8 +392,9 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::get_DocumentRange
     if (pRetVal == nullptr) {
         return E_POINTER;
     }
-    if (released) {
-        return E_FAIL;
+    *pRetVal = nullptr;
+    if (released || !dm || !dm->GetEngine()) {
+        return UIA_E_ELEMENTNOTAVAILABLE;
     }
 
     SumatraUIAutomationTextRange* documentRange = new SumatraUIAutomationTextRange(this);

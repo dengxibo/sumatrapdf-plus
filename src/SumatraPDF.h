@@ -310,7 +310,8 @@ MainWindow* LoadDocument(LoadArgs* args);
 MainWindow* LoadDocumentFinish(LoadArgs* args);
 void StartLoadDocument(LoadArgs* args);
 MainWindow* CreateAndShowMainWindow(SessionData* data = nullptr, bool showWin = true);
-void ShowMainWindow(MainWindow* win, int windowState);
+// A drag can finalize its grab-point geometry before the first visible paint.
+void ShowMainWindow(MainWindow* win, int windowState, const Func0* beforeFirstPaint = nullptr);
 DocController* CreateControllerForEngineOrFile(EngineBase* engine, const char* path, PasswordUI* pwdUI,
                                                MainWindow* win);
 

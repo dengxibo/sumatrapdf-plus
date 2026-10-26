@@ -1576,7 +1576,7 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
             if (engine && pageNo > engine->PageCount()) {
                 pageNo = engine->PageCount();
             }
-            HwndSetText(win->hwndPageEdit, str::FormatTemp("%d", pageNo));
+            UpdateToolbarCurrentPageText(win, pageNo);
             ToolbarUpdateStateForWindow(win, false, true);
             int totalPages = engine ? engine->PageCount() : win->ctrl->PageCount();
             // A page turn changes the value, not the geometry of the page slot.
@@ -3295,8 +3295,8 @@ static MainWindow* CreateMainWindow() {
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
     win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
 
-    // suppress painting during window setup to avoid white flash with dark themes
-    SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
+    // The frame is still hidden. WM_SETREDRAW(TRUE) would add WS_VISIBLE
+    // before its caller has chosen the final position and show state.
 
     ShowWindow(win->hwndCanvas, SW_SHOW);
     UpdateWindow(win->hwndCanvas);
@@ -3371,16 +3371,19 @@ static MainWindow* CreateMainWindow() {
         UpdateControlsColors(win);
     }
 
-    // re-enable painting now that dark mode is configured
-    SendMessageW(win->hwndFrame, WM_SETREDRAW, TRUE, 0);
-
     // show menu bar rebar now that layout is done
     ShowMenuBarRebar(win);
 
     return win;
 }
 
-void ShowMainWindow(MainWindow* win, int windowState) {
+void ShowMainWindow(MainWindow* win, int windowState, const Func0* beforeFirstPaint) {
+    bool previousSuppressFrameRedraw = win->suppressFrameRedraw;
+    if (beforeFirstPaint) {
+        // RelayoutFrame must not re-enable the outer redraw guard halfway
+        // through preparing a dragged window.
+        win->suppressFrameRedraw = true;
+    }
     // Suppress an intermediate paint with stale find-control positions (issue #5456).
     SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
 
@@ -3403,10 +3406,20 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     RelayoutFrame(win);
     ToolbarUpdateStateForWindow(win, true);
 
+    if (beforeFirstPaint) {
+        // Initial controls already use this monitor's fonts. A forced refresh
+        // would recreate chrome in every open window during the tab gesture.
+        OnMainWindowDpiChanged(win, win->hwndFrame, nullptr, 0, false);
+        beforeFirstPaint->Call();
+        win->suppressFrameRedraw = previousSuppressFrameRedraw;
+    }
+
     SendMessageW(win->hwndFrame, WM_SETREDRAW, TRUE, 0);
     RedrawWindow(win->hwndFrame, nullptr, nullptr,
                  RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
-    HwndEnsureVisible(win->hwndFrame);
+    if (!beforeFirstPaint) {
+        HwndEnsureVisible(win->hwndFrame);
+    }
 
     // Process any WM_DPICHANGED posted by the first ShowWindow before we
     // apply our own DPI refresh (GetDpiForWindow can still be stale).
@@ -3415,7 +3428,7 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         DispatchMessageW(&msg);
     }
 
-    OnMainWindowDpiChanged(win, win->hwndFrame, nullptr, 0, true);
+    OnMainWindowDpiChanged(win, win->hwndFrame, nullptr, 0, beforeFirstPaint == nullptr);
 
     if (gWindows.Size() == 1 && !NeedsWindowEmbeddingHacks() && (true || IsDebuggerPresent())) {
         HwndToForeground(win->hwndFrame);
@@ -8678,6 +8691,9 @@ static bool IsLayoutStateEq(LayoutState* s1, LayoutState* s2) {
 }
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
+    // Ordinary moves keep the same frame-relative grab point. Only layout
+    // changes require querying window/tab geometry again on the next move.
+    win->tabDragAnchorValid = false;
     Rect rc = ClientRect(win->hwndFrame);
     // don't relayout while the window is minimized
     if (rc.IsEmpty()) {
@@ -8759,7 +8775,8 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // WM_SETREDRAW changes WS_VISIBLE on the top-level window. Toggling it
     // on every interactive resize makes DWM discard/present the frame again,
     // causing flashes. Let the deferred child moves repaint normally instead.
-    bool suppressIntermediateRedraws = !win->suppressFrameRedraw && !liveSidebarDrag && !win->inSizeMove;
+    bool suppressIntermediateRedraws =
+        !win->suppressFrameRedraw && !liveSidebarDrag && !win->inSizeMove && IsWindowVisible(win->hwndFrame);
     if (suppressIntermediateRedraws) {
         // suppress intermediate repaints during relayout
         SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
@@ -11981,6 +11998,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdSaveAs:
             SaveCurrentFileAs(win);
+            break;
+
+        case CmdExportPageImages:
+            ExportPageImages(win);
             break;
 
         case CmdPrint:
@@ -17198,7 +17219,7 @@ static void RefreshWindowChromeAfterFontInvalidate(MainWindow* win) {
         DestroyMenuBarRebar(win);
     }
 
-    ReCreateToolbar(win);
+    RefreshToolbarForDpi(win);
 
     if (menuRebarVisible && IsMenubarVisible()) {
         CreateMenuBarRebar(win);
@@ -17264,7 +17285,7 @@ static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
     if (menuRebarVisible) {
         DestroyMenuBarRebar(win);
     }
-    ReCreateToolbar(win);
+    RefreshToolbarForDpi(win);
     if (menuRebarVisible && IsMenubarVisible()) {
         CreateMenuBarRebar(win);
         ShowMenuBarRebar(win);
@@ -17287,9 +17308,13 @@ static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
     RelayoutFrame(win);
     UpdateOverlayScrollbarPositions(win);
 
-    if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
-        RECT r = ToRECT(win->captionRect);
-        RedrawWindow(hwnd, &r, nullptr, RDW_ERASE | RDW_INVALIDATE);
+    // Recreated chrome and newly exposed child areas need their themed
+    // backgrounds painted during the move, rather than waiting for mouse-up.
+    // Respect the outer guard when preparing a detached window's first paint.
+    if (!win->suppressFrameRedraw) {
+        // Queue a complete themed repaint but let the move loop coalesce it
+        // with pending mouse input. Synchronous child paints stall the drag.
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
     }
 }
 
@@ -17308,7 +17333,7 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
         DestroyMenuBarRebar(win);
     }
 
-    ReCreateToolbar(win);
+    RefreshToolbarForDpi(win);
 
     if (menuRebarVisible && IsMenubarVisible()) {
         CreateMenuBarRebar(win);
@@ -17513,6 +17538,8 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
         case WM_EXITSIZEMOVE:
             if (win) {
                 win->inSizeMove = false;
+                win->tabDragActive = false;
+                RememberDefaultWindowPosition(win);
                 if (win->dpiChromeRefreshPending) {
                     if (!PostMessageW(hwnd, WM_MAIN_WINDOW_DPI_SETTLED, 0, 0)) {
                         FinishDeferredMainWindowDpiRefresh(win, hwnd);
@@ -17526,6 +17553,10 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 DockOpenEbookAnnotationsWindows(win);
             }
             return 0;
+
+        case WM_MOVING:
+            if (TabsAdjustDragWindowRect(win, (RECT*)lp)) return TRUE;
+            break;
 
         case WM_MAIN_WINDOW_DPI_SETTLED:
             FinishDeferredMainWindowDpiRefresh(win, hwnd);
@@ -17547,6 +17578,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (win) {
                 int dpi = LOWORD(wp);
                 OnMainWindowDpiChanged(win, hwnd, (RECT*)lp, dpi);
+                TabsUpdateDragPosition(win);
             }
             return 0;
 
@@ -17573,12 +17605,13 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_MOVE:
             if (win) {
-                RememberDefaultWindowPosition(win);
+                // Persist geometry once when the move ends; no setting
+                // consumer needs every intermediate mouse position.
+                if (!win->inSizeMove) RememberDefaultWindowPosition(win);
                 UpdateOverlayScrollbarPositions(win);
                 DockOpenEditAnnotationsWindows(win);
                 DockOpenEbookAnnotationsWindows(win);
                 // keep the floating find bar anchored over the search icon
-                FindBarReposition(win);
                 FindWindowReposition(win);
             }
             break;

@@ -69,9 +69,18 @@ bool SumatraUIAutomationTextRange::operator==(const SumatraUIAutomationTextRange
 }
 
 void SumatraUIAutomationTextRange::SetToDocumentRange() {
+    if (!document->IsDocumentLoaded()) {
+        SetToNullRange();
+        return;
+    }
+    DisplayModel* dm = document->GetDM();
+    if (!dm || !dm->GetEngine() || dm->PageCount() < 1) {
+        SetToNullRange();
+        return;
+    }
     startPage = 1;
     startGlyph = 0;
-    endPage = document->GetDM()->PageCount();
+    endPage = dm->PageCount();
     endGlyph = GetPageGlyphCount(endPage);
 }
 

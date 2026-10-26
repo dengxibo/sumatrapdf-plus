@@ -557,6 +557,10 @@ We log information about unsuccessful parsing of a shortcut so [check the logs](
 
 ## Quick image export and cropping
 
+`CmdExportPageImages` opens **File → Export pages as images...** for a loaded PDF. Choose all pages or the current page, PNG or JPEG, an output folder, and 96 / 150 / 200 / 300 / 600 DPI (default 300). Each export creates a new `document-images` subfolder, adding a numeric suffix if necessary, and writes one image per page as `document-001.png` (or `.jpg`). Existing files are not overwritten. Output uses the document's original colors and current view rotation, including current PDF annotations and page edits. Display themes and monitor DPI do not affect image resolution.
+
+Export runs on a worker thread and shows progress. Cancel stops after the current page finishes rendering or encoding; completed images remain in the output folder. Oversized pages report an error with a request to lower DPI rather than allocating unbounded bitmap memory. The export dialog uses the application's standard themed controls and Windows per-monitor-v2 dialog scaling.
+
 On pages of any document supported by the fixed-page renderer (including PDF, images, Word, ebooks and comics), hold **Alt+Shift** and drag with the left mouse button to select an area, then release to open the image save window. The selection stays on the starting page. Press **Esc** to cancel. This shortcut does not require OCR. Export uses the current page zoom and rotation with the original document colors.
 
 In the crop window, drag to draw a new selection, drag one of the eight handles to resize it, or hold **Space** and drag to move it. The initial selection covers the whole image. Tab moves between controls; Space toggles the focused checkbox.

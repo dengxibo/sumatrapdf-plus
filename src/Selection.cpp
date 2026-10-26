@@ -1013,7 +1013,7 @@ void OnSelectionStop(MainWindow* win, int x, int y, bool aborted) {
     if (win->ctrl && win->ctrl->PageCount() > 0) {
         int pageNo = win->ctrl->CurrentPageNo();
         if (win->ctrl->ValidPageNo(pageNo)) {
-            HwndSetText(win->hwndPageEdit, str::FormatTemp("%d", pageNo));
+            UpdateToolbarCurrentPageText(win, pageNo);
             UpdateToolbarPageText(win, win->ctrl->PageCount(), win->ctrl->HasPageLabels());
         }
     }

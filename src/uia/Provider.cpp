@@ -111,7 +111,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationProvider::get_ProviderOptions(Provi
     if (pRetVal == nullptr) {
         return E_POINTER;
     }
-    *pRetVal = ProviderOptions_ServerSideProvider;
+    *pRetVal = kSumatraUiaProviderOptions;
     return S_OK;
 }
 

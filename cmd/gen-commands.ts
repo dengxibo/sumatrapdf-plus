@@ -295,6 +295,7 @@ export const commands = [
     "CmdPickEbookCjkFont", "CJK Body Font",
     "CmdAddHandwrittenSignature", "Add Handwritten Signature",
     "CmdOpenAskAi", "Open Ask AI",
+    "CmdExportPageImages", "Export pages as images...",
     "CmdNone", "Do nothing",
 ];
 

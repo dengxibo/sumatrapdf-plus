@@ -166,6 +166,7 @@ static UINT_PTR removeIfNoDiskAccessPerm[] = {
     CmdClose,
     CmdShowInFolder,
     CmdSaveAs,
+    CmdExportPageImages,
     CmdRenameFile,
     CmdDeleteFile,
     CmdSendByEmail,
@@ -416,6 +417,9 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
 
     CustomCommand* cmd = FindCustomCommand(cmdId);
     int origCmdId = cmd ? cmd->origId : cmdId;
+    if (origCmdId == CmdExportPageImages) {
+        return CanAccessDisk() && ctx.isPdf && ctx.isDocLoaded ? CommandVisibility::Show : CommandVisibility::Disable;
+    }
     if (origCmdId == CmdSetTheme) {
         return CommandVisibility::Show;
     }

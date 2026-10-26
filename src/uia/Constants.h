@@ -1,5 +1,12 @@
 // define necessary constants here if UIAutomationClient.h is not available
 
+// Providers are created on the OleInitialize STA in SumatraStartup. UIA must
+// marshal callbacks to that apartment, where tab/model lifetime is managed.
+// Without this flag it calls on worker threads, racing FreeDocument and even
+// bypassing the released check while a text range is being constructed.
+constexpr ProviderOptions kSumatraUiaProviderOptions =
+    (ProviderOptions)(ProviderOptions_ServerSideProvider | ProviderOptions_UseComThreading);
+
 #ifndef __UIA_PatternIds_MODULE_DEFINED__
 const long UIA_TextPatternId = 10014;
 const long UIA_ValuePatternId = 10002;

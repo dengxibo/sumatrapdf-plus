@@ -668,6 +668,12 @@ static bool CanDragTab(TabInfo* tab) {
     return true;
 }
 
+static bool IsOutsideTabStrip(TabsCtrl* tabs, Point mousePos) {
+    Rect strip = ClientRect(tabs->hwnd);
+    int margin = GetSystemMetrics(SM_CYDRAG);
+    return mousePos.x < 0 || mousePos.x >= strip.dx || mousePos.y < -margin || mousePos.y >= strip.dy + margin;
+}
+
 LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     Point mousePos = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
     if (WM_MOUSELEAVE == msg) {
@@ -696,9 +702,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         p.y = mousePos.y;
         MapWindowPoints(hwnd, NULL, &p, 1);
         // logfa("%s moving to: %d %d\n", WinMsgNameTemp(msg), p.x, p.y);
-        Rect strip = ClientRect(hwnd);
-        int margin = GetSystemMetrics(SM_CYDRAG);
-        if (mousePos.x < 0 || mousePos.x >= strip.dx || mousePos.y < -margin || mousePos.y >= strip.dy + margin) {
+        if (IsOutsideTabStrip(this, mousePos)) {
             int selected = GetSelected();
             draggingTab = false;
             ImageList_DragLeave(nullptr);
@@ -775,6 +779,14 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             int hl = tabHighlighted;
             if (isDragging && beyondDragThreshold) {
                 if (hl < 0) {
+                    return 0;
+                }
+                if (IsOutsideTabStrip(this, mousePos)) {
+                    POINT p(mousePos.x, mousePos.y);
+                    ClientToScreen(hwnd, &p);
+                    int selected = GetSelected();
+                    ReleaseCapture();
+                    TriggerTabMigration(this, selected, Point(p.x, p.y), true);
                     return 0;
                 }
                 // move the tab out: draw it as a image and drag around the screen

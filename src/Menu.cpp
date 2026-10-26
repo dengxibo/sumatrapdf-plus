@@ -135,6 +135,10 @@ static MenuDef menuDefFile[] = {
         CmdSaveAs,
     },
     {
+        _TRN("Export pages as images..."),
+        CmdExportPageImages,
+    },
+    {
         _TRN("Save changes to existing PDF"),
         CmdSaveAnnotations,
     },

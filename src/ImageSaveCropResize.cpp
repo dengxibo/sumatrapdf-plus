@@ -9,6 +9,7 @@
 #include "utils/Dpi.h"
 #include "utils/GdiPlusUtil.h"
 #include "utils/GuessFileType.h"
+#include "utils/ThreadUtil.h"
 #include "FzImgReader.h"
 
 #include "wingui/UIModels.h"
@@ -33,6 +34,8 @@
 #include "Theme.h"
 #include "Translations.h"
 #include "ImageSaveCropResize.h"
+#include "SumatraDialogs.h"
+#include "resource.h"
 
 #include "utils/Log.h"
 
@@ -1103,7 +1106,7 @@ static void OnBrowse(ImageEditWindow* ew) {
 
 // Save a GDI+ Bitmap using WIC. Supports all formats that have a WIC encoder installed,
 // including WebP on Windows 10+.
-static bool SaveBitmapWithWIC(Bitmap* bmp, const WCHAR* destPath, const GUID* containerFormat) {
+static bool SaveBitmapWithWIC(Bitmap* bmp, const WCHAR* destPath, const GUID* containerFormat, int dpi = 0) {
     if (!bmp || !destPath || !containerFormat) {
         return false;
     }
@@ -1157,6 +1160,10 @@ static bool SaveBitmapWithWIC(Bitmap* bmp, const WCHAR* destPath, const GUID* co
 
     hr = pFrame->Initialize(pProps);
     if (FAILED(hr)) {
+        goto Done;
+    }
+
+    if (dpi > 0 && FAILED(pFrame->SetResolution(dpi, dpi))) {
         goto Done;
     }
 
@@ -1221,6 +1228,316 @@ bool SaveBitmapAsPng(HBITMAP hbmp, const char* destPath) {
     }
     TempWStr destW = ToWStrTemp(destPath);
     return SaveBitmapWithWIC(&bmp, destW, &GUID_ContainerFormatPng);
+}
+
+// The modal owner keeps document edits out of the export pass. Holding a
+// reference to the live engine preserves unsaved annotations and page edits;
+// reopening the file would silently export the older, saved document instead.
+struct PageImageExport {
+    EngineBase* engine = nullptr;
+    AutoFreeStr baseName;
+    AutoFreeStr folder;
+    AutoFreeStr outputFolder;
+    HANDLE thread = nullptr;
+    LONG cancel = 0;
+    LONG completed = 0;
+    int shownCompleted = -1;
+    int firstPage = 1;
+    int lastPage = 1;
+    int currentPage = 1;
+    int rotation = 0;
+    int dpi = 300;
+    bool jpeg = false;
+    bool failed = false;
+    bool tooLarge = false;
+    int failedPage = 0;
+
+    ~PageImageExport() {
+        if (thread) {
+            InterlockedExchange(&cancel, 1);
+            WaitForSingleObject(thread, INFINITE);
+            CloseHandle(thread);
+        }
+        if (engine) engine->Release();
+    }
+};
+
+static void ExportPageImagesWorker(PageImageExport* data) {
+    ScopedCom com;
+    float zoom = data->dpi / data->engine->GetFileDPI();
+    for (int page = data->firstPage; page <= data->lastPage; page++) {
+        if (InterlockedCompareExchange(&data->cancel, 0, 0)) break;
+        RectF box = data->engine->PageMediabox(page);
+        double width = ceil(box.dx * zoom);
+        double height = ceil(box.dy * zoom);
+        // Bound per-page memory, including the renderer and encoder copies.
+        // An A4 page at 600 DPI fits; oversized drawings fail without allocating.
+        if (!(width > 0 && height > 0 && width <= 32767 && height <= 32767 && width * height <= 64000000)) {
+            data->tooLarge = data->failed = true;
+            data->failedPage = page;
+            break;
+        }
+        RenderPageArgs args(page, zoom, data->rotation, nullptr, RenderTarget::Export);
+        RenderedBitmap* rendered = data->engine->RenderPage(args);
+        if (!rendered || !rendered->IsValid()) {
+            delete rendered;
+            data->failed = true;
+            data->failedPage = page;
+            break;
+        }
+        if (InterlockedCompareExchange(&data->cancel, 0, 0)) {
+            delete rendered;
+            break;
+        }
+        TempStr name = str::FormatTemp("%s-%03d.%s", data->baseName.Get(), page, data->jpeg ? "jpg" : "png");
+        TempStr path = path::JoinTemp(data->outputFolder, name);
+        bool ok = false;
+        {
+            Bitmap bitmap(rendered->GetBitmap(), nullptr);
+            ok = bitmap.GetLastStatus() == Ok &&
+                 SaveBitmapWithWIC(&bitmap, ToWStrTemp(path),
+                                   data->jpeg ? &GUID_ContainerFormatJpeg : &GUID_ContainerFormatPng, data->dpi);
+        }
+        delete rendered;
+        if (!ok) {
+            // Only this worker writes into its newly created output directory.
+            file::Delete(path);
+            data->failed = true;
+            data->failedPage = page;
+            break;
+        }
+        InterlockedIncrement(&data->completed);
+    }
+}
+
+static void BrowsePageImageFolder(HWND hwnd) {
+    ScopedComPtr<IFileOpenDialog> dialog;
+    if (!dialog.Create(CLSID_FileOpenDialog)) return;
+    DWORD options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR);
+    ScopedComPtr<IShellItem> initial;
+    TempStr current = HwndGetTextTemp(GetDlgItem(hwnd, IDC_EXPORT_FOLDER));
+    if (SUCCEEDED(SHCreateItemFromParsingName(ToWStrTemp(current), nullptr, IID_PPV_ARGS(&initial)))) {
+        dialog->SetFolder(initial);
+    }
+    if (FAILED(dialog->Show(hwnd))) return;
+    ScopedComPtr<IShellItem> selected;
+    if (FAILED(dialog->GetResult(&selected))) return;
+    WCHAR* path = nullptr;
+    if (SUCCEEDED(selected->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+        SetDlgItemTextW(hwnd, IDC_EXPORT_FOLDER, path);
+        CoTaskMemFree(path);
+    }
+}
+
+static void EnablePageImageExportInputs(HWND hwnd, bool enable) {
+    int ids[] = {IDC_EXPORT_RANGE, IDC_EXPORT_FORMAT, IDC_EXPORT_DPI, IDC_EXPORT_FOLDER, IDC_EXPORT_BROWSE, IDOK};
+    for (int id : ids) EnableWindow(GetDlgItem(hwnd, id), enable);
+    // Native themed controls repaint their client on WM_ENABLE, but their
+    // rounded frames also need invalidation when returning from disabled state.
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
+}
+
+static bool CreatePageImageExportFolder(PageImageExport* data) {
+    for (int i = 1; i <= 10000; i++) {
+        TempStr name = i == 1 ? str::FormatTemp("%s-images", data->baseName.Get())
+                              : str::FormatTemp("%s-images-%d", data->baseName.Get(), i);
+        TempStr path = path::JoinTemp(data->folder, name);
+        if (CreateDirectoryW(ToWStrTemp(path), nullptr)) {
+            data->outputFolder.Set(str::Dup(path));
+            return true;
+        }
+        if (GetLastError() != ERROR_ALREADY_EXISTS) break;
+    }
+    return false;
+}
+
+static LRESULT CALLBACK PageImageExportLabelProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
+    if (msg == WM_ERASEBKGND) return 1;
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC dc = BeginPaint(hwnd, &ps);
+        Rect rc = ClientRect(hwnd);
+        DoubleBuffer buffer(hwnd, rc);
+        HDC paint = buffer.GetDC();
+        ScopedGdiObj<HBRUSH> bg(CreateSolidBrush(AppDialogPanelBackgroundColor()));
+        RECT rect = ToRECT(rc);
+        FillRect(paint, &rect, bg);
+        ScopedSelectObject font(paint, GetWindowFont(hwnd));
+        SetBkMode(paint, TRANSPARENT);
+        SetTextColor(paint, ThemeWindowTextColor());
+        UINT flags = DT_WORDBREAK | DT_END_ELLIPSIS | DT_NOPREFIX;
+        if (HwndIsRtl(hwnd)) flags |= DT_RTLREADING | DT_RIGHT;
+        DrawTextW(paint, ToWStrTemp(HwndGetTextTemp(hwnd)), -1, &rect, flags);
+        buffer.Flush(dc);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    if (msg == WM_NCDESTROY) RemoveWindowSubclass(hwnd, PageImageExportLabelProc, id);
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    auto data = (PageImageExport*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (msg == WM_INITDIALOG) {
+        data = (PageImageExport*)lp;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)data);
+        HwndSetText(hwnd, _TRA("Export pages as images"));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_RANGE_LABEL, _TRA("Pages:"));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_FORMAT_LABEL, _TRA("Image format:"));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_DPI_LABEL, _TRA("Resolution (DPI):"));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_FOLDER_LABEL, _TRA("Save in folder:"));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_BROWSE, _TRA("Browse..."));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_HINT, _TRA("A new subfolder is created for each export."));
+        HwndSetDlgItemText(hwnd, IDOK, _TRA("Export"));
+        HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("Cancel"));
+        HWND range = GetDlgItem(hwnd, IDC_EXPORT_RANGE);
+        ComboBox_AddString(range, ToWStrTemp(_TRA("All pages")));
+        ComboBox_AddString(range, ToWStrTemp(_TRA("Current page")));
+        ComboBox_SetCurSel(range, 0);
+        HWND format = GetDlgItem(hwnd, IDC_EXPORT_FORMAT);
+        ComboBox_AddString(format, L"PNG");
+        ComboBox_AddString(format, L"JPEG");
+        ComboBox_SetCurSel(format, 0);
+        HWND dpi = GetDlgItem(hwnd, IDC_EXPORT_DPI);
+        const WCHAR* resolutions[] = {L"96", L"150", L"200", L"300", L"600"};
+        for (const WCHAR* value : resolutions) ComboBox_AddString(dpi, value);
+        ComboBox_SetCurSel(dpi, 3);
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_FOLDER, data->folder);
+        int labels[] = {IDC_EXPORT_RANGE_LABEL,  IDC_EXPORT_FORMAT_LABEL, IDC_EXPORT_DPI_LABEL,
+                        IDC_EXPORT_FOLDER_LABEL, IDC_EXPORT_HINT,         IDC_EXPORT_STATUS};
+        for (int id : labels) SetWindowSubclass(GetDlgItem(hwnd, id), PageImageExportLabelProc, 1, 0);
+        SendDlgItemMessageW(hwnd, IDC_EXPORT_PROGRESS, PBM_SETRANGE32, 0, data->engine->PageCount());
+        CenterDialog(hwnd);
+        return TRUE;
+    }
+    if (!data) return FALSE;
+    switch (msg) {
+        // Per-monitor-v2's dialog manager scales the template, children and
+        // fonts together. Do not also scale them here (that doubles the change).
+        case WM_DPICHANGED:
+            return FALSE;
+        case WM_TIMER: {
+            if (!data->thread || wp != 1) break;
+            int completed = InterlockedCompareExchange(&data->completed, 0, 0);
+            int total = data->lastPage - data->firstPage + 1;
+            if (completed != data->shownCompleted) {
+                data->shownCompleted = completed;
+                SendDlgItemMessageW(hwnd, IDC_EXPORT_PROGRESS, PBM_SETPOS, completed, 0);
+                if (!InterlockedCompareExchange(&data->cancel, 0, 0)) {
+                    HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS,
+                                       str::FormatTemp(_TRA("Exported %d of %d pages."), completed, total));
+                }
+            }
+            if (WaitForSingleObject(data->thread, 0) == WAIT_OBJECT_0) {
+                CloseHandle(data->thread);
+                data->thread = nullptr;
+                KillTimer(hwnd, 1);
+                EnablePageImageExportInputs(hwnd, true);
+                EnableWindow(GetDlgItem(hwnd, IDCANCEL), TRUE);
+                HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("Close"));
+                AppDialogSyncWarmPushButtons(hwnd);
+                RedrawWindow(GetDlgItem(hwnd, IDCANCEL), nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
+                if (data->failed) {
+                    HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS,
+                                       str::FormatTemp(_TRA("Could not export page %d."), data->failedPage));
+                    HwndSetDlgItemText(hwnd, IDC_EXPORT_HINT,
+                                       data->tooLarge
+                                           ? _TRA("Page is too large. Choose a lower DPI.")
+                                           : _TRA("Export failed. Check the output folder and free disk space."));
+                } else {
+                    HwndSetDlgItemText(hwnd, IDC_EXPORT_HINT, data->outputFolder);
+                    if (InterlockedCompareExchange(&data->cancel, 0, 0)) {
+                        HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS,
+                                           str::FormatTemp(_TRA("Cancelled. %d pages exported."), completed));
+                    }
+                }
+                RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+            }
+            return TRUE;
+        }
+        case WM_CLOSE:
+            SendMessageW(hwnd, WM_COMMAND, IDCANCEL, 0);
+            return TRUE;
+        case WM_COMMAND:
+            switch (LOWORD(wp)) {
+                case IDC_EXPORT_BROWSE:
+                    if (!data->thread) BrowsePageImageFolder(hwnd);
+                    return TRUE;
+                case IDCANCEL:
+                    if (data->thread) {
+                        InterlockedExchange(&data->cancel, 1);
+                        HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Cancelling after the current page..."));
+                        EnableWindow(GetDlgItem(hwnd, IDCANCEL), FALSE);
+                    } else {
+                        EndDialog(hwnd, IDCANCEL);
+                    }
+                    return TRUE;
+                case IDOK: {
+                    if (data->thread) return TRUE;
+                    data->folder.Set(str::Dup(HwndGetTextTemp(GetDlgItem(hwnd, IDC_EXPORT_FOLDER))));
+                    if (!path::IsDirectory(data->folder)) {
+                        HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Choose an existing output folder."));
+                        HwndSetFocus(GetDlgItem(hwnd, IDC_EXPORT_FOLDER));
+                        return TRUE;
+                    }
+                    if (!CreatePageImageExportFolder(data)) {
+                        HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Could not create the output folder."));
+                        return TRUE;
+                    }
+                    bool current = ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_EXPORT_RANGE)) == 1;
+                    data->firstPage = current ? data->currentPage : 1;
+                    data->lastPage = current ? data->currentPage : data->engine->PageCount();
+                    constexpr int resolutions[] = {96, 150, 200, 300, 600};
+                    int idx = (int)ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_EXPORT_DPI));
+                    data->dpi = resolutions[idx >= 0 && idx < dimof(resolutions) ? idx : 3];
+                    data->jpeg = ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_EXPORT_FORMAT)) == 1;
+                    data->cancel = data->completed = 0;
+                    data->shownCompleted = -1;
+                    data->failed = data->tooLarge = false;
+                    if (!SetTimer(hwnd, 1, 100, nullptr)) {
+                        HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Could not start image export."));
+                        return TRUE;
+                    }
+                    EnablePageImageExportInputs(hwnd, false);
+                    SendDlgItemMessageW(hwnd, IDC_EXPORT_PROGRESS, PBM_SETRANGE32, 0,
+                                        data->lastPage - data->firstPage + 1);
+                    HwndSetDlgItemText(hwnd, IDC_EXPORT_HINT, data->outputFolder);
+                    HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("Cancel"));
+                    AppDialogSyncWarmPushButtons(hwnd);
+                    InvalidateRect(GetDlgItem(hwnd, IDCANCEL), nullptr, FALSE);
+                    data->thread = StartThread(MkFunc0(ExportPageImagesWorker, data), "ExportPageImages");
+                    if (!data->thread) {
+                        KillTimer(hwnd, 1);
+                        EnablePageImageExportInputs(hwnd, true);
+                        HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Could not start image export."));
+                    }
+                    return TRUE;
+                }
+            }
+            break;
+        case WM_DESTROY:
+            InterlockedExchange(&data->cancel, 1);
+            KillTimer(hwnd, 1);
+            break;
+    }
+    return FALSE;
+}
+
+void ExportPageImages(MainWindow* win) {
+    if (!win || !CanAccessDisk() || !win->AsFixed()) return;
+    EngineBase* engine = win->AsFixed()->GetEngine();
+    if (!engine || !str::EqI(engine->defaultExt, ".pdf") || engine->PageCount() < 1) return;
+    PageImageExport data;
+    data.engine = engine;
+    engine->AddRef();
+    data.currentPage = win->ctrl->CurrentPageNo();
+    data.rotation = win->AsFixed()->GetRotation();
+    TempStr name = path::GetBaseNameTemp(win->CurrentTab()->filePath);
+    data.baseName.Set(str::Dup(path::GetPathNoExtTemp(name)));
+    data.folder.Set(str::Dup(path::GetDirTemp(win->CurrentTab()->filePath)));
+    CreateAppDialogBox(IDD_EXPORT_PAGE_IMAGES, win->hwndFrame, ExportPageImagesProc, (LPARAM)&data);
 }
 
 static TempStr FormatPdfDateTemp() {

@@ -158,6 +158,10 @@ struct MainWindow {
     HWND hwndToolbarFind = nullptr;
     Vec<int> toolbarOverflow;
     bool toolbarLayoutBusy = false;
+    int toolbarDpi = 96;
+    int toolbarMetricsDpi = 96;
+    Size toolbarBasePadding;
+    Size toolbarBaseSpacing;
     int toolbarPageSlotX = -1;
     // Kept for compatibility with toolbar theming code; the floating bar owns
     // the actual edit control.
@@ -352,6 +356,15 @@ struct MainWindow {
     int windowStateBeforePresentation = 0;
     bool suppressFrameRedraw = false;
     bool inSizeMove = false;
+    // Preserve the tab grab point throughout a detached-window move, including
+    // native move-loop adjustments and monitor DPI changes.
+    bool tabDragActive = false;
+    bool tabDragPositioning = false;
+    Point tabDragGrabOffset;
+    int tabDragSourceDpi = 96;
+    bool tabDragAnchorValid = false;
+    Point tabDragFrameOffset;
+    Rect tabDragAnchorTabRect;
 
     long nonFullScreenWindowStyle = 0;
     Rect nonFullScreenFrameRect;

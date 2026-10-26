@@ -19,6 +19,9 @@ class SumatraUIAutomationDocumentProvider : public IRawElementProviderFragment,
     SumatraUIAutomationPageProvider* child_last;
 
     DisplayModel* dm;
+    // UIA can query properties on its own threads while the UI unloads dm.
+    // Keep the document name independent of the controller/engine lifetime.
+    WCHAR* documentName = nullptr;
 
   public:
     SumatraUIAutomationDocumentProvider(HWND canvasHwnd, SumatraUIAutomationProvider* root);

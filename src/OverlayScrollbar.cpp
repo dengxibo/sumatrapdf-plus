@@ -932,13 +932,16 @@ void OverlayScrollbarUpdatePos(OverlayScrollbar* sb) {
         h = scrollW;
     }
 
-    LONG_PTR exStyle = GetWindowLongPtrW(sb->hwnd, GWL_EXSTYLE);
+    LONG_PTR oldExStyle = GetWindowLongPtrW(sb->hwnd, GWL_EXSTYLE);
+    LONG_PTR exStyle = oldExStyle;
     if (IsVisible(sb)) {
         exStyle &= ~WS_EX_TRANSPARENT;
     } else {
         exStyle |= WS_EX_TRANSPARENT;
     }
-    SetWindowLongPtrW(sb->hwnd, GWL_EXSTYLE, exStyle);
+    if (exStyle != oldExStyle) {
+        SetWindowLongPtrW(sb->hwnd, GWL_EXSTYLE, exStyle);
+    }
 
     UINT swpFlags = SWP_NOACTIVATE;
     // re-show the window if the state says it should be visible
@@ -958,6 +961,12 @@ void OverlayScrollbarUpdatePos(OverlayScrollbar* sb) {
     bool resized = current.right - current.left != w || current.bottom - current.top != h;
     if (current.left == x && current.top == y) swpFlags |= SWP_NOMOVE;
     if (!resized) swpFlags |= SWP_NOSIZE;
+    // No compositor/window-position work for an unchanged hidden scrollbar.
+    // WM_MOVE is sent for every step of an interactive frame drag.
+    if ((swpFlags & (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)) == (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER) &&
+        !(swpFlags & SWP_SHOWWINDOW)) {
+        return;
+    }
     SetWindowPos(sb->hwnd, IsVisible(sb) ? HWND_TOP : nullptr, x, y, w, h, swpFlags);
     // A layered window retains the old bitmap after SetWindowPos. Refresh
     // the thumb for the new track dimensions before presenting stale pixels.

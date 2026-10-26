@@ -1875,7 +1875,6 @@ void FindWindowReposition(MainWindow* win) {
     // the setting stays false; a move must not turn that window into the overlay.
     // Only reposition; don't push the frame DPI onto a window the user may have
     // moved to another monitor (GetDpiForWindow can lag during cross-monitor drags).
-    w->Layout();
     if (w->docked) {
         PositionDockedFindWindow(w);
     } else {
