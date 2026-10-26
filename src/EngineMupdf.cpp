@@ -4795,7 +4795,6 @@ static const char* kMdInlineCodeCssEyeCare =
 
 static TempStr BuildMarkdownUserCss(const char* nameHint, const char* filePath, float ldx, float ldy, float lfontDy) {
     (void)nameHint;
-    (void)filePath;
     (void)ldx;
     (void)lfontDy;
     (void)ldy;
@@ -4838,6 +4837,14 @@ pre {
     TempStr mdFontCss = BuildMarkdownFontCss();
     if (mdFontCss) {
         css = css ? str::JoinTemp(css, "\n", mdFontCss) : mdFontCss;
+    }
+    float fontSize = GetEbookReaderFontSizePt(filePath);
+    if (fontSize > 0.f) {
+        // Scale the Markdown body from its original size. Descendants retain
+        // their relative heading/code sizes, and resetting restores the CSS.
+        TempStr sizeCss =
+            str::FormatTemp("body { font-size: %.4fem !important; }\n", fontSize / kEbookFontSizeBuiltinPt);
+        css = css ? str::JoinTemp(css, "\n", sizeCss) : sizeCss;
     }
     return css;
 }

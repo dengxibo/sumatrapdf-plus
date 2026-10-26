@@ -636,10 +636,9 @@ bool IsReflowableEbookTabForFontMenu(WindowTab* tab) {
 }
 
 static bool IsExtWithoutFontSize(const char* ext) {
-    // Office keeps author sizes; Markdown layout ignores reader font-size CSS.
-    return ext &&
-           (str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".xlsx") || str::EqI(ext, ".pptx") ||
-            str::EqI(ext, ".hwpx") || str::EqI(ext, ".md") || str::EqI(ext, ".markdown"));
+    // Office keeps author sizes.
+    return ext && (str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".xlsx") ||
+                   str::EqI(ext, ".pptx") || str::EqI(ext, ".hwpx"));
 }
 
 bool SupportsEbookFontSizeChange(WindowTab* tab) {
