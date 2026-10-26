@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.71
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.71/SumatraPDF-Plus.exe
-Notes: Drag detached tabs as full windows, improve positioning across monitors, and preserve tab reordering and dropping onto another window.
-NotesZh: 标签拖出后完整窗口随鼠标移动，改善双屏定位，保留标签排序及拖入其他窗口。
+Latest: 3.7.72
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.72/SumatraPDF-Plus.exe
+Notes: Fix page-number flicker, improve cross-monitor tab dragging, and export PDF pages as PNG or JPEG with selectable DPI.
+NotesZh: 修复页码闪烁，改善跨屏标签拖动，新增可选 DPI 的 PDF 页面图片导出。
