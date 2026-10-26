@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.75
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.75/SumatraPDF-Plus.exe
-Notes: Export PDF images from a continuous page range and capture document regions with the scissors button beside annotation tools.
-NotesZh: PDF 图片导出支持连续页码范围；批注工具旁新增区域截图剪刀按钮，随批注工具一起显隐。
+Latest: 3.7.76
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.76/SumatraPDF-Plus.exe
+Notes: Refine the region capture scissors icon with symmetric blades, a narrower opening, and sizing and strokes that match the toolbar.
+NotesZh: 优化区域截图剪刀图标：刀刃对称、开口收窄，主体尺寸及描边与工具栏保持一致。
