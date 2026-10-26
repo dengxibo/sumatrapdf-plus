@@ -122,6 +122,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::AnnotFreeText, CmdCreateAnnotFreeText, _TRN("Free Text")},
     {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp")},
     {TbIcon::AnnotSignature, CmdAddHandwrittenSignature, _TRN("Handwritten Signature")},
+    {TbIcon::CapturePageRegion, CmdCapturePageRegion, _TRN("Capture Page Region")},
     {TbIcon::None, 0, nullptr},
     {TbIcon::DisplayFilter, CmdDisplayFilter, _TRN("Enhance Display")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
@@ -181,13 +182,15 @@ static ToolbarButtonInfo& GetToolbarButtonInfoByIdx(int idx) {
 
 static bool ToolbarButtonHiddenByPreference(int idx) {
     int cmd = GetToolbarButtonInfoByIdx(idx).cmdId;
-    return !gGlobalPrefs->showAnnotToolbarButtons &&
-           ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature);
+    return !gGlobalPrefs->showAnnotToolbarButtons && ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) ||
+                                                      cmd == CmdAddHandwrittenSignature || cmd == CmdCapturePageRegion);
 }
 
 static int ToolbarOverflowPriority(int idx) {
     int cmd = GetToolbarButtonInfoByIdx(idx).cmdId;
-    if ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature) return 0;
+    if ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature ||
+        cmd == CmdCapturePageRegion)
+        return 0;
     if (cmd == CmdRotateLeft || cmd == CmdRotateRight) return 1;
     if (cmd == CmdEbookFontSizeIncrease || cmd == CmdEbookFontSizeDecrease) return 2;
     if (idx >= kButtonsCount) return 4;
@@ -294,6 +297,7 @@ static int ToolbarOverflowGroup(int cmd) {
         cmd == CmdNavigateForward)
         return 1;
     if ((cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast) || cmd == CmdAddHandwrittenSignature) return 3;
+    if (cmd == CmdCapturePageRegion) return 3;
     if (cmd == CmdReadAloud || cmd == CmdPauseReadAloud) return 4;
     if (cmd == CmdToggleAutoOcr) return 5;
     if (cmd >= CmdLast) return 6;
@@ -308,6 +312,9 @@ static HMENU BuildToolbarOverflowMenu(MainWindow* win) {
                             _TRA("Reading"), _TRA("OCR"),        _TRA("Other tools")};
     for (int idx : win->toolbarOverflow) {
         auto& info = GetToolbarButtonInfoByIdx(idx);
+        // Region capture disappears with the annotation tools; its existing
+        // mouse shortcut remains available without a separate overflow entry.
+        if (info.cmdId == CmdCapturePageRegion) continue;
         int group = idx >= kButtonsCount ? 6 : ToolbarOverflowGroup(info.cmdId);
         if (!groups[group]) groups[group] = CreatePopupMenu();
         int cmd = info.cmdId == PageInfoId ? CmdGoToPage : info.cmdId;
@@ -695,6 +702,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdCreateAnnotInk:
         case CmdCreateAnnotStamp:
         case CmdAddHandwrittenSignature:
+        case CmdCapturePageRegion:
             if (!gGlobalPrefs->showAnnotToolbarButtons) {
                 return false;
             }
@@ -899,8 +907,8 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility, boo
         if (setButtonsVisibility && cmdId != WarningMsgId && cmdId != 0) {
             // Document capabilities affect enabled state, not toolbar geometry.
             // Still honor the explicit preference to hide annotation tools.
-            bool annotationTool =
-                (cmdId >= CmdCreateAnnotFirst && cmdId <= CmdCreateAnnotLast) || cmdId == CmdAddHandwrittenSignature;
+            bool annotationTool = (cmdId >= CmdCreateAnnotFirst && cmdId <= CmdCreateAnnotLast) ||
+                                  cmdId == CmdAddHandwrittenSignature || cmdId == CmdCapturePageRegion;
             bool hide = annotationTool && !gGlobalPrefs->showAnnotToolbarButtons;
             UpdateToolbarButtonStateByIdx(hwnd, i, hide, TBSTATE_HIDDEN);
         }

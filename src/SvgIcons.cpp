@@ -605,6 +605,13 @@ static const char* gIconResetAppearance =
   <path fill="currentColor" d="M864 512a352 352 0 0 0-600.96-248.96c-15.744 15.872-40.704 42.88-63.232 67.648H320a32 32 0 1 1 0 64H128a31.872 31.872 0 0 1-32-32v-192a32 32 0 1 1 64 0v108.672c20.544-22.528 42.688-46.4 57.856-61.504a416 416 0 1 1 0 588.288 32 32 0 1 1 45.248-45.248A352 352 0 0 0 864 512z" />
 </svg>)";
 
+static const char* gIconCapturePageRegion =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="7.1" cy="16.8" r="2.4" />
+  <circle cx="16.9" cy="16.8" r="2.4" />
+  <path d="M15.4 14.9L6.7 4.8M17.3 4.8L12.8 10M11.1 12L8.6 14.9" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -672,6 +679,7 @@ static const char* gIcons[] = {
     gIconAnnotFreeText,
     gIconResetAppearance,
     gIconRotate180,
+    gIconCapturePageRegion,
 };
 // clang-format on
 

@@ -301,7 +301,8 @@ enum {
     CmdAddHandwrittenSignature = 490,
     CmdOpenAskAi = 491,
     CmdExportPageImages = 492,
-    CmdNone = 493,
+    CmdCapturePageRegion = 493,
+    CmdNone = 494,
 
     /* range for file history */
     CmdFileHistoryFirst,

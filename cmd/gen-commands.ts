@@ -296,6 +296,7 @@ export const commands = [
     "CmdAddHandwrittenSignature", "Add Handwritten Signature",
     "CmdOpenAskAi", "Open Ask AI",
     "CmdExportPageImages", "Export pages as images...",
+    "CmdCapturePageRegion", "Capture Page Region",
     "CmdNone", "Do nothing",
 ];
 

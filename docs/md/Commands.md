@@ -557,7 +557,7 @@ We log information about unsuccessful parsing of a shortcut so [check the logs](
 
 ## Quick image export and cropping
 
-`CmdExportPageImages` opens **File → Export pages as images...** for a loaded PDF. Choose all pages or the current page, PNG or JPEG, an output folder, and 96 / 150 / 200 / 300 / 600 DPI (default 300). Each export creates a new `document-images` subfolder, adding a numeric suffix if necessary, and writes one image per page as `document-001.png` (or `.jpg`). Existing files are not overwritten. Output uses the document's original colors and current view rotation, including current PDF annotations and page edits. Display themes and monitor DPI do not affect image resolution.
+`CmdExportPageImages` opens **File → Export pages as images...** for a loaded PDF. Choose the current page, a continuous page range (for example `30-45`, including both endpoints; selected by default with a dedicated input and page-count hint), or all pages, PNG or JPEG, an output folder, and 96 / 150 / 200 / 300 / 600 DPI (default 300). Each export creates a new `document-images` subfolder, adding a numeric suffix if necessary, and writes one image per page as `document-001.png` (or `.jpg`). Existing files are not overwritten. Output uses the document's original colors and current view rotation, including current PDF annotations and page edits. Display themes and monitor DPI do not affect image resolution.
 
 Export runs on a worker thread and shows progress. Cancel stops after the current page finishes rendering or encoding; completed images remain in the output folder. Oversized pages report an error with a request to lower DPI rather than allocating unbounded bitmap memory. The export dialog uses the application's standard themed controls and Windows per-monitor-v2 dialog scaling.
 
@@ -572,3 +572,6 @@ In the crop window, drag to draw a new selection, drag one of the eight handles 
 ## Responsive toolbar
 
 When the window becomes narrow, lower-priority tools move into the **More tools** menu, grouped by function. Widen the window to restore them. The menu retains checked and disabled states, custom toolbar commands, and OCR/read-aloud options. Search keeps the same edit control and query while resizing. In very narrow windows the search field collapses secondary icons; these commands remain in the menu. If the page-number field cannot fit, use **Navigation → Go to Page...** from the menu. Tab from search reaches the toolbar overflow button; Enter or Space opens the menu.
+
+
+`CmdCapturePageRegion` starts document region capture. The toolbar button beside the annotation tools lets you drag a region without holding Shift+Alt. Release the pointer to preview and save the image; press Escape to cancel. It is available for fixed-layout documents that allow copying, and follows the annotation toolbar visibility setting. In narrow windows it hides with the annotation buttons and has no separate entry in More tools; Shift+Alt+drag remains available.

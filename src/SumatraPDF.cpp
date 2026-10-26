@@ -12036,6 +12036,16 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             ShowLogFileSmart();
             break;
 
+        case CmdCapturePageRegion:
+            if (win->AsFixed() && HasPermission(Perm::CopySelection)) {
+                SetAnnotCreateTool(win, 0);
+                CancelDrag(win);
+                win->imageRegionPending = true;
+                HwndSetFocus(win->hwndFrame);
+                SetCursorCached(IDC_CROSS);
+            }
+            break;
+
         case CmdScreenshot:
             TakeScreenshots();
             break;

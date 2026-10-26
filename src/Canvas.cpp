@@ -1070,6 +1070,7 @@ void CancelDrag(MainWindow* win) {
     win->ebookAnnotationDragPending = nullptr;
     win->annotationBeingResized = false;
     win->ocrRegionPending = false;
+    win->imageRegionPending = false;
     win->ocrRegionFromModifier = false;
     SetCursorCached(IDC_ARROW);
 }
@@ -2672,11 +2673,12 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     HwndSetFocus(win->hwndFrame);
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
-    if (IsAltPressed() && IsShiftPressed() && !IsCtrlPressed()) {
+    if (win->imageRegionPending || (IsAltPressed() && IsShiftPressed() && !IsCtrlPressed())) {
         // This gesture takes precedence over OCR, pan and annotation tools.
         int pageNo = dm->GetPageNoByPoint(pt);
-        gSupressNextAltMenuTrigger = true;
+        if (IsAltPressed()) gSupressNextAltMenuTrigger = true;
         if (HasPermission(Perm::CopySelection) && dm->ValidPageNo(pageNo)) {
+            win->imageRegionPending = false;
             win->imageRegionPageNo = pageNo;
             win->imageRegionTab = win->CurrentTab();
             win->annotCreateDragStart = pt;
@@ -4057,7 +4059,8 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
         SetCursorCached(IDC_HAND);
         return TRUE;
     }
-    if (HandwrittenSignatureIsPlacing(win) || win->annotCreateToolCmd != 0 || win->ocrRegionPending) {
+    if (HandwrittenSignatureIsPlacing(win) || win->annotCreateToolCmd != 0 || win->ocrRegionPending ||
+        win->imageRegionPending) {
         SetCursorCached(IDC_CROSS);
         return TRUE;
     }

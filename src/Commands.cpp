@@ -306,6 +306,7 @@ static SeqStrings gCommandNames =
     "CmdAddHandwrittenSignature\0"
     "CmdOpenAskAi\0"
     "CmdExportPageImages\0"
+    "CmdCapturePageRegion\0"
     "CmdNone\0"
     "\0";
 
@@ -602,6 +603,7 @@ static i32 gCommandIds[] = {
     CmdAddHandwrittenSignature,
     CmdOpenAskAi,
     CmdExportPageImages,
+    CmdCapturePageRegion,
     CmdNone,
 };
 
@@ -898,6 +900,7 @@ SeqStrings gCommandDescriptions =
     "Add Handwritten Signature\0"
     "Open Ask AI\0"
     "Export pages as images...\0"
+    "Capture Page Region\0"
     "Do nothing\0"
     "\0";
 // clang-format on

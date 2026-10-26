@@ -204,6 +204,7 @@ static void InstallWarmCombo(HWND hwnd);
 constexpr const wchar_t* kWarmComboProp = L"SumatraWarmCombo";
 
 constexpr UINT_PTR kWarmEditSubclassId = 0xA11D;
+constexpr const wchar_t* kCenteredEditProp = L"SumatraCenteredEdit";
 
 static COLORREF WarmComboPageColor(HWND hwnd);
 
@@ -284,7 +285,32 @@ static LRESULT CALLBACK WarmEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, 
             // Reserve the whole corner radius horizontally; a thin vertical
             // rim keeps compact single-line fields tall enough for their font.
             InflateRect(rc, -std::max(4, DpiScale(hwnd, 4)), -std::max(1, DpiScale(hwnd, 1)));
+            if (GetPropW(hwnd, kCenteredEditProp)) {
+                HDC dc = GetDC(hwnd);
+                if (dc) {
+                    TEXTMETRICW metrics{};
+                    bool measured = false;
+                    {
+                        ScopedSelectObject font(dc, GetWindowFont(hwnd));
+                        measured = GetTextMetricsW(dc, &metrics);
+                    }
+                    ReleaseDC(hwnd, dc);
+                    if (measured) {
+                        int extra = std::max(0L, rc->bottom - rc->top - metrics.tmHeight);
+                        rc->top += extra / 2;
+                        rc->bottom -= extra - extra / 2;
+                    }
+                }
+            }
             return 0;
+        }
+        case WM_SETFONT: {
+            LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+            if (GetPropW(hwnd, kCenteredEditProp)) {
+                SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
+            return result;
         }
         case WM_NCPAINT:
             PaintWarmEditFrame(hwnd);
@@ -297,6 +323,7 @@ static LRESULT CALLBACK WarmEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, 
             return result;
         }
         case WM_NCDESTROY:
+            RemovePropW(hwnd, kCenteredEditProp);
             RemoveWindowSubclass(hwnd, WarmEditProc, id);
             break;
     }
@@ -330,7 +357,8 @@ static void InstallWarmEdit(HWND hwnd) {
     SendMessageW(hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad, pad));
 }
 
-void AppDialogStyleEdit(HWND hwnd) {
+void AppDialogStyleEdit(HWND hwnd, bool verticallyCenter) {
+    if (verticallyCenter) SetPropW(hwnd, kCenteredEditProp, (HANDLE)1);
     InstallWarmEdit(hwnd);
 }
 

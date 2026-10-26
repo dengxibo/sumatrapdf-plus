@@ -1332,8 +1332,11 @@ static void BrowsePageImageFolder(HWND hwnd) {
 }
 
 static void EnablePageImageExportInputs(HWND hwnd, bool enable) {
-    int ids[] = {IDC_EXPORT_RANGE, IDC_EXPORT_FORMAT, IDC_EXPORT_DPI, IDC_EXPORT_FOLDER, IDC_EXPORT_BROWSE, IDOK};
+    int ids[] = {IDC_EXPORT_CURRENT, IDC_EXPORT_RANGE,  IDC_EXPORT_ALL,    IDC_EXPORT_FORMAT,
+                 IDC_EXPORT_DPI,     IDC_EXPORT_FOLDER, IDC_EXPORT_BROWSE, IDOK};
     for (int id : ids) EnableWindow(GetDlgItem(hwnd, id), enable);
+    EnableWindow(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE),
+                 enable && IsDlgButtonChecked(hwnd, IDC_EXPORT_RANGE) == BST_CHECKED);
     // Native themed controls repaint their client on WM_ENABLE, but their
     // rounded frames also need invalidation when returning from disabled state.
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
@@ -1378,6 +1381,26 @@ static LRESULT CALLBACK PageImageExportLabelProc(HWND hwnd, UINT msg, WPARAM wp,
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
+// Accept one inclusive interval and bound each number before accumulating it.
+static bool ParsePageImageExportRange(const char* text, int pageCount, int& first, int& last) {
+    int pages[2]{};
+    for (int i = 0; i < 2; i++) {
+        while (*text == ' ' || *text == '\t') text++;
+        if (*text < '0' || *text > '9') return false;
+        while (*text >= '0' && *text <= '9') {
+            int digit = *text++ - '0';
+            if (pages[i] > pageCount / 10 || (pages[i] == pageCount / 10 && digit > pageCount % 10)) return false;
+            pages[i] = pages[i] * 10 + digit;
+        }
+        while (*text == ' ' || *text == '\t') text++;
+        if (i == 0 && *text++ != '-') return false;
+    }
+    if (*text || pages[0] < 1 || pages[1] < pages[0]) return false;
+    first = pages[0];
+    last = pages[1];
+    return true;
+}
+
 static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     auto data = (PageImageExport*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if (msg == WM_INITDIALOG) {
@@ -1392,10 +1415,15 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         HwndSetDlgItemText(hwnd, IDC_EXPORT_HINT, _TRA("A new subfolder is created for each export."));
         HwndSetDlgItemText(hwnd, IDOK, _TRA("Export"));
         HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("Cancel"));
-        HWND range = GetDlgItem(hwnd, IDC_EXPORT_RANGE);
-        ComboBox_AddString(range, ToWStrTemp(_TRA("All pages")));
-        ComboBox_AddString(range, ToWStrTemp(_TRA("Current page")));
-        ComboBox_SetCurSel(range, 0);
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_CURRENT, str::FormatTemp(_TRA("Current page (%d)"), data->currentPage));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_RANGE, _TRA("Page range"));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_ALL,
+                           str::FormatTemp(_TRA("All pages (%d pages)"), data->engine->PageCount()));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_RANGE_HINT,
+                           str::FormatTemp(_TRA("Pages 1-%d. Example: 30-45 (inclusive)."), data->engine->PageCount()));
+        CheckDlgButton(hwnd, IDC_EXPORT_RANGE, BST_CHECKED);
+        SendDlgItemMessageW(hwnd, IDC_EXPORT_PAGE_RANGE, EM_SETCUEBANNER, TRUE,
+                            (LPARAM)ToWStrTemp(_TRA("Example: 30-45")));
         HWND format = GetDlgItem(hwnd, IDC_EXPORT_FORMAT);
         ComboBox_AddString(format, L"PNG");
         ComboBox_AddString(format, L"JPEG");
@@ -1405,12 +1433,15 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         for (const WCHAR* value : resolutions) ComboBox_AddString(dpi, value);
         ComboBox_SetCurSel(dpi, 3);
         HwndSetDlgItemText(hwnd, IDC_EXPORT_FOLDER, data->folder);
-        int labels[] = {IDC_EXPORT_RANGE_LABEL,  IDC_EXPORT_FORMAT_LABEL, IDC_EXPORT_DPI_LABEL,
-                        IDC_EXPORT_FOLDER_LABEL, IDC_EXPORT_HINT,         IDC_EXPORT_STATUS};
+        AppDialogStyleEdit(GetDlgItem(hwnd, IDC_EXPORT_FOLDER), true);
+        AppDialogStyleEdit(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE), true);
+        int labels[] = {IDC_EXPORT_RANGE_LABEL, IDC_EXPORT_FORMAT_LABEL, IDC_EXPORT_DPI_LABEL, IDC_EXPORT_FOLDER_LABEL,
+                        IDC_EXPORT_HINT,        IDC_EXPORT_STATUS,       IDC_EXPORT_RANGE_HINT};
         for (int id : labels) SetWindowSubclass(GetDlgItem(hwnd, id), PageImageExportLabelProc, 1, 0);
         SendDlgItemMessageW(hwnd, IDC_EXPORT_PROGRESS, PBM_SETRANGE32, 0, data->engine->PageCount());
         CenterDialog(hwnd);
-        return TRUE;
+        HwndSetFocus(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE));
+        return FALSE;
     }
     if (!data) return FALSE;
     switch (msg) {
@@ -1462,6 +1493,18 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             return TRUE;
         case WM_COMMAND:
             switch (LOWORD(wp)) {
+                case IDC_EXPORT_CURRENT:
+                case IDC_EXPORT_ALL:
+                case IDC_EXPORT_RANGE:
+                    if (!data->thread && HIWORD(wp) == BN_CLICKED) {
+                        bool range = IsDlgButtonChecked(hwnd, IDC_EXPORT_RANGE) == BST_CHECKED;
+                        EnableWindow(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE), range);
+                        if (range) {
+                            HwndSetFocus(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE));
+                            SendDlgItemMessageW(hwnd, IDC_EXPORT_PAGE_RANGE, EM_SETSEL, 0, -1);
+                        }
+                    }
+                    return TRUE;
                 case IDC_EXPORT_BROWSE:
                     if (!data->thread) BrowsePageImageFolder(hwnd);
                     return TRUE;
@@ -1476,6 +1519,23 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                     return TRUE;
                 case IDOK: {
                     if (data->thread) return TRUE;
+                    int selection = IsDlgButtonChecked(hwnd, IDC_EXPORT_CURRENT) == BST_CHECKED ? 0
+                                    : IsDlgButtonChecked(hwnd, IDC_EXPORT_RANGE) == BST_CHECKED ? 1
+                                                                                                : 2;
+                    data->firstPage = selection == 0 ? data->currentPage : 1;
+                    data->lastPage = selection == 0 ? data->currentPage : data->engine->PageCount();
+                    if (selection == 1) {
+                        TempStr range = HwndGetTextTemp(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE));
+                        if (!ParsePageImageExportRange(range, data->engine->PageCount(), data->firstPage,
+                                                       data->lastPage)) {
+                            HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS,
+                                               str::FormatTemp(_TRA("Enter a page range such as 30-45 (1-%d)."),
+                                                               data->engine->PageCount()));
+                            HwndSetFocus(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE));
+                            SendDlgItemMessageW(hwnd, IDC_EXPORT_PAGE_RANGE, EM_SETSEL, 0, -1);
+                            return TRUE;
+                        }
+                    }
                     data->folder.Set(str::Dup(HwndGetTextTemp(GetDlgItem(hwnd, IDC_EXPORT_FOLDER))));
                     if (!path::IsDirectory(data->folder)) {
                         HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Choose an existing output folder."));
@@ -1486,9 +1546,6 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                         HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS, _TRA("Could not create the output folder."));
                         return TRUE;
                     }
-                    bool current = ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_EXPORT_RANGE)) == 1;
-                    data->firstPage = current ? data->currentPage : 1;
-                    data->lastPage = current ? data->currentPage : data->engine->PageCount();
                     constexpr int resolutions[] = {96, 150, 200, 300, 600};
                     int idx = (int)ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_EXPORT_DPI));
                     data->dpi = resolutions[idx >= 0 && idx < dimof(resolutions) ? idx : 3];

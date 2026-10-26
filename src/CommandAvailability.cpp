@@ -420,6 +420,10 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     if (origCmdId == CmdExportPageImages) {
         return CanAccessDisk() && ctx.isPdf && ctx.isDocLoaded ? CommandVisibility::Show : CommandVisibility::Disable;
     }
+    if (origCmdId == CmdCapturePageRegion) {
+        return ctx.tab && ctx.tab->AsFixed() && HasPermission(Perm::CopySelection) ? CommandVisibility::Show
+                                                                                   : CommandVisibility::Disable;
+    }
     if (origCmdId == CmdSetTheme) {
         return CommandVisibility::Show;
     }

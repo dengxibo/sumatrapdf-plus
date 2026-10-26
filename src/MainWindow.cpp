@@ -228,6 +228,7 @@ void SetAnnotCreateTool(MainWindow* win, int cmdId) {
         return;
     }
     HandwrittenSignatureCancelPlace(win);
+    win->imageRegionPending = false;
     if (cmdId == 0 || win->annotCreateToolCmd == cmdId) {
         win->annotCreateToolCmd = 0;
         win->annotCreateToolLocked = false;

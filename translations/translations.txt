@@ -44093,3 +44093,31 @@ cn:不透明度：%d%%
 tw:不透明度：%d%%
 de:Deckkraft: %d%%
 ar:التعتيم: %d%%
+
+:Page range
+cn:指定范围
+tw:指定範圍
+
+:Enter a page range such as 30-45 (1-%d).
+cn:请输入连续页码范围，如 30-45（有效页码：1-%d）。
+tw:請輸入連續頁碼範圍，如 30-45（有效頁碼：1-%d）。
+
+:Current page (%d)
+cn:当前页（第 %d 页）
+tw:目前頁面（第 %d 頁）
+
+:All pages (%d pages)
+cn:全部页面（共 %d 页）
+tw:全部頁面（共 %d 頁）
+
+:Pages 1-%d. Example: 30-45 (inclusive).
+cn:有效页码：1-%d；例如 30-45，包含首尾页。
+tw:有效頁碼：1-%d；例如 30-45，包含首尾頁。
+
+:Example: 30-45
+cn:例如：30-45
+tw:例如：30-45
+
+:Capture Page Region
+cn:区域截图
+tw:區域截圖

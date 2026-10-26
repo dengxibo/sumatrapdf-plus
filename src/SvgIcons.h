@@ -71,6 +71,7 @@ enum class TbIcon {
     AnnotFreeText,
     ResetAppearance,
     Rotate180,
+    CapturePageRegion,
     kMax
 };
 
