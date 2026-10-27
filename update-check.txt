@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.78
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.78/SumatraPDF-Plus.exe
-Notes: Reduce and reposition the region capture camera icon; correct SVG positioning so its offset takes effect in the application.
-NotesZh: 缩小并调整区域截图相机图标的位置，修正 SVG 定位方式，确保主体偏移在程序中生效。
+Latest: 3.7.79
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.79/SumatraPDF-Plus.exe
+Notes: Fix PDF text markup deletion errors, localize the error window title, and restore text window selection and copy shortcuts.
+NotesZh: 修复删除 PDF 文本标注时报错，错误窗口标题支持本地化，恢复文本窗口全选和复制快捷键。
