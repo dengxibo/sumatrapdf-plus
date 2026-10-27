@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.76
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.76/SumatraPDF-Plus.exe
-Notes: Refine the region capture scissors icon with symmetric blades, a narrower opening, and sizing and strokes that match the toolbar.
-NotesZh: 优化区域截图剪刀图标：刀刃对称、开口收窄，主体尺寸及描边与工具栏保持一致。
+Latest: 3.7.77
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.77/SumatraPDF-Plus.exe
+Notes: Replace the region capture button with a camera icon, sized and lightened to match the toolbar and follow theme colors.
+NotesZh: 区域截图按钮改为相机图标，协调主体大小和浓淡，并跟随主题颜色。
