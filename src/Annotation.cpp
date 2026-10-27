@@ -1970,9 +1970,13 @@ float BorderWidthF(Annotation* annot) {
     auto a = annot->pdfannot;
     auto ctx = e->Ctx();
     ScopedCritSec cs(&e->docLock);
-    float res = 0;
+    float res = 1.f;
     fz_try(ctx) {
-        res = pdf_annot_border(ctx, a);
+        // Text markup and icon annotations have no BS property. Asking MuPDF
+        // for their border width reports an argument error even on deletion.
+        if (pdf_annot_has_border(ctx, a)) {
+            res = pdf_annot_border(ctx, a);
+        }
     }
     fz_catch(ctx) {
         fz_report_error(ctx);

@@ -705,7 +705,7 @@ bool PumpAppMessage(MSG& msg) {
         PostQuitMessage((int)msg.wParam);
         return false;
     }
-    if (ImageEditWindowPreTranslate(msg) || InlineTranslatePopupPreTranslate(msg)) {
+    if (TextViewWindowPreTranslate(msg) || ImageEditWindowPreTranslate(msg) || InlineTranslatePopupPreTranslate(msg)) {
         return true;
     }
     // The splitter is one pixel. The <-> arrow is wider than that, and its

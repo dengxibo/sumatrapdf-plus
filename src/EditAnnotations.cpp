@@ -513,7 +513,9 @@ static PdfDeletedAnnotCover* RememberPdfDeletedAnnotCover(WindowTab* tab, Annota
     auto* cover = new PdfDeletedAnnotCover();
     cover->pageNo = annot->pageNo;
     cover->type = annot->type;
-    cover->borderWidth = BorderWidthF(annot);
+    if (AnnotationSupportsBorder(annot->type)) {
+        cover->borderWidth = BorderWidthF(annot);
+    }
     cover->bounds = GetBounds(annot);
     switch (annot->type) {
         case AnnotationType::Ink:
@@ -3570,6 +3572,26 @@ bool TestPdfAnnotationAppearance(MainWindow* win, const char* outputDir) {
     EngineBase* engine = tab->GetEngine();
     AnnotCreateArgs args;
     ParseColor(args.col, "#ffff00");
+    bool markupOk = true;
+    for (AnnotationType type :
+         {AnnotationType::Highlight, AnnotationType::Underline, AnnotationType::Squiggly, AnnotationType::StrikeOut}) {
+        int errorsBefore = engine->errors.Size();
+        args.annotType = type;
+        Annotation* markup = EngineMupdfCreateAnnotation(engine, 1, {}, &args);
+        bool valid = markup != nullptr;
+        if (markup) {
+            Vec<RectF> quads;
+            quads.Append(RectF(20, 20, 80, 12));
+            SetQuadPointsAsRect(markup, quads);
+            valid = BorderWidthF(markup) == 1.f;
+            DeleteAnnotationAndUpdateUI(tab, markup);
+        }
+        valid = valid && engine->errors.Size() == errorsBefore;
+        fprintf(report, "Text markup create/delete type=%d, no property errors: %s\n", (int)type,
+                valid ? "PASS" : "FAIL");
+        fflush(report);
+        markupOk = valid && markupOk;
+    }
     Vec<Annotation*> shapes;
     for (AnnotationType type :
          {AnnotationType::Square, AnnotationType::Circle, AnnotationType::Line, AnnotationType::Ink}) {
@@ -3586,7 +3608,7 @@ bool TestPdfAnnotationAppearance(MainWindow* win, const char* outputDir) {
         if (AnnotationSupportsOpacity(type)) SetOpacity(shape, 64);
         shapes.Append(shape);
     }
-    bool ok = true;
+    bool ok = markupOk;
     for (const char* theme : {"Light-Warm", "Light-White", "Dark-Dracula", "Dark-Black"}) {
         SetTheme(theme);
         for (const char* lang : {"cn", "tw", "en", "de", "ar"}) {

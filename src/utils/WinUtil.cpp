@@ -5180,7 +5180,42 @@ int MsgBox(HWND hwnd, const char* text, const char* caption, UINT flags) {
 
 static const WCHAR* kPropHwndPtr = L"HwndPtr";
 
+bool TextViewWindowPreTranslate(MSG& msg) {
+    if (msg.message < WM_KEYFIRST || msg.message > WM_KEYLAST) {
+        return false;
+    }
+    HWND root = GetAncestor(msg.hwnd, GA_ROOT);
+    WCHAR className[64]{};
+    GetClassNameW(root, className, dimof(className));
+    if (!str::Eq(className, L"SumatraPDF_TextViewWnd") && !str::Eq(className, L"SumatraPDF_TextViewDlgWnd")) {
+        return false;
+    }
+    HWND edit = (HWND)GetWindowLongPtr(root, GWLP_USERDATA);
+    if (msg.message == WM_KEYDOWN && IsCtrlPressed() && !IsAltPressed()) {
+        if (msg.wParam == 'A') {
+            SendMessageW(edit, EM_SETSEL, 0, -1);
+            return true;
+        }
+        if (msg.wParam == 'C' || msg.wParam == VK_INSERT) {
+            SendMessageW(edit, WM_COPY, 0, 0);
+            return true;
+        }
+    }
+    // These windows are independent of the document frame. In particular,
+    // don't let the last active frame's accelerators consume their edit keys.
+    TranslateMessage(&msg);
+    DispatchMessageW(&msg);
+    return true;
+}
+
 static LRESULT CALLBACK WndProcTextView(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_SETFOCUS) {
+        HWND edit = (HWND)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        if (edit) {
+            SetFocus(edit);
+        }
+        return 0;
+    }
     if (msg == WM_SIZE) {
         HWND hwndEdit = (HWND)GetWindowLongPtr(hwnd, GWLP_USERDATA);
         if (hwndEdit) {
@@ -5288,6 +5323,9 @@ void ShowTextInWindowDialog(const char* title, const char* text) {
     }
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0)) {
+        if (TextViewWindowPreTranslate(msg)) {
+            continue;
+        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }

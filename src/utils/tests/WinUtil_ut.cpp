@@ -8,8 +8,66 @@
 // must be last due to assert() over-write
 #include "utils/UtAssert.h"
 
+static LRESULT CALLBACK CaptureTextViewCopy(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR /*id*/,
+                                            DWORD_PTR data) {
+    if (msg == WM_COPY) {
+        (*(int*)data)++;
+        return 0; // Exercise copy routing without changing the user's clipboard.
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void TestTextViewShortcuts() {
+    HWND tracked = nullptr;
+    HWND view = ShowTextInWindow("Text view test", "first\nsecond", &tracked);
+    utassert(view);
+    tracked = view;
+    ShowWindow(view, SW_HIDE);
+    HWND edit = FindWindowExW(view, nullptr, WC_EDITW, nullptr);
+    utassert(edit && (GetWindowLongW(edit, GWL_STYLE) & ES_READONLY));
+    BYTE savedKeys[256]{};
+    utassert(GetKeyboardState(savedKeys));
+    defer {
+        SetKeyboardState(savedKeys);
+        DestroyWindow(view);
+    };
+    BYTE keys[256]{};
+    keys[VK_CONTROL] = 0x80;
+    utassert(SetKeyboardState(keys));
+    MSG msg{};
+    msg.hwnd = edit;
+    msg.message = WM_KEYDOWN;
+    msg.wParam = 'A';
+    utassert(TextViewWindowPreTranslate(msg));
+    DWORD start = 0, end = 0;
+    SendMessageW(edit, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+    utassert(start == 0 && end == 13); // CRLF-normalized text.
+
+    int copies = 0;
+    UINT_PTR id = NextSubclassId();
+    utassert(SetWindowSubclass(edit, CaptureTextViewCopy, id, (DWORD_PTR)&copies));
+    msg.wParam = 'C';
+    utassert(TextViewWindowPreTranslate(msg) && copies == 1);
+    msg.wParam = VK_INSERT;
+    utassert(TextViewWindowPreTranslate(msg) && copies == 2);
+    RemoveWindowSubclass(edit, CaptureTextViewCopy, id);
+
+    keys[VK_CONTROL] = 0;
+    utassert(SetKeyboardState(keys));
+    msg.message = WM_CHAR;
+    msg.wParam = 'X';
+    utassert(TextViewWindowPreTranslate(msg));
+    utassert(str::Eq(HwndGetTextTemp(edit), "first\r\nsecond"));
+    msg.hwnd = GetDesktopWindow();
+    utassert(!TextViewWindowPreTranslate(msg));
+    DestroyWindow(view);
+    utassert(tracked == nullptr);
+    view = nullptr;
+}
+
 void WinUtilTest() {
     ScopedCom comScope;
+    TestTextViewShortcuts();
 
     {
         const char* string = "abcde";

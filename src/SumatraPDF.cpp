@@ -12726,7 +12726,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             EngineBase* engine = dm ? dm->GetEngine() : nullptr;
             if (engine && engine->errors.Size() > 0) {
                 char* text = Join(&engine->errors, "");
-                ShowTextInWindow("Errors", text);
+                ShowTextInWindow(_TRA("Error"), text);
                 str::Free(text);
             }
             break;

@@ -441,6 +441,7 @@ using NativeMessageBoxHandler = int (*)(HWND, const WCHAR*, const WCHAR*, UINT);
 void SetNativeMessageBoxHandler(NativeMessageBoxHandler handler);
 int NativeMessageBox(HWND hwnd, const WCHAR* text, const WCHAR* caption, UINT flags);
 int MsgBox(HWND, const char*, const char*, UINT);
+bool TextViewWindowPreTranslate(MSG& msg);
 HWND ShowTextInWindow(const char* title, const char* text, HWND* hwndPtr = nullptr);
 void ShowTextInWindowDialog(const char* title, const char* text);
 
