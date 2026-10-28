@@ -6261,6 +6261,7 @@ static void OnMenuExit() {
 // into the tab right afterwards and ReplaceDocumentInCurrentTab would revert
 // the UI disabling afterwards anyway)
 static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool deleteModel) {
+    HideSelectionToolbar(win);
     EndFreeTextInPlaceEditForTab(win->CurrentTab(), true);
     if (win->ctrl && !WinCtrlIsOwnedByAnyTab(win, win->ctrl)) {
         win->ctrl = nullptr;
@@ -7134,6 +7135,12 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
     // is already cleaned up by the reentrant CloseWindow().
     if (!IsMainWindowValid(win)) {
         return;
+    }
+
+    // The toolbar belongs to the document being closed. Hide it before
+    // detaching the controller or removing the tab it references.
+    if (closingCurrent) {
+        HideSelectionToolbar(win);
     }
 
     // Stop eventual TTS reading
@@ -10352,6 +10359,11 @@ bool IsSidebarSplitterLiveDrag() {
 
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp) {
     if (!win || !win->sidebarSplitter || !win->sidebarSplitter->hwnd || !IsWindowVisible(win->sidebarSplitter->hwnd)) {
+        return false;
+    }
+    // Owned dialogs can resolve to this MainWindow too. Only intercept mouse
+    // messages from the frame itself or its child controls, never its popups.
+    if (!IsWindowEnabled(win->hwndFrame) || GetAncestor(sourceHwnd, GA_ROOT) != win->hwndFrame) {
         return false;
     }
     POINT pt{};

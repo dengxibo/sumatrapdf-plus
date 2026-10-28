@@ -428,6 +428,11 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return CommandVisibility::Show;
     }
     if (origCmdId == CmdSetEbookLatinFont || origCmdId == CmdSetEbookCjkFont) {
+        // Individual font families apply to reflowable ebooks. Keep the
+        // general font commands available for configuring the defaults.
+        if (surface == CommandSurface::Palette && cmd && !ctx.isReflowableEbook) {
+            return CommandVisibility::Hide;
+        }
         return CommandVisibility::Show;
     }
     if (origCmdId == CmdEbookFontSizeIncrease) {
