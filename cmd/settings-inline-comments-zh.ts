@@ -99,6 +99,7 @@ export const settingsInlineCommentsZh: Record<string, string> = {
   "ComicBookUI.CbxMangaMode": "日式右向左阅读",
   "ComicBookUI.WindowBgCol": "漫画画布背景色",
   ImageOpenAfterSave: "图片保存后打开结果，默认关闭",
+  PageImagesOpenFolderAfterExport: "PDF 页面全部导出成功后打开输出子目录，默认开启",
   ImageSaveFolder: "最近成功保存图片的目录；目录失效时使用默认目录",
   ImageUI: "图片文件界面",
   "ImageUI.WindowBgCol": "图片画布背景色",

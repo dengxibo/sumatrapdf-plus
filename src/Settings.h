@@ -716,6 +716,9 @@ struct GlobalPrefs {
     ImageUI imageUI;
     // open exported images after saving
     bool imageOpenAfterSave;
+    // open the output subfolder after all PDF pages are exported
+    // successfully
+    bool pageImagesOpenFolderAfterExport;
     // last successful image export folder; falls back to the default if
     // unavailable
     char* imageSaveFolder;
@@ -1143,8 +1146,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-61.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-61.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-80.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-80.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1252,6 +1255,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, imageUI), SettingType::Struct, (intptr_t)&gImageUIInfo, "图片文件界面"},
     {offsetof(GlobalPrefs, imageOpenAfterSave), SettingType::Bool, false, "图片保存后打开结果，默认关闭"},
+    {offsetof(GlobalPrefs, pageImagesOpenFolderAfterExport), SettingType::Bool, true,
+     "PDF 页面全部导出成功后打开输出子目录，默认开启"},
     {offsetof(GlobalPrefs, imageSaveFolder), SettingType::String, 0, "最近成功保存图片的目录；目录失效时使用默认目录"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, chmUI), SettingType::Struct, (intptr_t)&gChmUIInfo, "CHM 帮助文档界面"},
@@ -1311,7 +1316,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 145, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 146, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
@@ -1324,14 +1329,14 @@ static const StructInfo gGlobalPrefsInfo = {
     "eelScrollLines\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0Las"
     "tDarkTheme\0LastLightTheme\0DocumentColorMode\0DocumentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFo"
     "ntSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0Z"
-    "oomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0ImageOpenAfterSave\0ImageSaveFolder"
-    "\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers"
-    "\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAlou"
-    "dSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVo"
-    "iceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0NarrationUseBookAudio\0NarrationU"
-    "seBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0Sea"
-    "rchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek"
-    "\0PropWinPos\0\0"};
+    "oomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0ImageOpenAfterSave\0PageImagesOpenFo"
+    "lderAfterExport\0ImageSaveFolder\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0"
+    "\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0"
+    "ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnli"
+    "neVoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0"
+    "NarrationUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionTo"
+    "Skip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeO"
+    "fUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

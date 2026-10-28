@@ -1332,8 +1332,9 @@ static void BrowsePageImageFolder(HWND hwnd) {
 }
 
 static void EnablePageImageExportInputs(HWND hwnd, bool enable) {
-    int ids[] = {IDC_EXPORT_CURRENT, IDC_EXPORT_RANGE,  IDC_EXPORT_ALL,    IDC_EXPORT_FORMAT,
-                 IDC_EXPORT_DPI,     IDC_EXPORT_FOLDER, IDC_EXPORT_BROWSE, IDOK};
+    int ids[] = {IDC_EXPORT_CURRENT, IDC_EXPORT_RANGE,       IDC_EXPORT_ALL,
+                 IDC_EXPORT_FORMAT,  IDC_EXPORT_DPI,         IDC_EXPORT_FOLDER,
+                 IDC_EXPORT_BROWSE,  IDC_EXPORT_OPEN_FOLDER, IDOK};
     for (int id : ids) EnableWindow(GetDlgItem(hwnd, id), enable);
     EnableWindow(GetDlgItem(hwnd, IDC_EXPORT_PAGE_RANGE),
                  enable && IsDlgButtonChecked(hwnd, IDC_EXPORT_RANGE) == BST_CHECKED);
@@ -1413,6 +1414,9 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         HwndSetDlgItemText(hwnd, IDC_EXPORT_FOLDER_LABEL, _TRA("Save in folder:"));
         HwndSetDlgItemText(hwnd, IDC_EXPORT_BROWSE, _TRA("Browse..."));
         HwndSetDlgItemText(hwnd, IDC_EXPORT_HINT, _TRA("A new subfolder is created for each export."));
+        HwndSetDlgItemText(hwnd, IDC_EXPORT_OPEN_FOLDER, _TRA("Open folder after successful export"));
+        CheckDlgButton(hwnd, IDC_EXPORT_OPEN_FOLDER,
+                       gGlobalPrefs->pageImagesOpenFolderAfterExport ? BST_CHECKED : BST_UNCHECKED);
         HwndSetDlgItemText(hwnd, IDOK, _TRA("Export"));
         HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("Cancel"));
         HwndSetDlgItemText(hwnd, IDC_EXPORT_CURRENT, str::FormatTemp(_TRA("Current page (%d)"), data->currentPage));
@@ -1482,6 +1486,8 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                     if (InterlockedCompareExchange(&data->cancel, 0, 0)) {
                         HwndSetDlgItemText(hwnd, IDC_EXPORT_STATUS,
                                            str::FormatTemp(_TRA("Cancelled. %d pages exported."), completed));
+                    } else if (completed == total && IsDlgButtonChecked(hwnd, IDC_EXPORT_OPEN_FOLDER) == BST_CHECKED) {
+                        LaunchFileShell(data->outputFolder);
                     }
                 }
                 RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
@@ -1493,6 +1499,13 @@ static INT_PTR CALLBACK ExportPageImagesProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             return TRUE;
         case WM_COMMAND:
             switch (LOWORD(wp)) {
+                case IDC_EXPORT_OPEN_FOLDER:
+                    if (!data->thread && HIWORD(wp) == BN_CLICKED) {
+                        gGlobalPrefs->pageImagesOpenFolderAfterExport =
+                            IsDlgButtonChecked(hwnd, IDC_EXPORT_OPEN_FOLDER) == BST_CHECKED;
+                        SaveSettings();
+                    }
+                    return TRUE;
                 case IDC_EXPORT_CURRENT:
                 case IDC_EXPORT_ALL:
                 case IDC_EXPORT_RANGE:

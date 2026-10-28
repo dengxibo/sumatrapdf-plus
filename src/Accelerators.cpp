@@ -279,6 +279,7 @@ ACCEL gBuiltInAccelerators[] = {
     {FSHIFT | FCONTROL | FVIRTKEY, VK_SUBTRACT, CmdRotateLeft},
     {FSHIFT | FCONTROL | FVIRTKEY, VK_OEM_MINUS, CmdRotateLeft},
     {FSHIFT | FCONTROL | FVIRTKEY, 'T', CmdReopenLastClosedFile},
+    {FSHIFT | FCONTROL | FVIRTKEY, 'E', CmdExportPageImages},
     {FCONTROL | FVIRTKEY, VK_NEXT, CmdNextTab},
     {FCONTROL | FVIRTKEY, VK_PRIOR, CmdPrevTab},
     {FCONTROL | FSHIFT | FVIRTKEY, VK_NEXT, CmdMoveTabRight},

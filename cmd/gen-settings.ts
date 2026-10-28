@@ -1251,6 +1251,7 @@ const globalPrefs: Field[] = [
   mkEmptyLine(),
   setExpert(mkStruct("ImageUI", imageUI, "customization options for image files UI")),
   mkField("ImageOpenAfterSave", Bool, false, "open exported images after saving"),
+  mkField("PageImagesOpenFolderAfterExport", Bool, true, "open the output subfolder after all PDF pages are exported successfully"),
   mkField("ImageSaveFolder", Str, null, "last successful image export folder; falls back to the default if unavailable"),
   mkEmptyLine(),
   setExpert(

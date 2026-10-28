@@ -47809,3 +47809,7 @@ tw:例如：30-45
 :Capture Page Region
 cn:区域截图
 tw:區域截圖
+
+:Open folder after successful export
+cn:导出成功后打开文件夹
+tw:匯出成功後開啟資料夾

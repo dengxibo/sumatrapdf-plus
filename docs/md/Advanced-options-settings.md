@@ -460,6 +460,9 @@ ImageUI [
 ; open exported images after saving
 ImageOpenAfterSave = false
 
+; open the output subfolder after all PDF pages are exported successfully
+PageImagesOpenFolderAfterExport = true
+
 ; last successful image export folder; falls back to the default if unavailable
 ImageSaveFolder =
 
