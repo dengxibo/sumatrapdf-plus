@@ -10209,6 +10209,10 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         if (args->annotType == AnnotationType::Highlight && dm->textSelection->result.len > 0) {
             PreparePdfHighlightRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
         }
+        if ((args->annotType == AnnotationType::Underline || args->annotType == AnnotationType::Squiggly) &&
+            dm->textSelection->result.len > 0 && engine->HasCachedOcrText(pageNo)) {
+            PreparePdfOcrUnderlineRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
+        }
         Annotation* annot = EngineMupdfCreateAnnotation(engine, pageNo, PointF{}, args);
         if (!annot) {
             // TODO: leaking if created annots before

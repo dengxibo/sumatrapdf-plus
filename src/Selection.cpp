@@ -211,6 +211,21 @@ void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical) {
     }
 }
 
+void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, bool vertical) {
+    if (vertical) return;
+    for (RectF& rect : rects) {
+        // Mixed pages can contain narrow vertical sidebar selections. Do not
+        // apply a horizontal baseline adjustment to those columns.
+        if (rect.IsEmpty() || rect.dy > rect.dx * 1.5f) continue;
+        // MuPDF draws the underline / wave crest 1/7 of the quad height
+        // inside its bottom edge, with a half-stroke of height/32. OCR ink
+        // can also extend slightly below its integer selection box. Move
+        // only the new markup down by 0.4 of its height to leave room for both,
+        // keeping stroke width and wave size unchanged.
+        rect.y += rect.dy * 0.4f;
+    }
+}
+
 SelectionOnPage::SelectionOnPage(int pageNo, const RectF* const rect) {
     this->pageNo = pageNo;
     if (rect) {

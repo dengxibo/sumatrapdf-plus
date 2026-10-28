@@ -413,6 +413,9 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     };
     int pageNo = flags.pageNumber;
     if (pageNo < 1 || pageNo > engine->PageCount()) return check(false, "page");
+    // PageHasUsableText only checks the cache; populate native text first so
+    // the digital-PDF control does not inadvertently get forced through OCR.
+    engine->GetTextForPage(pageNo);
     if (!engine->PageHasUsableText(pageNo) || getenv("SUMATRA_TEST_ANNOTATIONS_FORCE_OCR")) {
         if (!OcrRecognizeEnginePage(engine, pageNo, true, OcrOperation::CurrentPage)) return check(false, "OCR");
     }
@@ -429,8 +432,18 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     };
     Vec<RectF> raw;
     for (auto& item : *selected) raw.Append(item.rect);
+    const char* markupType = getenv("SUMATRA_TEST_PDF_MARKUP_TYPE");
+    AnnotationType testType = AnnotationType::Highlight;
+    if (str::EqI(markupType, "underline")) testType = AnnotationType::Underline;
+    if (str::EqI(markupType, "squiggly")) testType = AnnotationType::Squiggly;
     Vec<RectF> finalRects = raw;
-    PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
+    if (testType == AnnotationType::Highlight) {
+        PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
+    }
+    if ((testType == AnnotationType::Underline || testType == AnnotationType::Squiggly) &&
+        engine->HasCachedOcrText(pageNo)) {
+        PreparePdfOcrUnderlineRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
+    }
     RectF clip;
     for (RectF r : finalRects) clip = clip.IsEmpty() ? r : clip.Union(r);
     clip.Inflate(12, 12);
@@ -457,8 +470,8 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     bool ok = saveBitmap("unmarked.png", plain->GetBitmap());
     delete plain;
     AnnotCreateArgs create;
-    create.annotType = AnnotationType::Highlight;
-    ParseColor(create.col, "#ffff00");
+    create.annotType = testType;
+    ParseColor(create.col, testType == AnnotationType::Highlight ? "#ffff00" : "#ff0000");
     Annotation* highlight = EngineMupdfCreateAnnotation(engine, pageNo, {}, &create);
     if (!highlight) return check(false, "create highlight");
     // Fine-grained OCR runs can exceed the old fixed 512-quad stack buffer.
@@ -588,6 +601,44 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
 }
 
 void TestRenderPage(const Flags& i) {
+    if (const char* outputPath = getenv("SUMATRA_TEST_GLYPH_COORDS")) {
+        if (i.fileNames.IsEmpty()) ExitProcess(1);
+        EngineBase* engine = CreateEngineFromFile(i.fileNames[0], nullptr, true);
+        if (!engine) ExitProcess(1);
+        int len = 0;
+        Rect* coords = nullptr;
+        const WCHAR* text = engine->GetTextForPage(1, &len, &coords);
+        FILE* report = fopen(outputPath, "w");
+        if (!report || !text || !coords) ExitProcess(1);
+        TextSelection selection(engine);
+        for (int n = 0; n < len; n++) {
+            Rect r = coords[n];
+            fprintf(report, "%d %04x %d %d %d %d\n", n, (unsigned)text[n], r.x, r.y, r.dx, r.dy);
+        }
+        PageTextUtf8 utf8 = engine->ExtractPageTextUtf8(1);
+        for (int n = 0; n < utf8.len; n++) {
+            Rect r = utf8.coords[n];
+            fprintf(report, "U %d %02x %d %d %d %d\n", n, (unsigned char)utf8.text[n], r.x, r.y, r.dx, r.dy);
+        }
+        FreePageTextUtf8(&utf8);
+        int failures = 0;
+        if (const char* pointsPath = getenv("SUMATRA_TEST_GLYPH_POINTS")) {
+            FILE* points = fopen(pointsPath, "r");
+            if (!points) ExitProcess(1);
+            unsigned expected;
+            float x, y;
+            while (fscanf(points, "%x %f %f", &expected, &x, &y) == 3) {
+                int glyph = selection.GlyphIndexAt(1, x, y);
+                unsigned actual = glyph >= 0 && glyph < len ? text[glyph] : 0;
+                failures += actual != expected;
+                fprintf(report, "P %04x %04x %.3f %.3f\n", expected, actual, x, y);
+            }
+            fclose(points);
+        }
+        fclose(report);
+        SafeEngineRelease(&engine);
+        ExitProcess(failures ? 1 : 0);
+    }
     if (i.showConsole) {
         RedirectIOToConsole();
     }

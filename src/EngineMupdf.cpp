@@ -1233,7 +1233,14 @@ static Rect VerticalGlyphCell(const Rect& glyphRect, int centerOffset, int step)
 // so the text is correct but every quad is one visual cell late. Detect that
 // shape from the empty line separators and re-associate rects at the common
 // source used by selection, search, and lookup.
-static void AlignVerticalGlyphRects(Vec<Rect>& rects) {
+static void AlignVerticalGlyphRects(Vec<Rect>& rects, const Vec<fz_stext_line*>& lines) {
+    // Native vertical writing now supplies accurate outline quads. The legacy
+    // reflow workaround below is only for horizontal one-glyph stext lines.
+    for (fz_stext_line* line : lines) {
+        if (line->wmode != 0) {
+            return;
+        }
+    }
     int verticalPairs = 0;
     int separatedPairs = 0;
     int previousStart = -1;
@@ -1663,7 +1670,7 @@ static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut) {
     }
 
     ReportIf(content.size() != rects.size());
-    AlignVerticalGlyphRects(rects);
+    AlignVerticalGlyphRects(rects, lines);
 
     if (coordsOut) {
         *coordsOut = rects.StealData();
@@ -1703,7 +1710,7 @@ static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut) {
     }
 
     ReportIf(content.size() != rects.size());
-    AlignVerticalGlyphRects(rects);
+    AlignVerticalGlyphRects(rects, lines);
 
     if (coordsOut) {
         *coordsOut = rects.StealData();

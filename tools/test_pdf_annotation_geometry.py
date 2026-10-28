@@ -119,6 +119,7 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("out/annotation-regression"))
     parser.add_argument("--exe", type=Path, default=Path("out/dbg64/SumatraPDF-Plus.exe"))
     parser.add_argument("--only", help="Run one manifest entry")
+    parser.add_argument("--markup", choices=("highlight", "underline", "squiggly"), default="highlight")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -147,6 +148,7 @@ def main():
             writer.write(stream)
         env = os.environ.copy()
         env["SUMATRA_TEST_PDF_ANNOTATIONS"] = str(folder)
+        env["SUMATRA_TEST_PDF_MARKUP_TYPE"] = args.markup
         env.pop("SUMATRA_TEST_ANNOTATIONS_FORCE_OCR", None)
         if sample.get("force_ocr"):
             env["SUMATRA_TEST_ANNOTATIONS_FORCE_OCR"] = "1"

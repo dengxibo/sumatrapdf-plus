@@ -510,6 +510,15 @@ add_char_to_line(fz_context *ctx, fz_stext_page *page, fz_stext_line *line, fz_m
 	ch->quad.ul = fz_make_point(p->x + a.x, p->y + a.y);
 	ch->quad.lr = fz_make_point(q->x + d.x, q->y + d.y);
 	ch->quad.ur = fz_make_point(q->x + a.x, q->y + a.y);
+	/* Vertical font origins need not coincide with the painted glyph cell.
+	 * In accurate mode use the outline, just as horizontal text does, rather
+	 * than the advance cell (which can sit one character below CJK glyphs). */
+	if (line->wmode != 0 && glyph >= 0 && (dev_flags & FZ_STEXT_ACCURATE_BBOXES))
+	{
+		fz_rect bounds = fz_bound_glyph(ctx, font, glyph, fz_identity);
+		if (!fz_is_empty_rect(bounds))
+			ch->quad = fz_transform_quad(fz_quad_from_rect(bounds), trm);
+	}
 
 	return ch;
 }
