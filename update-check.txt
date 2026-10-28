@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.79
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.79/SumatraPDF-Plus.exe
-Notes: Fix PDF text markup deletion errors, localize the error window title, and restore text window selection and copy shortcuts.
-NotesZh: 修复删除 PDF 文本标注时报错，错误窗口标题支持本地化，恢复文本窗口全选和复制快捷键。
+Latest: 3.7.80
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.80/SumatraPDF-Plus.exe
+Notes: Fix sidebar splitter interference with dialogs and lingering selection toolbars; hide individual ebook font families in the command palette outside reflowable ebooks.
+NotesZh: 修复目录分隔条影响上层对话框、关闭或切换文档后选区工具条残留的问题；命令面板的具体字体名称仅在重排电子书中显示。
