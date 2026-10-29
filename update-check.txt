@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.82
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.82/SumatraPDF-Plus.exe
-Notes: Fix vertical PDF lookup and text markup direction, adapt OCR underline and squiggle spacing, and lower EPUB underlines.
-NotesZh: 修复竖排 PDF 取词错位及线条标注方向，优化 OCR 下划线和波浪线间距，修复 EPUB 下划线偏高。
+Latest: 3.7.83
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.83/SumatraPDF-Plus.exe
+Notes: Refine PDF and EPUB text markup placement, keep OCR squiggles consistent, remove vertical annotation preview flicker, and fix free-text border colors and toolbar cursors.
+NotesZh: 优化 PDF 和 EPUB 标注定位，修复 OCR 波浪线异常变细、竖排标注预览闪烁、自由文本边框改色和工具栏光标问题。
