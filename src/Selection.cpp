@@ -212,17 +212,29 @@ void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical) {
     }
 }
 
-void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type) {
+void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type, EngineBase* engine, int pageNo) {
+    if (type != AnnotationType::Underline && type != AnnotationType::Squiggly && type != AnnotationType::StrikeOut)
+        return;
     for (RectF& rect : rects) {
         if (rect.IsEmpty()) continue;
-        float h = rect.dy;
+        float baseline, size, strikeY;
+        if (!EngineMupdfGetTextLineMetrics(engine, pageNo, rect, &baseline, &size, &strikeY)) continue;
+        // MuPDF derives stroke width and wave dimensions from quad height.
+        // Use a font-size band, not glyph ink: bullets and punctuation have
+        // much smaller outlines than neighboring text at the same size.
+        float h = size * .8f;
+        rect.dy = h;
         if (type == AnnotationType::StrikeOut) {
-            // MuPDF puts the stroke 4/7 down the quad. Move it to the ink center.
-            rect.y -= h / 14.f;
+            // Cross the lowercase body rather than the ascender/descender box.
+            rect.y = strikeY - h * 4.f / 7.f;
         } else if (type == AnnotationType::Underline || type == AnnotationType::Squiggly) {
-            // The underline and wave crest are 1/7 above the quad bottom.
-            // Put their upper stroke edge below the ink with a small gap.
-            rect.y += h / 7.f + h / 32.f + std::max(0.5f, h * .04f);
+            // Anchor to the baseline, so descenders elsewhere in the line do
+            // not push the underline (or the entire wave) toward the next row.
+            float top = baseline + size * .06f;
+            rect.y = top + h / 32.f - h * 6.f / 7.f;
+            // The wave spans h/7 below its crest. Align the straight
+            // underline with its center rather than its upper crest.
+            if (type == AnnotationType::Underline) rect.y += h / 14.f;
         }
     }
 }

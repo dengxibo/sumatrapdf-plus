@@ -461,12 +461,17 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
         if (!OcrRecognizeEnginePage(engine, pageNo, true, OcrOperation::CurrentPage)) return check(false, "OCR");
     }
     int len = 0;
-    engine->GetTextForPage(pageNo, &len);
+    const WCHAR* pageText = engine->GetTextForPage(pageNo, &len);
     if (!check(len > 10, "text available")) return false;
     TextSelection selection(engine);
     int start = std::min(150, len / 3);
     if (const char* value = getenv("SUMATRA_TEST_ANNOTATIONS_START")) {
         start = limitValue(atoi(value), 0, len - 1);
+    }
+    if (const char* value = getenv("SUMATRA_TEST_ANNOTATIONS_TEXT")) {
+        const WCHAR* match = wcsstr(pageText, strconv::StrCPToWStrTemp(value, CP_UTF8));
+        if (!check(match != nullptr, "requested text found")) return false;
+        start = std::max(0, (int)(match - pageText) - 2);
     }
     selection.SelectGlyphRange(pageNo, start, std::min(len, start + 160));
     Vec<SelectionOnPage>* selected = SelectionOnPage::FromTextSelect(&selection.result);
@@ -488,7 +493,7 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
         PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
     }
     if (!EngineMupdfPageUsesOcrText(engine, pageNo) && !PageHasVerticalGlyphLayout(engine, pageNo)) {
-        PreparePdfNativeLineRects(finalRects, testType);
+        PreparePdfNativeLineRects(finalRects, testType, engine, pageNo);
     }
     if ((testType == AnnotationType::Underline || testType == AnnotationType::Squiggly) &&
         EngineMupdfPageUsesOcrText(engine, pageNo)) {

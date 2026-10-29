@@ -113,6 +113,8 @@ bool EngineMupdfIsEncrypted(EngineBase* engine);
 // Includes both in-session OCR and a PDF's existing invisible text over images.
 bool EngineMupdfPageUsesOcrText(EngineBase* engine, int pageNo);
 bool EngineMupdfTextRunsDownward(EngineBase* engine, int pageNo, RectF rect);
+bool EngineMupdfGetTextLineMetrics(EngineBase* engine, int pageNo, RectF rect, float* baseline, float* size,
+                                   float* strikeY);
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
 bool EngineMupdfIsReflowWarmActive(EngineBase* engine);
 bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut);

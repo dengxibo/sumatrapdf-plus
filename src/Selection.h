@@ -62,7 +62,7 @@ float HighlightBandRatio();
 void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical = false);
 enum class AnnotationType;
 // Convert native glyph bands to MuPDF's line-markup appearance coordinates.
-void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type);
+void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type, EngineBase* engine, int pageNo);
 // Place new OCR underlines below the ink without changing the OCR hit boxes.
 void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical, bool squiggly);
 

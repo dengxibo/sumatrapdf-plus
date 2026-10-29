@@ -10212,7 +10212,7 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         }
         if (dm->textSelection->result.len > 0 && !EngineMupdfPageUsesOcrText(engine, pageNo) &&
             !PageHasVerticalGlyphLayout(engine, pageNo)) {
-            PreparePdfNativeLineRects(rects, args->annotType);
+            PreparePdfNativeLineRects(rects, args->annotType, engine, pageNo);
         }
         if ((args->annotType == AnnotationType::Underline || args->annotType == AnnotationType::Squiggly) &&
             dm->textSelection->result.len > 0 && EngineMupdfPageUsesOcrText(engine, pageNo)) {

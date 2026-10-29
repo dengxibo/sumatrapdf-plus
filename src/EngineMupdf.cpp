@@ -13867,6 +13867,87 @@ bool EngineMupdfTextRunsDownward(EngineBase* engine, int pageNo, RectF rect) {
     return downward;
 }
 
+bool EngineMupdfGetTextLineMetrics(EngineBase* engine, int pageNo, RectF rect, float* baseline, float* size,
+                                   float* strikeY) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || rect.IsEmpty() || EngineMupdfPageUsesOcrText(engine, pageNo)) return false;
+    int enginePage = MapJoinDisplayPageNo(e, pageNo);
+    ScopedCritSec lock(&e->docLock);
+    FzPageInfo* pi = e->GetFzPageInfo(enginePage, true, nullptr, false);
+    if (!pi || !pi->searchStext) return false;
+    fz_stext_char* best = nullptr;
+    float bestArea = 0;
+    for (fz_stext_block* block = pi->searchStext->first_block; block; block = block->next) {
+        if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line* line = block->u.t.first_line; line; line = line->next) {
+            // Preserve the existing behavior for vertical or sloping text.
+            if (line->wmode || line->dir.x < .99f || fabsf(line->dir.y) > .01f) continue;
+            for (fz_stext_char* c = line->first_char; c; c = c->next) {
+                if (c->c <= 32 || c->size <= 0) continue;
+                RectF overlap = ToRectF(fz_rect_from_quad(c->quad)).Intersect(rect);
+                float area = overlap.IsEmpty() ? 0 : overlap.dx * overlap.dy;
+                if (area > bestArea) {
+                    bestArea = area;
+                    best = c;
+                }
+            }
+        }
+    }
+    if (!best) return false;
+    // List markers are often a smaller font, raised to the body's visual
+    // center. Borrow the nearest body character's metrics on the same row,
+    // even when the marker and body were extracted as separate text blocks.
+    auto isBullet = [](int c) {
+        // Word-exported PDFs retain Wingdings' private-use round bullet.
+        return c == 0x2022 || c == 0x25cf || c == 0x25e6 || c == 0x2219 || c == 0xb7 || c == 0xf06c;
+    };
+    if (isBullet(best->c)) {
+        fz_rect marker = fz_rect_from_quad(best->quad);
+        fz_stext_char* body = nullptr;
+        float nearest = FLT_MAX;
+        for (fz_stext_block* block = pi->searchStext->first_block; block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+            for (fz_stext_line* line = block->u.t.first_line; line; line = line->next) {
+                if (line->wmode || line->dir.x < .99f || fabsf(line->dir.y) > .01f) continue;
+                for (fz_stext_char* c = line->first_char; c; c = c->next) {
+                    if (c->c <= 32 || isBullet(c->c) || c->size <= 0) continue;
+                    fz_rect bounds = fz_rect_from_quad(c->quad);
+                    float gap = bounds.x0 - marker.x1;
+                    float center = (marker.y0 + marker.y1) * .5f;
+                    if (gap < 0 || gap > std::max(best->size, c->size) * 4.f || gap >= nearest) continue;
+                    if (center < bounds.y0 || center > bounds.y1) continue;
+                    nearest = gap;
+                    body = c;
+                }
+            }
+        }
+        if (body) best = body;
+    }
+    *baseline = best->origin.y;
+    *size = best->size;
+    fz_rect ink = fz_rect_from_quad(best->quad);
+    // CJK glyphs can extend below the font baseline without being Latin
+    // descenders. Keep the stroke below their full body.
+    if (best->c >= 0x300) *baseline = std::max(*baseline, ink.y1);
+    *strikeY = (ink.y0 + ink.y1) * .5f;
+    // Latin strikeouts cross the x-height, not the center of capitals plus
+    // descenders. CJK uses its actual glyph center instead.
+    if (best->c < 0x300 && best->font) {
+        auto ctx = e->Ctx();
+        fz_try(ctx) {
+            int gid = fz_encode_character(ctx, best->font, 'x');
+            if (gid > 0) {
+                fz_rect x = fz_bound_glyph(ctx, best->font, gid, fz_identity);
+                if (x.y1 > x.y0) *strikeY = *baseline - (x.y0 + x.y1) * .5f * *size;
+            }
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+    }
+    return true;
+}
+
 bool EngineMupdfPageUsesOcrText(EngineBase* engine, int pageNo) {
     if (!engine) return false;
     if (engine->HasCachedOcrText(pageNo)) return true;
