@@ -224,6 +224,30 @@ static void TestTextMarkupOverlay() {
     SelectObject(shapeDc, previous);
     DeleteObject(shapeBitmap);
     DeleteDC(shapeDc);
+    SetTheme("Light-White");
+    SetPdfDocumentColorMode(PdfDocumentColorMode::Light);
+    for (int height : {12, 24, 48}) {
+        HBITMAP bitmap = CreateMemoryBitmap(Size(220, 100));
+        HDC dc = CreateCompatibleDC(nullptr);
+        HGDIOBJ old = SelectObject(dc, bitmap);
+        PatBlt(dc, 0, 0, 220, 100, WHITENESS);
+        Vec<Rect> rects;
+        rects.Append(Rect(10, 10, 180, height));
+        PaintTextMarkupOverlay(dc, Rect(0, 0, 220, 100), AnnotationType::Underline, RGB(255, 0, 0), rects, 100, true);
+        int below = 0;
+        for (int y = 0; y < 100; y++) {
+            COLORREF pixel = GetPixel(dc, 100, y);
+            if (pixel == RGB(255, 255, 255)) continue;
+            if (y < 10 + height)
+                failures++;
+            else
+                below++;
+        }
+        if (!below) failures++;
+        SelectObject(dc, old);
+        DeleteObject(bitmap);
+        DeleteDC(dc);
+    }
     printf("Text markup overlay: %d failures\n", failures);
     fflush(stdout);
     ExitProcess(failures ? 1 : 0);
@@ -424,6 +448,9 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     if (!check(len > 10, "text available")) return false;
     TextSelection selection(engine);
     int start = std::min(150, len / 3);
+    if (const char* value = getenv("SUMATRA_TEST_ANNOTATIONS_START")) {
+        start = limitValue(atoi(value), 0, len - 1);
+    }
     selection.SelectGlyphRange(pageNo, start, std::min(len, start + 160));
     Vec<SelectionOnPage>* selected = SelectionOnPage::FromTextSelect(&selection.result);
     if (!selected) return check(false, "select glyph range");
@@ -436,13 +463,17 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     AnnotationType testType = AnnotationType::Highlight;
     if (str::EqI(markupType, "underline")) testType = AnnotationType::Underline;
     if (str::EqI(markupType, "squiggly")) testType = AnnotationType::Squiggly;
+    if (str::EqI(markupType, "strikeout")) testType = AnnotationType::StrikeOut;
     Vec<RectF> finalRects = raw;
+    fprintf(report, "layout vertical=%d ocr=%d cached=%d\n", PageHasVerticalGlyphLayout(engine, pageNo),
+            EngineMupdfPageUsesOcrText(engine, pageNo), engine->HasCachedOcrText(pageNo));
     if (testType == AnnotationType::Highlight) {
         PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
     }
     if ((testType == AnnotationType::Underline || testType == AnnotationType::Squiggly) &&
-        engine->HasCachedOcrText(pageNo)) {
-        PreparePdfOcrUnderlineRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
+        EngineMupdfPageUsesOcrText(engine, pageNo)) {
+        PreparePdfOcrUnderlineRects(finalRects, engine, pageNo, PageHasVerticalGlyphLayout(engine, pageNo),
+                                    testType == AnnotationType::Squiggly);
     }
     RectF clip;
     for (RectF r : finalRects) clip = clip.IsEmpty() ? r : clip.Union(r);
@@ -479,7 +510,8 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     for (int n = 0; n < 600; n++) largeSelection.Append(finalRects.at(0));
     SetQuadPointsAsRect(highlight, largeSelection);
     ok = check(GetQuadPointsAsRect(highlight).Size() == 600, "600-quad selection retained") && ok;
-    SetQuadPointsAsRect(highlight, finalRects);
+    SetQuadPointsAsRect(highlight, finalRects, true);
+    Vec<RectF> createdRects = GetQuadPointsAsRect(highlight);
     int highlightId = EngineMupdfAnnotationId(highlight);
     dumpRects("quads", GetQuadPointsAsRect(highlight));
     auto saveError = MkFunc1Void(AnnotationTestSaveError);
@@ -496,7 +528,7 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     dumpRects("reopened", savedRects);
     ok = check(savedRects.Size() == finalRects.Size(), "quad count") && ok;
     for (int n = 0; n < std::min(savedRects.Size(), finalRects.Size()); n++) {
-        RectF a = finalRects.at(n), b = savedRects.at(n);
+        RectF a = createdRects.at(n), b = savedRects.at(n);
         ok = check(fabsf(a.x - b.x) < .001f && fabsf(a.y - b.y) < .001f && fabsf(a.dx - b.dx) < .001f &&
                        fabsf(a.dy - b.dy) < .001f,
                    "quad round trip") &&
@@ -519,7 +551,7 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
                 RenderedBitmap* bitmap = reopened->RenderPage(args);
                 bool valid = bitmap != nullptr;
                 for (int n = 0; n < savedRects.Size(); n++) {
-                    Rect a = engine->Transform(finalRects.at(n), pageNo, zoom, rotation).Round();
+                    Rect a = engine->Transform(createdRects.at(n), pageNo, zoom, rotation).Round();
                     Rect b = reopened->Transform(savedRects.at(n), pageNo, zoom, rotation).Round();
                     valid = valid && abs(a.x - b.x) <= 1 && abs(a.y - b.y) <= 1 && abs(a.dx - b.dx) <= 1 &&
                             abs(a.dy - b.dy) <= 1;
@@ -600,7 +632,76 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     return ok;
 }
 
+static bool TestEpubUnderline(const Flags& flags, const char* folder) {
+    if (flags.fileNames.IsEmpty()) return false;
+    EngineBase* engine = CreateEngineFromFile(flags.fileNames[0], nullptr, true);
+    if (!engine) return false;
+    defer {
+        SafeEngineRelease(&engine);
+    };
+    int pageNo = 1;
+    int len = 0;
+    const WCHAR* text = nullptr;
+    const WCHAR* match = nullptr;
+    for (; pageNo <= engine->PageCount(); pageNo++) {
+        text = engine->GetTextForPage(pageNo, &len);
+        if (text) match = wcsstr(text, L"在帝国发生");
+        if (match) break;
+    }
+    if (!match) return false;
+    TextSelection selection(engine);
+    int start = (int)(match - text);
+    selection.SelectGlyphRange(pageNo, start, std::min(len, start + 160));
+    Vec<SelectionOnPage>* selected = SelectionOnPage::FromTextSelect(&selection.result);
+    if (!selected) return false;
+    defer {
+        delete selected;
+    };
+    Vec<RectF> rects;
+    for (auto& item : *selected) rects.Append(item.rect);
+    NormalizeNearbyHighlightHeights(rects);
+    RectF clip;
+    for (RectF r : rects) clip = clip.IsEmpty() ? r : clip.Union(r);
+    clip.Inflate(16, 16);
+    clip = clip.Intersect(engine->PageMediabox(pageNo));
+    constexpr float zoom = 3.f;
+    Rect origin = engine->Transform(clip, pageNo, zoom, 0).Round();
+    for (int stage = 0; stage < 3; stage++) {
+        RenderPageArgs args(pageNo, zoom, 0, &clip, RenderTarget::Export);
+        RenderedBitmap* bitmap = engine->RenderPage(args);
+        if (!bitmap) return false;
+        if (stage) {
+            Vec<Rect> screenRects;
+            for (RectF r : rects) {
+                Rect screen = engine->Transform(r, pageNo, zoom, 0).Round();
+                screen.x -= origin.x;
+                screen.y -= origin.y;
+                screenRects.Append(screen);
+            }
+            HDC dc = CreateCompatibleDC(nullptr);
+            HGDIOBJ old = SelectObject(dc, bitmap->GetBitmap());
+            Size size = bitmap->GetSize();
+            PaintTextMarkupOverlay(dc, Rect(0, 0, size.dx, size.dy), AnnotationType::Underline, RGB(255, 0, 0),
+                                   screenRects, 100, stage == 2);
+            SelectObject(dc, old);
+            DeleteDC(dc);
+        }
+        ByteSlice bytes = SerializeBitmap(bitmap->GetBitmap());
+        bool ok = file::WriteFile(path::JoinTemp(folder, stage == 0   ? "original.png"
+                                                         : stage == 1 ? "before.png"
+                                                                      : "after.png"),
+                                  bytes);
+        bytes.Free();
+        delete bitmap;
+        if (!ok) return false;
+    }
+    return true;
+}
+
 void TestRenderPage(const Flags& i) {
+    if (const char* folder = getenv("SUMATRA_TEST_EPUB_UNDERLINE")) {
+        ExitProcess(TestEpubUnderline(i, folder) ? 0 : 1);
+    }
     if (const char* outputPath = getenv("SUMATRA_TEST_GLYPH_COORDS")) {
         if (i.fileNames.IsEmpty()) ExitProcess(1);
         EngineBase* engine = CreateEngineFromFile(i.fileNames[0], nullptr, true);

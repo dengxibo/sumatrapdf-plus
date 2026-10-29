@@ -79,7 +79,7 @@ void AdoptEbookDrawStyle(EbookAnnotation* annotation);
 bool EbookAnnotationsExportNotes(WindowTab* tab, HWND hwndParent);
 void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORREF color, Vec<Rect>& screenRects,
-                            int opacity = 100);
+                            int opacity = 100, bool underlineBelowText = false);
 // Drop cached page/anchor maps after reflow or theme changes.
 void EbookAnnotationsInvalidateLayoutCaches(WindowTab* tab);
 void EbookAnnotationsFree(EbookAnnotations* annotations);

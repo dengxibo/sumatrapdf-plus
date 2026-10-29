@@ -61,7 +61,7 @@ float HighlightBandRatio();
 // a new highlight; saved annotation quads are already in their final geometry.
 void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical = false);
 // Place new OCR underlines below the ink without changing the OCR hit boxes.
-void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, bool vertical);
+void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical, bool squiggly);
 
 // OCR line boxes hug the x-height, so a marker through "that" misses the top of t/h
 // and the tail of g/y. weight is the number of letters in the box (CJK weight 2).

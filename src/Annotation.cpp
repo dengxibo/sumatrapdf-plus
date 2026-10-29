@@ -21,6 +21,7 @@ extern "C" {
 #include "PdfDarkMode.h"
 #include "DocController.h"
 #include "EngineBase.h"
+#include "EngineAll.h"
 #include "EngineMupdf.h"
 #include "GlobalPrefs.h"
 #include "Commands.h"
@@ -1324,7 +1325,7 @@ bool SetQuadding(Annotation* annot, int newQuadding) {
     return true;
 }
 
-void SetQuadPointsAsRect(Annotation* annot, const Vec<RectF>& rects) {
+void SetQuadPointsAsRect(Annotation* annot, const Vec<RectF>& rects, bool followTextDirection) {
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
     {
@@ -1338,6 +1339,17 @@ void SetQuadPointsAsRect(Annotation* annot, const Vec<RectF>& rects) {
         for (RectF rect : rects) {
             fz_rect r = ToFzRect(rect);
             fz_quad q = fz_quad_from_rect(r);
+            bool lineMarkup = annot->type == AnnotationType::Underline || annot->type == AnnotationType::StrikeOut ||
+                              annot->type == AnnotationType::Squiggly;
+            if (followTextDirection && lineMarkup && EngineMupdfTextRunsDownward(e, annot->pageNo, rect)) {
+                // Rotate the baseline, not the page: its length is the column
+                // height and the stroke/wave size is based on the column width.
+                float offset = annot->type == AnnotationType::StrikeOut ? 0.f : rect.dx * .22f;
+                q.ul = fz_make_point(r.x1 - offset, r.y0);
+                q.ur = fz_make_point(r.x1 - offset, r.y1);
+                q.ll = fz_make_point(r.x0 - offset, r.y0);
+                q.lr = fz_make_point(r.x0 - offset, r.y1);
+            }
             quads.Append(q);
         }
         fz_try(ctx) {

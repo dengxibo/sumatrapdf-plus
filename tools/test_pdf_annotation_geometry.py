@@ -119,7 +119,7 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("out/annotation-regression"))
     parser.add_argument("--exe", type=Path, default=Path("out/dbg64/SumatraPDF-Plus.exe"))
     parser.add_argument("--only", help="Run one manifest entry")
-    parser.add_argument("--markup", choices=("highlight", "underline", "squiggly"), default="highlight")
+    parser.add_argument("--markup", choices=("highlight", "underline", "squiggly", "strikeout"), default="highlight")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -159,6 +159,18 @@ def main():
         report = (folder / "results.txt").read_text(encoding="utf-8")
         assert process.returncode == 0 and "Overall: PASS" in report, (sample["name"], process.returncode, report[-1500:])
         assert "FAIL" not in report, sample["name"]
+        if sample.get("text_direction") == "down" and args.markup != "highlight":
+            page = PdfReader(folder / "marked.pdf").pages[0]
+            subtype = {"underline": "/Underline", "squiggly": "/Squiggly", "strikeout": "/StrikeOut"}[args.markup]
+            marks = [ref.get_object() for ref in page.get("/Annots", [])
+                     if ref.get_object().get("/Subtype") == subtype]
+            assert marks, "Missing vertical markup"
+            for mark in marks:
+                points = list(map(float, mark["/QuadPoints"]))
+                for i in range(0, len(points), 8):
+                    ulx, uly, urx, ury, llx, lly, lrx, lry = points[i:i + 8]
+                    assert abs(ulx - urx) < .001 and abs(uly - ury) > 0, "Baseline must follow column"
+                    assert abs(uly - lly) < .001 and abs(ulx - llx) > 0, "Stroke size must use column width"
         # Optional sample-specific bounds guard against merging neighboring
         # rows/columns. Round-trip equality alone cannot detect a giant box.
         for line in report.splitlines():

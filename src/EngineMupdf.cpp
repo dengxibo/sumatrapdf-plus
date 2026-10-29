@@ -13810,6 +13810,71 @@ bool EngineMupdfIsEncrypted(EngineBase* engine) {
     return epdf->pdfdoc->crypt != nullptr;
 }
 
+bool EngineMupdfTextRunsDownward(EngineBase* engine, int pageNo, RectF rect) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || rect.IsEmpty()) return false;
+    int enginePage = MapJoinDisplayPageNo(e, pageNo);
+    if (enginePage < 1 || enginePage > e->PageCount()) return false;
+    if (engine->HasCachedOcrText(pageNo)) return rect.dy > rect.dx * 1.5f;
+    ScopedCritSec lock(&e->docLock);
+    FzPageInfo* pi = e->GetFzPageInfo(enginePage, true, nullptr, false);
+    if (!pi || !pi->page) return false;
+    if (!pi->searchStext) {
+        PageText text = ExtractPageTextFromFzPageInfo(e, pi);
+        FreePageText(&text);
+    }
+    if (!pi->searchStext) return false;
+    float bestArea = 0;
+    bool downward = false;
+    for (fz_stext_block* block = pi->searchStext->first_block; block; block = block->next) {
+        if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line* line = block->u.t.first_line; line; line = line->next) {
+            float area = 0;
+            for (fz_stext_char* c = line->first_char; c; c = c->next) {
+                if (c->c <= 32) continue;
+                fz_rect bounds = fz_rect_from_quad(c->quad);
+                RectF overlap =
+                    RectF(bounds.x0, bounds.y0, bounds.x1 - bounds.x0, bounds.y1 - bounds.y0).Intersect(rect);
+                area += overlap.dx * overlap.dy;
+            }
+            if (area > bestArea) {
+                bestArea = area;
+                downward = line->dir.y > fabsf(line->dir.x);
+            }
+        }
+    }
+    return downward;
+}
+
+bool EngineMupdfPageUsesOcrText(EngineBase* engine, int pageNo) {
+    if (!engine) return false;
+    if (engine->HasCachedOcrText(pageNo)) return true;
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc) return false;
+    int enginePage = MapJoinDisplayPageNo(e, pageNo);
+    if (enginePage < 1 || enginePage > e->PageCount()) return false;
+    ScopedCritSec lock(&e->docLock);
+    FzPageInfo* pi = e->GetFzPageInfo(enginePage, true, nullptr, false);
+    if (!pi || !pi->page) return false;
+    if (!pi->searchStext) {
+        PageText text = ExtractPageTextFromFzPageInfo(e, pi);
+        FreePageText(&text);
+    }
+    if (!pi->searchStext || !PdfPageHasImageXObject(e->Ctx(), pi->page)) return false;
+    bool hasHiddenText = false;
+    for (fz_stext_block* block = pi->searchStext->first_block; block; block = block->next) {
+        if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line* line = block->u.t.first_line; line; line = line->next) {
+            for (fz_stext_char* c = line->first_char; c; c = c->next) {
+                if (c->c <= 32) continue;
+                if (c->flags & (FZ_STEXT_FILLED | FZ_STEXT_STROKED)) return false;
+                hasHiddenText = true;
+            }
+        }
+    }
+    return hasHiddenText;
+}
+
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     if (!epdf) {

@@ -103,7 +103,7 @@ HBITMAP RenderAnnotationIconPreviewBitmap(EngineMupdf* engine, int pageNo, Annot
 HBITMAP RenderAnnotationIconPreviewBitmap(Annotation* annot, const char* iconName, int size, int lineEnding = -1,
                                           bool lineStart = false);
 void SetLine(Annotation*, PointF a, PointF b);
-void SetQuadPointsAsRect(Annotation*, const Vec<RectF>&);
+void SetQuadPointsAsRect(Annotation*, const Vec<RectF>&, bool followTextDirection = false);
 // Vec<Annotation*> FilterAnnotationsForPage(Vec<Annotation*>* annots, int pageNo);
 
 // EditAnnotations.cpp

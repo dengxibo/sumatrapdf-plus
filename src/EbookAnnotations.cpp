@@ -1567,7 +1567,6 @@ static int FindEbookAnnotationAt(WindowTab* tab, DisplayModel* dm, Point canvasP
     if (!dm->ValidPageNo(pageNo)) {
         return -1;
     }
-    PointF pagePoint = dm->CvtFromScreen(canvasPoint, pageNo);
     EngineBase* engine = dm->GetEngine();
     for (int i = (int)annotations->items.size() - 1; i >= 0; i--) {
         EbookAnnotation* annotation = annotations->items.at(i);
@@ -1585,7 +1584,12 @@ static int FindEbookAnnotationAt(WindowTab* tab, DisplayModel* dm, Point canvasP
         }
         for (RectF rect : rects) {
             rect = ScaleHighlightBandRect(rect, kSelectionHighlightBandRatio);
-            if (rect.Contains(pagePoint)) {
+            Rect hitRect = dm->CvtToScreen(pageNo, rect);
+            if (annotation->type == AnnotationType::Underline) {
+                // The EPUB underline is painted just below the text box.
+                hitRect.dy += std::max(2, hitRect.dy / 8);
+            }
+            if (hitRect.Contains(canvasPoint)) {
                 return i;
             }
         }
@@ -2858,7 +2862,7 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
         return;
     }
     PaintTextMarkupOverlay(hdc, tab->win->canvasRc, annotation->type, EbookAnnotationGetColor(annotation), screenRects,
-                           EbookAnnotationGetOpacity(annotation));
+                           EbookAnnotationGetOpacity(annotation), true);
     if (!str::IsEmptyOrWhiteSpace(EbookAnnotationGetNote(annotation))) {
         HWND hwndDpi = tab->win ? tab->win->hwndFrame : nullptr;
         int size = DpiScale(hwndDpi, 11);
@@ -2895,7 +2899,7 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
 // strike-out: line at 3/7 of height from bottom, thickness h/16
 // squiggly: zigzag from baseline with amplitude h/7, step h/7, thickness h/16
 void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORREF color, Vec<Rect>& screenRects,
-                            int opacity) {
+                            int opacity, bool underlineBelowText) {
     if (screenRects.empty()) {
         return;
     }
@@ -2926,7 +2930,9 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
         float yTop = (float)rect.y;
 
         if (type == AnnotationType::Underline) {
-            float y = yBot - h / 7.f;
+            // EPUB selection boxes follow glyph ink rather than PDF font
+            // descenders. Put the whole stroke below the box with a small gap.
+            float y = underlineBelowText ? yBot + lineWidth * 0.5f + std::max(1.f, h * 0.04f) : yBot - h / 7.f;
             graphics.DrawLine(&pen, x1, y, x2, y);
             continue;
         }

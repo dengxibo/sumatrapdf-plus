@@ -211,18 +211,112 @@ void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical) {
     }
 }
 
-void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, bool vertical) {
+void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical, bool squiggly) {
     if (vertical) return;
+    RectF clip;
+    float maxHeight = 0;
+    for (RectF r : rects) {
+        if (r.IsEmpty() || r.dy > r.dx * 1.5f) continue;
+        clip = clip.IsEmpty() ? r : clip.Union(r);
+        maxHeight = std::max(maxHeight, r.dy);
+    }
+    if (clip.IsEmpty()) return;
+    clip.Inflate(maxHeight * .5f, maxHeight * 1.5f);
+    clip = clip.Intersect(engine->PageMediabox(pageNo));
+    float zoom = std::min(3.f, sqrtf(4000000.f / (clip.dx * clip.dy)));
+    RenderPageArgs args(pageNo, zoom, 0, &clip, RenderTarget::Export);
+    RenderedBitmap* bitmap = engine->RenderPage(args);
+    if (!bitmap) return;
+    defer {
+        delete bitmap;
+    };
+    // Scans often render as paletted DIBs, which GetBitmapPixels cannot read.
+    // Normalize to a top-down RGB bitmap before inspecting the ink.
+    Size size = bitmap->GetSize();
+    HBITMAP rgb = CreateMemoryBitmap(size);
+    if (!rgb) return;
+    defer {
+        DeleteObject(rgb);
+    };
+    HDC dc = CreateCompatibleDC(nullptr);
+    if (!dc) return;
+    HGDIOBJ old = SelectObject(dc, rgb);
+    bool copied = bitmap->Blit(dc, Rect(0, 0, size.dx, size.dy));
+    SelectObject(dc, old);
+    DeleteDC(dc);
+    if (!copied) return;
+    BitmapPixels* pixels = GetBitmapPixels(rgb);
+    if (!pixels) return;
+    defer {
+        FinalizeBitmapPixels(pixels);
+    };
+    Rect deviceClip = engine->Transform(clip, pageNo, zoom, 0).Round();
     for (RectF& rect : rects) {
-        // Mixed pages can contain narrow vertical sidebar selections. Do not
-        // apply a horizontal baseline adjustment to those columns.
         if (rect.IsEmpty() || rect.dy > rect.dx * 1.5f) continue;
-        // MuPDF draws the underline / wave crest 1/7 of the quad height
-        // inside its bottom edge, with a half-stroke of height/32. OCR ink
-        // can also extend slightly below its integer selection box. Move
-        // only the new markup down by 0.4 of its height to leave room for both,
-        // keeping stroke width and wave size unchanged.
-        rect.y += rect.dy * 0.4f;
+        RectF band = engine->Transform(rect, pageNo, zoom, 0);
+        // This probe is for horizontal OCR rows; rotated columns use their
+        // writing direction when their annotation quad is generated instead.
+        if (band.dy > band.dx * 1.5f) continue;
+        int left = limitValue((int)ceilf(band.x) - deviceClip.x, 0, pixels->size.dx - 1);
+        int right = limitValue((int)floorf(band.x + band.dx) - deviceClip.x, left + 1, pixels->size.dx);
+        int top = limitValue((int)(band.y - band.dy * .4f) - deviceClip.y, 0, pixels->size.dy - 1);
+        int bottom = limitValue((int)(band.y + band.dy * 2.f) - deviceClip.y, top + 1, pixels->size.dy);
+        struct InkRun {
+            int top;
+            int bottom;
+            int mass;
+        };
+        Vec<InkRun> runs;
+        InkRun run{};
+        int threshold = std::max(2, (right - left) / 40);
+        for (int y = top; y <= bottom; y++) {
+            int count = 0;
+            if (y < bottom) {
+                for (int x = left; x < right; x++) {
+                    COLORREF c = GetPixel(pixels, x, y);
+                    int lo = std::min((int)GetRValue(c), std::min((int)GetGValue(c), (int)GetBValue(c)));
+                    int hi = std::max((int)GetRValue(c), std::max((int)GetGValue(c), (int)GetBValue(c)));
+                    // Ignore colored marks already on the page.
+                    if (hi < 180 && hi - lo < 50) count++;
+                }
+            }
+            if (count >= threshold) {
+                if (!run.mass) run.top = y;
+                run.bottom = y + 1;
+                run.mass += count;
+            } else if (run.mass && (y - run.bottom >= 1 || y == bottom)) {
+                if (run.bottom - run.top >= std::max(2, (int)(band.dy * .12f))) runs.Append(run);
+                run = {};
+            }
+        }
+        float center = band.y + band.dy * .5f - deviceClip.y;
+        int best = -1;
+        float distance = band.dy;
+        for (int i = 0; i < runs.Size(); i++) {
+            InkRun r = runs[i];
+            float d = std::max((float)r.top - center, std::max(center - r.bottom, 0.f));
+            if (d < distance) {
+                distance = d;
+                best = i;
+            }
+        }
+        if (best < 0 || distance > band.dy * .35f) continue;
+        float inkBottom = (float)runs[best].bottom + deviceClip.y;
+        float gap = std::max(1.f, band.dy * .035f);
+        float height = band.dy;
+        if (best + 1 < runs.Size()) {
+            float nextTop = (float)runs[best + 1].top + deviceClip.y;
+            float available = nextTop - inkBottom;
+            gap = std::min(gap, available * .2f);
+            float space = available - gap * 2;
+            float extent = squiggly ? 1.f / 7.f + 1.f / 16.f : 1.f / 16.f;
+            if (space > 0) height = std::min(height, space / extent);
+        }
+        // MuPDF draws the underline (or the wave's upper crest) 1/7 of
+        // the quad height above its bottom. Account for half the stroke too.
+        band.y = inkBottom + gap + height / 32.f - height * 6.f / 7.f;
+        band.dy = height;
+        rect = engine->Transform(band, pageNo, zoom, 0, true);
     }
 }
 

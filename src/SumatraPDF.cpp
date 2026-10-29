@@ -10210,15 +10210,16 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
             PreparePdfHighlightRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
         }
         if ((args->annotType == AnnotationType::Underline || args->annotType == AnnotationType::Squiggly) &&
-            dm->textSelection->result.len > 0 && engine->HasCachedOcrText(pageNo)) {
-            PreparePdfOcrUnderlineRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
+            dm->textSelection->result.len > 0 && EngineMupdfPageUsesOcrText(engine, pageNo)) {
+            PreparePdfOcrUnderlineRects(rects, engine, pageNo, PageHasVerticalGlyphLayout(engine, pageNo),
+                                        args->annotType == AnnotationType::Squiggly);
         }
         Annotation* annot = EngineMupdfCreateAnnotation(engine, pageNo, PointF{}, args);
         if (!annot) {
             // TODO: leaking if created annots before
             return nullptr;
         }
-        SetQuadPointsAsRect(annot, rects);
+        SetQuadPointsAsRect(annot, rects, dm->textSelection->result.len > 0);
         if (useRememberedStyle) {
             ApplyRememberedPdfDrawStyle(annot);
         }
