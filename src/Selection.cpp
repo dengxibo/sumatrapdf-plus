@@ -30,6 +30,7 @@
 #include "WindowTab.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
+#include "Annotation.h"
 #include "EbookAnnotations.h"
 #include "Theme.h"
 #include "PdfDarkMode.h"
@@ -211,6 +212,21 @@ void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical) {
     }
 }
 
+void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type) {
+    for (RectF& rect : rects) {
+        if (rect.IsEmpty()) continue;
+        float h = rect.dy;
+        if (type == AnnotationType::StrikeOut) {
+            // MuPDF puts the stroke 4/7 down the quad. Move it to the ink center.
+            rect.y -= h / 14.f;
+        } else if (type == AnnotationType::Underline || type == AnnotationType::Squiggly) {
+            // The underline and wave crest are 1/7 above the quad bottom.
+            // Put their upper stroke edge below the ink with a small gap.
+            rect.y += h / 7.f + h / 32.f + std::max(0.5f, h * .04f);
+        }
+    }
+}
+
 void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical, bool squiggly) {
     if (vertical) return;
     RectF clip;
@@ -301,6 +317,14 @@ void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int page
             }
         }
         if (best < 0 || distance > band.dy * .35f) continue;
+        // Sparse descenders can fall below the row-density threshold and form
+        // a separate ink run. They still belong to this OCR text box, not to
+        // the next line whose gap limits the annotation's wave size.
+        float rowBottom = band.y + band.dy - deviceClip.y;
+        while (best + 1 < runs.Size() && runs[best + 1].top < rowBottom &&
+               runs[best + 1].top - runs[best].bottom < band.dy * .35f) {
+            best++;
+        }
         float inkBottom = (float)runs[best].bottom + deviceClip.y;
         float gap = std::max(1.f, band.dy * .035f);
         float height = band.dy;
@@ -310,7 +334,9 @@ void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int page
             gap = std::min(gap, available * .2f);
             float space = available - gap * 2;
             float extent = squiggly ? 1.f / 7.f + 1.f / 16.f : 1.f / 16.f;
-            if (space > 0) height = std::min(height, space / extent);
+            // Wave height also controls MuPDF's stroke width and wavelength.
+            // Keep it tied to the text size instead of varying it per row.
+            if (space > 0 && !squiggly) height = std::min(height, space / extent);
         }
         // MuPDF draws the underline (or the wave's upper crest) 1/7 of
         // the quad height above its bottom. Account for half the stroke too.

@@ -430,8 +430,13 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
         if (entry.pageNo != pageNo || !entry.annot) {
             continue;
         }
-        if (entry.annot->type == AnnotationType::Stamp || entry.annot->type == AnnotationType::Square ||
-            entry.annot->type == AnnotationType::Circle || entry.appearanceBitmap) {
+        // Use the actual appearance for line markup too. The rectangular
+        // stand-in loses quad direction and briefly draws vertical text's
+        // underlines/waves horizontally until the rendered page tile arrives.
+        if (entry.annot->type == AnnotationType::Underline || entry.annot->type == AnnotationType::Squiggly ||
+            entry.annot->type == AnnotationType::StrikeOut || entry.annot->type == AnnotationType::Stamp ||
+            entry.annot->type == AnnotationType::Square || entry.annot->type == AnnotationType::Circle ||
+            entry.appearanceBitmap) {
             float zoom = dm->GetZoomSafe(pageNo);
             int rotation = dm->GetRotation();
             if (!entry.appearanceBitmap || entry.appearanceZoom != zoom || entry.appearanceRotation != rotation) {
@@ -3584,6 +3589,35 @@ bool TestPdfAnnotationAppearance(MainWindow* win, const char* outputDir) {
             quads.Append(RectF(20, 20, 80, 12));
             SetQuadPointsAsRect(markup, quads);
             valid = BorderWidthF(markup) == 1.f;
+            if (type != AnnotationType::Highlight) {
+                // Force a vertical quad independently of the fixture's font or
+                // OCR layout, then exercise the real pending-overlay cache.
+                EngineMupdf* e = markup->engine;
+                {
+                    ScopedCritSec lock(&e->docLock);
+                    auto ctx = e->Ctx();
+                    fz_quad column{{32, 20}, {32, 100}, {20, 20}, {20, 100}};
+                    fz_try(ctx) {
+                        pdf_set_annot_quad_points(ctx, markup->pdfannot, 1, &column);
+                        pdf_update_annot(ctx, markup->pdfannot);
+                    }
+                    fz_catch(ctx) {
+                        valid = false;
+                    }
+                }
+                MarkPdfAnnotationStandIn(tab, markup);
+                bool verticalPreview = false;
+                for (auto& entry : tab->pdfMarkupOverlays) {
+                    if (entry.annot != markup) continue;
+                    BITMAP bitmap{};
+                    verticalPreview = entry.appearanceBitmap &&
+                                      GetObject(entry.appearanceBitmap, sizeof(bitmap), &bitmap) &&
+                                      bitmap.bmHeight > bitmap.bmWidth * 2;
+                }
+                valid = valid && verticalPreview;
+                fprintf(report, "Vertical markup first-frame appearance type=%d: %s\n", (int)type,
+                        verticalPreview ? "PASS" : "FAIL");
+            }
             DeleteAnnotationAndUpdateUI(tab, markup);
         }
         valid = valid && engine->errors.Size() == errorsBefore;
@@ -3994,6 +4028,8 @@ static void RefreshInPlaceFreeTextStyle(Annotation* annot) {
         SetWindowLongW(gInPlace.hwnd, GWL_STYLE, next);
     }
     ApplyInPlaceColors(annot);
+    gInPlace.borderWidth =
+        annot ? BorderWidthF(annot) : (float)EbookAnnotationGetFreeTextBorderWidth(gInPlace.ebookAnnot);
     SetWindowPos(gInPlace.hwnd, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     InvalidateRect(gInPlace.hwnd, nullptr, TRUE);
@@ -4039,6 +4075,9 @@ static void SizeInPlaceEditToText() {
     pad = std::min(pad, std::max(0, (int)(std::min(content.right, content.bottom) * 0.45f)));
     InflateRect(&content, -pad, -pad);
     SendMessageW(gInPlace.hwnd, EM_SETRECTNP, 0, (LPARAM)&content);
+    // The border is painted in WM_NCPAINT, outside InvalidateRect's client area.
+    // Repaint after both the border metrics and the text inset have been updated.
+    RedrawWindow(gInPlace.hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_UPDATENOW);
 }
 
 // Scrolling and zooming move the annotation out from under the box.
@@ -4658,7 +4697,7 @@ struct FreeTextPropertyToolbar : Wnd {
         if (!Live(&tab, &pdf, &ebook)) return;
         if (pdf) {
             RefreshInPlaceFreeTextStyle(pdf);
-            SyncInPlaceFreeTextBorder(pdf, BorderWidth(pdf));
+            SyncInPlaceFreeTextBorder(pdf, BorderWidthF(pdf));
             EditAnnotationsWindow* ew = tab->editAnnotsWindow;
             if (ew) {
                 ew->updatingControls = true;
@@ -4907,6 +4946,11 @@ struct FreeTextPropertyToolbar : Wnd {
         SelectObject(dc, oldFont);
     }
     LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) override {
+        if (msg == WM_SETCURSOR) {
+            // Handle this before the parent PDF canvas can choose a text cursor.
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+            return TRUE;
+        }
         if (msg == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
         if (msg == WM_GETDLGCODE) return DLGC_WANTALLKEYS;
         if (msg == WM_ERASEBKGND) return 1;

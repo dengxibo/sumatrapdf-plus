@@ -5810,7 +5810,8 @@ static void CachePendingAnnotationPreview(WindowTab* tab, WindowTab::PdfMarkupOv
     DisplayModel* dm = tab->AsFixed();
     AnnotationType type = entry.annot->type;
     if (!dm || (type != AnnotationType::Stamp && type != AnnotationType::Line && type != AnnotationType::Ink &&
-                type != AnnotationType::Square && type != AnnotationType::Circle)) {
+                type != AnnotationType::Square && type != AnnotationType::Circle && type != AnnotationType::Underline &&
+                type != AnnotationType::Squiggly && type != AnnotationType::StrikeOut)) {
         return;
     }
     entry.appearanceZoom = dm->GetZoomSafe(entry.pageNo);
@@ -10208,6 +10209,10 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         }
         if (args->annotType == AnnotationType::Highlight && dm->textSelection->result.len > 0) {
             PreparePdfHighlightRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
+        }
+        if (dm->textSelection->result.len > 0 && !EngineMupdfPageUsesOcrText(engine, pageNo) &&
+            !PageHasVerticalGlyphLayout(engine, pageNo)) {
+            PreparePdfNativeLineRects(rects, args->annotType);
         }
         if ((args->annotType == AnnotationType::Underline || args->annotType == AnnotationType::Squiggly) &&
             dm->textSelection->result.len > 0 && EngineMupdfPageUsesOcrText(engine, pageNo)) {

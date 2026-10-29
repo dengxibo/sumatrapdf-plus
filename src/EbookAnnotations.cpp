@@ -2896,8 +2896,8 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
 // Match MuPDF/Acrobat markup appearance (pdf-appearance.c):
 // highlight: Multiply on light paper, colored band with dark text on dark paper
 // underline: line at 1/7 of height from bottom, thickness h/16
-// strike-out: line at 3/7 of height from bottom, thickness h/16
-// squiggly: zigzag from baseline with amplitude h/7, step h/7, thickness h/16
+// strike-out: EPUB glyph center; PDF at 3/7 of height from bottom
+// squiggly: EPUB below glyphs; PDF peaks h/7 above the baseline
 void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORREF color, Vec<Rect>& screenRects,
                             int opacity, bool underlineBelowText) {
     if (screenRects.empty()) {
@@ -2937,7 +2937,7 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
             continue;
         }
         if (type == AnnotationType::StrikeOut) {
-            float y = yBot - h * 3.f / 7.f;
+            float y = underlineBelowText ? yTop + h * 0.5f : yBot - h * 3.f / 7.f;
             graphics.DrawLine(&pen, x1, y, x2, y);
             continue;
         }
@@ -2945,7 +2945,10 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
             continue;
         }
 
-        // Triangular wave along the baseline, peaking at h/7 toward the top.
+        // Keep the entire EPUB wave below the glyphs, including its stroke.
+        // PDF overlays retain the appearance used by MuPDF.
+        float waveTop = underlineBelowText ? yBot + lineWidth * 0.5f + std::max(1.f, h * 0.04f) : yBot - h / 7.f;
+        float waveBottom = underlineBelowText ? waveTop + h / 7.f : yBot;
         float width = x2 - x1;
         if (width <= 0) {
             continue;
@@ -2954,21 +2957,21 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
         float x = 0;
         bool up = true;
         float cx = x1;
-        float cy = yBot;
+        float cy = waveBottom;
         path.StartFigure();
         while (x < width) {
             x += h / 7.f;
             float t = std::min(x / width, 1.f);
             float ax = x1 + t * width;
             if (up) {
-                float ny = yBot + (yTop - yBot) / 7.f;
+                float ny = waveTop;
                 path.AddLine(cx, cy, ax, ny);
                 cx = ax;
                 cy = ny;
             } else {
-                path.AddLine(cx, cy, ax, yBot);
+                path.AddLine(cx, cy, ax, waveBottom);
                 cx = ax;
-                cy = yBot;
+                cy = waveBottom;
             }
             up = !up;
         }

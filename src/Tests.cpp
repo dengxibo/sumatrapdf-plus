@@ -244,6 +244,23 @@ static void TestTextMarkupOverlay() {
                 below++;
         }
         if (!below) failures++;
+        for (AnnotationType type : {AnnotationType::StrikeOut, AnnotationType::Squiggly}) {
+            PatBlt(dc, 0, 0, 220, 100, WHITENESS);
+            PaintTextMarkupOverlay(dc, Rect(0, 0, 220, 100), type, RGB(255, 0, 0), rects, 100, true);
+            int first = 100;
+            int last = -1;
+            for (int y = 0; y < 100; y++) {
+                for (int x = 20; x < 180; x++) {
+                    if (GetPixel(dc, x, y) == RGB(255, 255, 255)) continue;
+                    first = std::min(first, y);
+                    last = std::max(last, y);
+                }
+            }
+            if (last < 0) failures++;
+            if (type == AnnotationType::StrikeOut && fabsf((first + last) * 0.5f - (10 + height * 0.5f)) > 1.f)
+                failures++;
+            if (type == AnnotationType::Squiggly && first <= 10 + height) failures++;
+        }
         SelectObject(dc, old);
         DeleteObject(bitmap);
         DeleteDC(dc);
@@ -470,6 +487,9 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     if (testType == AnnotationType::Highlight) {
         PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
     }
+    if (!EngineMupdfPageUsesOcrText(engine, pageNo) && !PageHasVerticalGlyphLayout(engine, pageNo)) {
+        PreparePdfNativeLineRects(finalRects, testType);
+    }
     if ((testType == AnnotationType::Underline || testType == AnnotationType::Squiggly) &&
         EngineMupdfPageUsesOcrText(engine, pageNo)) {
         PreparePdfOcrUnderlineRects(finalRects, engine, pageNo, PageHasVerticalGlyphLayout(engine, pageNo),
@@ -643,9 +663,11 @@ static bool TestEpubUnderline(const Flags& flags, const char* folder) {
     int len = 0;
     const WCHAR* text = nullptr;
     const WCHAR* match = nullptr;
+    const char* testText = getenv("SUMATRA_TEST_EPUB_MARKUP_TEXT");
+    const WCHAR* needle = testText ? strconv::StrCPToWStrTemp(testText, CP_UTF8) : L"在帝国发生";
     for (; pageNo <= engine->PageCount(); pageNo++) {
         text = engine->GetTextForPage(pageNo, &len);
-        if (text) match = wcsstr(text, L"在帝国发生");
+        if (text) match = wcsstr(text, needle);
         if (match) break;
     }
     if (!match) return false;
@@ -665,6 +687,11 @@ static bool TestEpubUnderline(const Flags& flags, const char* folder) {
     clip.Inflate(16, 16);
     clip = clip.Intersect(engine->PageMediabox(pageNo));
     constexpr float zoom = 3.f;
+    AnnotationType markup = AnnotationType::Underline;
+    const char* markupType = getenv("SUMATRA_TEST_EPUB_MARKUP_TYPE");
+    if (str::EqI(markupType, "strikeout")) markup = AnnotationType::StrikeOut;
+    if (str::EqI(markupType, "squiggly")) markup = AnnotationType::Squiggly;
+    if (str::EqI(markupType, "highlight")) markup = AnnotationType::Highlight;
     Rect origin = engine->Transform(clip, pageNo, zoom, 0).Round();
     for (int stage = 0; stage < 3; stage++) {
         RenderPageArgs args(pageNo, zoom, 0, &clip, RenderTarget::Export);
@@ -681,8 +708,8 @@ static bool TestEpubUnderline(const Flags& flags, const char* folder) {
             HDC dc = CreateCompatibleDC(nullptr);
             HGDIOBJ old = SelectObject(dc, bitmap->GetBitmap());
             Size size = bitmap->GetSize();
-            PaintTextMarkupOverlay(dc, Rect(0, 0, size.dx, size.dy), AnnotationType::Underline, RGB(255, 0, 0),
-                                   screenRects, 100, stage == 2);
+            PaintTextMarkupOverlay(dc, Rect(0, 0, size.dx, size.dy), markup, RGB(255, 0, 0), screenRects, 100,
+                                   stage == 2);
             SelectObject(dc, old);
             DeleteDC(dc);
         }
@@ -698,7 +725,72 @@ static bool TestEpubUnderline(const Flags& flags, const char* folder) {
     return true;
 }
 
+static bool TestFreeTextBorderColor(const Flags& flags, const char* folder) {
+    if (flags.fileNames.IsEmpty()) return false;
+    EngineBase* engine = CreateEngineFromFile(flags.fileNames[0], nullptr, true);
+    if (!engine) return false;
+    defer {
+        SafeEngineRelease(&engine);
+    };
+    SetTheme("Light-White");
+    SetPdfDocumentColorMode(PdfDocumentColorMode::Light);
+    AnnotCreateArgs create;
+    create.annotType = AnnotationType::FreeText;
+    ParseColor(create.col, "#000000");
+    RectF bounds(40, 40, 160, 80);
+    Annotation* annot = EngineMupdfCreateAnnotationInRect(engine, 1, bounds, &create);
+    if (!annot) return false;
+    SetContents(annot, "Border color");
+    SetColor(annot, 0);
+    SetBorderWidth(annot, 4);
+    auto checkBorder = [&](EngineBase* source, const char* name, bool green) {
+        RenderPageArgs args(1, 3.f, 0, &bounds, RenderTarget::Export);
+        RenderedBitmap* bitmap = source->RenderPage(args);
+        if (!bitmap) return false;
+        defer {
+            delete bitmap;
+        };
+        ByteSlice data = SerializeBitmap(bitmap->GetBitmap());
+        bool saved = file::WriteFile(path::JoinTemp(folder, name), data);
+        data.Free();
+        HDC dc = CreateCompatibleDC(nullptr);
+        HGDIOBJ old = SelectObject(dc, bitmap->GetBitmap());
+        int matching = 0;
+        // The top border is 12 device pixels wide. Check the actual PDF
+        // appearance, not the custom property read by the native edit control.
+        for (int y = 1; y < 11; y++) {
+            for (int x = 30; x < 450; x++) {
+                COLORREF c = GetPixel(dc, x, y);
+                if (green ? (GetGValue(c) > 100 && GetRValue(c) < 60 && GetBValue(c) < 60)
+                          : (GetRValue(c) > 200 && GetGValue(c) > 70 && GetGValue(c) < 200 && GetBValue(c) < 60))
+                    matching++;
+            }
+        }
+        SelectObject(dc, old);
+        DeleteDC(dc);
+        return saved && matching > 2000;
+    };
+    SetFreeTextBorderColor(annot, 0xffffa500);
+    bool ok = checkBorder(engine, "orange.png", false);
+    // No other style/content setter may trigger appearance regeneration here.
+    SetFreeTextBorderColor(annot, 0xff008000);
+    ok = checkBorder(engine, "green.png", true) && ok;
+    TempStr savedPath = path::JoinTemp(folder, "border.pdf");
+    ok = EngineMupdfSaveUpdated(engine, savedPath, MkFunc1Void(AnnotationTestSaveError)) && ok;
+    EngineBase* reopened = CreateEngineFromFile(savedPath, nullptr, true);
+    if (!reopened) return false;
+    defer {
+        SafeEngineRelease(&reopened);
+    };
+    ok = checkBorder(reopened, "reopened.png", true) && ok;
+    file::WriteFile(path::JoinTemp(folder, "result.txt"), ok ? "PASS\n" : "FAIL\n");
+    return ok;
+}
+
 void TestRenderPage(const Flags& i) {
+    if (const char* folder = getenv("SUMATRA_TEST_FREETEXT_BORDER")) {
+        ExitProcess(TestFreeTextBorderColor(i, folder) ? 0 : 1);
+    }
     if (const char* folder = getenv("SUMATRA_TEST_EPUB_UNDERLINE")) {
         ExitProcess(TestEpubUnderline(i, folder) ? 0 : 1);
     }

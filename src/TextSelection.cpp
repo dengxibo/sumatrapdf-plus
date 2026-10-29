@@ -920,6 +920,7 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
     // glyph, so visual lines must additionally be split geometrically. Vertical
     // glyph layouts stack glyphs along Y inside a column and must not be split.
     bool geoSplit = !PageUsesVerticalGlyphLayout(ts, pageNo);
+    bool pdf = str::EqI(ts->engine->defaultExt, ".pdf");
     bool scannedPdf = str::EqI(ts->engine->defaultExt, ".pdf") &&
                       (ts->engine->HasCachedOcrText(pageNo) || EngineMupdfIsScannedTextPage(ts->engine, pageNo));
     Rect *c = &coords[glyph], *end = c + length;
@@ -938,7 +939,7 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
             if (geoSplit && c != c0 && GlyphJumpsToNextBandLine(band, *c)) {
                 break;
             }
-            if (scannedPdf && geoSplit && c != c0) {
+            if (pdf && geoSplit && c != c0) {
                 float minHeight = (float)std::min(band.dy, c->dy);
                 float maxHeight = (float)std::max(band.dy, c->dy);
                 float centerDelta = fabsf((float)(band.y - c->y) + (float)(band.dy - c->dy) * .5f);
@@ -961,7 +962,7 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
             }
             // A tall OCR box (e.g. marginal vertical text) must not grow the
             // row reference until it swallows the next horizontal body line.
-            band = scannedPdf ? *c : band.Union(*c);
+            band = pdf ? *c : band.Union(*c);
             // find the end of this visual line
         }
 

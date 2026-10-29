@@ -1184,12 +1184,33 @@ static inline int WcharsPerRune(int rune) {
     return rune > 0xFFFF ? 2 : 1;
 }
 
-static Rect SelectionRectFromChar(fz_stext_line* line, fz_stext_char* c) {
+static Rect SelectionRectFromChar(fz_stext_line* line, fz_stext_char* c, bool glyphBounds) {
     fz_rect bbox = fz_rect_from_quad(c->quad);
     Rect r = ToRectF(bbox).Round();
+    // Accurate line bounds follow glyph ink. Give spaces and punctuation
+    // the same band as their line, so empty space outlines cannot inflate the
+    // selection and short punctuation cannot split it into separate rows.
+    if (line && line->wmode == 0) {
+        Rect ink = ToRectF(line->bbox).Round();
+        if (ink.dy > 0) {
+            r.y = ink.y;
+            r.dy = ink.dy;
+            // Some reflow CJK fallback fonts have oversized outline metrics.
+            // Cap those bands without expanding ordinary Latin glyphs or
+            // centering empty spaces on the baseline independently of the row.
+            if (!glyphBounds && c->size > 0.01f && r.dy > c->size) {
+                int height = std::max(1, (int)(c->size + 0.5f));
+                r.y += (r.dy - height) / 2;
+                r.dy = height;
+            }
+            return r;
+        }
+    }
+    // Native PDF selection follows glyph ink; keep the reflow font-band
+    // fallback below for EPUB fonts with oversized outline metrics.
     // Vertical reflow text needs the accurate glyph bounds. Replacing those
     // bounds with a horizontal font-size band shifts glyph picking by one cell.
-    if (line && line->wmode != 0) {
+    if (glyphBounds || (line && line->wmode != 0)) {
         return r;
     }
 
@@ -1320,8 +1341,8 @@ static bool RuneIsNonPrintable(int rune) {
     return rune <= 32 || (rune >= 0 && rune <= 0xFFFF && str::IsNonCharacter((WCHAR)rune));
 }
 
-static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<Rect>& rects) {
-    Rect r = SelectionRectFromChar(line, c);
+static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<Rect>& rects, bool glyphBounds) {
+    Rect r = SelectionRectFromChar(line, c, glyphBounds);
 
     int n = WcharsPerRune(c->c);
     if (n == 2) {
@@ -1405,8 +1426,8 @@ static bool Utf8StrEndsWithWhitespace(const StrBuilder& s) {
 
 // UTF-8 variant: append `c` as up to 4 UTF-8 bytes to `s` and the same
 // rect `r` for each byte, so rects.size() == s.size() holds.
-static void AddCharUtf8(fz_stext_line* line, fz_stext_char* c, StrBuilder& s, Vec<Rect>& rects) {
-    Rect r = SelectionRectFromChar(line, c);
+static void AddCharUtf8(fz_stext_line* line, fz_stext_char* c, StrBuilder& s, Vec<Rect>& rects, bool glyphBounds) {
+    Rect r = SelectionRectFromChar(line, c, glyphBounds);
 
     int rune = c->c;
     bool isWhitespace = RuneIsWhitespace(rune);
@@ -1643,7 +1664,7 @@ static const char* StextJoinSepUtf8(fz_stext_line* a, fz_stext_line* b, float ga
     return "";
 }
 
-static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut) {
+static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut, bool glyphBounds) {
     StrBuilder content;
     Vec<Rect> rects;
     Vec<fz_stext_line*> lines;
@@ -1655,7 +1676,7 @@ static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut) {
     for (size_t i = 0; i < lines.size(); i++) {
         fz_stext_line* line = lines[i];
         for (fz_stext_char* c = line->first_char; c; c = c->next) {
-            AddCharUtf8(line, c, content, rects);
+            AddCharUtf8(line, c, content, rects, glyphBounds);
         }
         if (i + 1 >= lines.size()) {
             continue;
@@ -1678,7 +1699,7 @@ static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut) {
     return content.StealData();
 }
 
-static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut) {
+static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut, bool glyphBounds = false) {
     WStrBuilder content;
     // coordsOut is optional but we ask for it by default so we simplify the code
     // by always calculating it
@@ -1692,7 +1713,7 @@ static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut) {
     for (size_t i = 0; i < lines.size(); i++) {
         fz_stext_line* line = lines[i];
         for (fz_stext_char* c = line->first_char; c; c = c->next) {
-            AddChar(line, c, content, rects);
+            AddChar(line, c, content, rects, glyphBounds);
         }
         if (i + 1 >= lines.size()) {
             continue;
@@ -12990,7 +13011,7 @@ static PageText ExtractPageTextFromFzPageInfo(EngineMupdf* e, FzPageInfo* pageIn
         return {};
     }
     PageText res;
-    WCHAR* text = FzTextPageToStr(pageInfo->searchStext, &res.coords);
+    WCHAR* text = FzTextPageToStr(pageInfo->searchStext, &res.coords, e->pdfdoc != nullptr);
     res.text = text;
     res.len = (int)str::Len(text);
     return res;
@@ -13017,7 +13038,7 @@ static PageTextUtf8 ExtractPageTextUtf8FromFzPageInfo(EngineMupdf* e, FzPageInfo
         return {};
     }
     PageTextUtf8 res;
-    char* text = FzTextPageToUtf8(pageInfo->searchStext, &res.coords);
+    char* text = FzTextPageToUtf8(pageInfo->searchStext, &res.coords, e->pdfdoc != nullptr);
     res.text = text;
     res.len = (int)str::Len(text);
     return res;

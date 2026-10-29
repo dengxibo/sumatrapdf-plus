@@ -60,6 +60,9 @@ float HighlightBandRatio();
 // Raw PDF text selection -> final highlight quads. Apply only before creating
 // a new highlight; saved annotation quads are already in their final geometry.
 void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical = false);
+enum class AnnotationType;
+// Convert native glyph bands to MuPDF's line-markup appearance coordinates.
+void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type);
 // Place new OCR underlines below the ink without changing the OCR hit boxes.
 void PreparePdfOcrUnderlineRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical, bool squiggly);
 

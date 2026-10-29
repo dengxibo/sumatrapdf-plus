@@ -2199,6 +2199,9 @@ void SetFreeTextBorderColor(Annotation* annot, PdfColor col) {
         pdf_array_push_real(ctx, arr, rgb[1]);
         pdf_array_push_real(ctx, arr, rgb[2]);
         pdf_dict_puts_drop(ctx, pdf_annot_obj(ctx, a), "SumatraBorder", arr);
+        // Custom dictionary entries do not invalidate MuPDF's cached appearance.
+        // Regenerate it so the page and saved PDF use the new border color too.
+        pdf_dirty_annot(ctx, a);
         pdf_update_annot(ctx, a);
     }
     fz_catch(ctx) {
