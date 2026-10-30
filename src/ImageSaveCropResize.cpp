@@ -145,6 +145,7 @@ struct ImageEditWindow {
     HBRUSH chromeBrush = nullptr;
     COLORREF chromeColor = 0;
     Button* btnSave = nullptr;
+    Button* btnCopy = nullptr;
     Button* btnCrop = nullptr;   // "Crop" or "Apply Crop"
     Button* btnResize = nullptr; // "Resize" or "Apply Resize"
     Button* btnRotateLeft = nullptr;
@@ -208,6 +209,7 @@ struct ImageEditWindow {
             DeleteObject(chromeBrush);
         }
         delete btnSave;
+        delete btnCopy;
         delete btnCrop;
         delete btnResize;
         delete btnRotateLeft;
@@ -253,6 +255,9 @@ static void ApplyImageFont(ImageEditWindow* ew, int dpi) {
     }
     if (ew->btnSave && ew->btnSave->hwnd) {
         SendMessageW(ew->btnSave->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->btnCopy && ew->btnCopy->hwnd) {
+        SendMessageW(ew->btnCopy->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
     }
     if (ew->btnCrop && ew->btnCrop->hwnd) {
         SendMessageW(ew->btnCrop->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
@@ -986,8 +991,15 @@ static void LayoutControls(ImageEditWindow* ew) {
     int saveW = std::max(ew->btnSave->GetIdealSize().dx, ImgPx(ew, 90));
     bool rtl = trans::IsCurrLangRtl();
     MoveWindow(ew->btnSave->hwnd, rtl ? x : x + w - saveW, y, saveW, footerH, TRUE);
+    int actionsW = saveW;
+    if (ew->btnCopy) {
+        int copyW = std::max(ew->btnCopy->GetIdealSize().dx, ImgPx(ew, 90));
+        actionsW += rowPad + copyW;
+        MoveWindow(ew->btnCopy->hwnd, rtl ? x + saveW + rowPad : x + w - actionsW, y, copyW, footerH, TRUE);
+    }
     if (ew->hwndOpenAfterSave) {
-        MoveWindow(ew->hwndOpenAfterSave, rtl ? x + saveW + rowPad : x, y, w - saveW - rowPad, footerH, TRUE);
+        MoveWindow(ew->hwndOpenAfterSave, rtl ? x + actionsW + rowPad : x, y, std::max(0, w - actionsW - rowPad),
+                   footerH, TRUE);
     }
 }
 
@@ -1984,6 +1996,18 @@ static bool CopyEditedImageToClipboard(ImageEditWindow* ew) {
     return CopyImageToClipboard(tmp, false);
 }
 
+static void OnCopyImage(ImageEditWindow* ew) {
+    if (!CopyEditedImageToClipboard(ew)) {
+        MessageBoxWarning(ew->hwnd, _TRA("Cannot access the clipboard. Please retry."), _TRA("Copy Image"));
+        return;
+    }
+    if (ew->btnCopy) {
+        ew->btnCopy->SetText(_TRA("Copied"));
+        LayoutControls(ew);
+        SetTimer(ew->hwnd, 1, 2000, nullptr);
+    }
+}
+
 LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
 static void CancelImageEditDrag(ImageEditWindow* ew) {
@@ -2385,7 +2409,7 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 break;
             }
             if ((GetKeyState(VK_CONTROL) & 0x8000) != 0 && wp == 'C') {
-                CopyEditedImageToClipboard(ew);
+                OnCopyImage(ew);
                 return 0;
             }
             if (wp == VK_ESCAPE) {
@@ -2501,6 +2525,17 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             UpdateModeButtons(ew);
             InvalidateImageArea(ew);
             return 0;
+        }
+
+        case WM_TIMER: {
+            ew = FindImageEditWindowByHwnd(hwnd);
+            if (wp == 1 && ew && ew->btnCopy) {
+                KillTimer(hwnd, 1);
+                ew->btnCopy->SetText(_TRA("Copy"));
+                LayoutControls(ew);
+                return 0;
+            }
+            break;
         }
 
         case WM_COMMAND: {
@@ -2761,6 +2796,16 @@ static HWND CreateImageEditWindow(HWND owner, MainWindow* win, ImageEditMode mod
         btn->onClick = MkFunc0<ImageEditWindow>(OnSave, ew);
         ew->btnSave = btn;
     }
+    if (!cropDone) {
+        auto* btn = new Button();
+        Button::CreateArgs args;
+        args.parent = hwnd;
+        args.font = ew->hFont;
+        args.text = _TRA("Copy");
+        btn->Create(args);
+        btn->onClick = MkFunc0<ImageEditWindow>(OnCopyImage, ew);
+        ew->btnCopy = btn;
+    }
     {
         auto* btn = new Button();
         Button::CreateArgs args;
@@ -2968,9 +3013,10 @@ bool TestImageEditWindow() {
                 RECT suggested{0, 0, MulDiv(800, dpi, 96), MulDiv(900, dpi, 96)};
                 SendMessageW(hwnd, WM_DPICHANGED, MAKELONG(dpi, dpi), (LPARAM)&suggested);
                 valid = valid && ew->dpi == dpi && ew->hintRc.Bottom() <= ClientRect(hwnd).dy;
-                HWND controls[] = {ew->hwndDestEdit,        ew->hwndBrowseBtn,        ew->hwndOpenAfterSave,
-                                   ew->btnSave->hwnd,       ew->btnCrop->hwnd,        ew->btnResize->hwnd,
-                                   ew->btnRotateLeft->hwnd, ew->btnRotateRight->hwnd, ew->dropFormat->hwnd};
+                HWND controls[] = {ew->hwndDestEdit,    ew->hwndBrowseBtn,       ew->hwndOpenAfterSave,
+                                   ew->btnSave->hwnd,   ew->btnCopy->hwnd,       ew->btnCrop->hwnd,
+                                   ew->btnResize->hwnd, ew->btnRotateLeft->hwnd, ew->btnRotateRight->hwnd,
+                                   ew->dropFormat->hwnd};
                 for (HWND ctl : controls) {
                     RECT r{};
                     GetWindowRect(ctl, &r);
