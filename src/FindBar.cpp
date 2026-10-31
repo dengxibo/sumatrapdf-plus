@@ -40,10 +40,68 @@
 #include "utils/Log.h"
 
 constexpr UINT_PTR kFindEditSubclassId = 9101;
+constexpr UINT kToolbarFindFitCaret = WM_APP + 0x3f1;
+
+static int ToolbarFindLineHeight(HWND hwnd, HFONT font) {
+    HDC dc = GetDC(hwnd);
+    if (!dc) {
+        return 0;
+    }
+    TEXTMETRICW metrics{};
+    {
+        ScopedSelectFont selectFont(dc, font);
+        GetTextMetricsW(dc, &metrics);
+    }
+    ReleaseDC(hwnd, dc);
+    return metrics.tmHeight;
+}
+
+static void ToolbarFindFitCaret(HWND hwnd) {
+    if (GetFocus() != hwnd) {
+        return;
+    }
+    GUITHREADINFO info{};
+    info.cbSize = sizeof(info);
+    RECT rc{};
+    if (!GetGUIThreadInfo(GetCurrentThreadId(), &info) || info.hwndCaret != hwnd || !GetClientRect(hwnd, &rc)) {
+        return;
+    }
+    int height = rc.bottom - rc.top;
+    int caretHeight = info.rcCaret.bottom - info.rcCaret.top;
+    if (height <= 0 || caretHeight <= 0) {
+        return;
+    }
+    // Derive the height from the edit font, not the previous native caret:
+    // IMEs can leave a shorter caret after the first committed character.
+    int lineHeight = ToolbarFindLineHeight(hwnd, GetWindowFont(hwnd));
+    if (lineHeight <= 0) {
+        return;
+    }
+    int fittedHeight = std::min(lineHeight, height);
+    int y = (height - fittedHeight) / 2;
+    if (fittedHeight == caretHeight) {
+        if (info.rcCaret.top != y) {
+            SetCaretPos(info.rcCaret.left, y);
+        }
+        return;
+    }
+    if (CreateCaret(hwnd, nullptr, info.rcCaret.right - info.rcCaret.left, fittedHeight)) {
+        SetCaretPos(info.rcCaret.left, y);
+        ShowCaret(hwnd);
+    }
+}
 
 static LRESULT CALLBACK FindEditSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
                                              DWORD_PTR refData) {
     MainWindow* win = (MainWindow*)refData;
+    if (msg == kToolbarFindFitCaret) {
+        ToolbarFindFitCaret(hwnd);
+        return 0;
+    }
+    if (win && hwnd == ToolbarFindEdit(win) && msg == WM_CHAR) {
+        // Enter is handled below without calling the native edit procedure.
+        PostMessageW(hwnd, kToolbarFindFitCaret, 0, 0);
+    }
     if (win && hwnd == ToolbarFindEdit(win) && msg == WM_KEYDOWN && wp == VK_TAB) {
         AdvanceFocus(win);
         return 0;
@@ -71,7 +129,31 @@ static LRESULT CALLBACK FindEditSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             return 0;
         }
     }
-    return DefSubclassProc(hwnd, msg, wp, lp);
+    LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+    if (win && hwnd == ToolbarFindEdit(win)) {
+        switch (msg) {
+            case WM_SETFOCUS:
+            case WM_SETFONT:
+            case WM_SIZE:
+            case WM_SETTEXT:
+            case WM_CHAR:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            case WM_PAINT:
+            case EM_SETSEL:
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_IME_COMPOSITION:
+            case WM_IME_ENDCOMPOSITION:
+            case WM_IME_CHAR:
+                ToolbarFindFitCaret(hwnd);
+                // IME processing can move the caret again after a nested
+                // size or character message. Finish alignment after it returns.
+                PostMessageW(hwnd, kToolbarFindFitCaret, 0, 0);
+                break;
+        }
+    }
+    return result;
 }
 
 void InstallFindEditKeyboardHandler(MainWindow* win, HWND hwndEdit) {
@@ -917,7 +999,7 @@ static void ToolbarFindLayoutInner(ToolbarFindState* st) {
 
     // A single-line edit pins its text to the top. Size the control to the
     // line and center that strip, the same way the page box does.
-    int textH = font ? HwndMeasureText(st->hwnd, "Page:", font).dy : 0;
+    int textH = font ? ToolbarFindLineHeight(st->edit, font) : 0;
     int editH = textH > 0 ? textH : h - edge * 2;
     if (editH > h - 2) {
         editH = h - 2;
