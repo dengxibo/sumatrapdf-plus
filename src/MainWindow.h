@@ -30,6 +30,8 @@ struct FindMatch {
     char* snippet = nullptr;    // UTF-8, owned (freed when findMatches is rebuilt)
     int snippetMatchStart = -1; // byte range of this result's match inside snippet
     int snippetMatchEnd = -1;
+    float relevance = 0; // BM25 result order; zero for exact matches
+    int relatedPreviewGlyph = -1;
 };
 
 // factor by how large the non-maximized caption should be in relation to the tabbar
@@ -425,6 +427,7 @@ struct MainWindow {
     HANDLE findThread = nullptr;
     bool findCancelled = false;
     bool findMatchCase = false;
+    bool findRelatedSearch = false; // session-only related search mode
     bool findMatchWholeWord = false;
     // true after the user edits the find text and before they press Enter to search
     bool findEnterPending = false;

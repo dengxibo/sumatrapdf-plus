@@ -72,6 +72,7 @@ enum class TbIcon {
     ResetAppearance,
     Rotate180,
     CapturePageRegion,
+    RelatedSearch,
     kMax
 };
 

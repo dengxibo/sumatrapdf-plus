@@ -1279,9 +1279,19 @@ extern void TocTreeKeyDown2(TreeView::KeyDownEvent*);
 // sits just below the row, in the dark tooltip. This popup does the same.
 static HWND gFavPopTip = nullptr;
 static HWND gFavPopOwner = nullptr;
+static TreeItem gFavPopItem = 0;
 static TreeItem gFavHoverItem = 0;
 static bool gFavHoverTracking = false;
 static HWND gFavHoverHwnd = nullptr;
+
+static LRESULT CALLBACK FavPopWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    if (msg == WM_NCHITTEST) {
+        // A wrapped tip can be moved over the pointer to fit the monitor.
+        // Keep mouse tracking on the tree even in that case.
+        return HTTRANSPARENT;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
 
 static void FavPopEnsure(HWND owner) {
     if (gFavPopTip && IsWindow(gFavPopTip) && gFavPopOwner == owner) {
@@ -1290,17 +1300,19 @@ static void FavPopEnsure(HWND owner) {
     if (gFavPopTip && IsWindow(gFavPopTip)) {
         DestroyWindow(gFavPopTip);
     }
-    gFavPopTip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, owner, nullptr,
-                                 GetModuleHandleW(nullptr), nullptr);
+    gFavPopItem = 0;
+    gFavPopTip = CreateWindowExW(WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT, TOOLTIPS_CLASSW, nullptr,
+                                 WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                 CW_USEDEFAULT, owner, nullptr, GetModuleHandleW(nullptr), nullptr);
     gFavPopOwner = owner;
     if (!gFavPopTip) {
         return;
     }
+    SetWindowSubclass(gFavPopTip, FavPopWndProc, 1, 0);
     SetWindowPos(gFavPopTip, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     TOOLINFOW ti{};
     ti.cbSize = sizeof(ti);
-    ti.uFlags = TTF_TRACK | TTF_ABSOLUTE;
+    ti.uFlags = TTF_TRACK | TTF_ABSOLUTE | TTF_TRANSPARENT;
     ti.hwnd = owner;
     ti.uId = 1;
     ti.lpszText = (WCHAR*)L"";
@@ -1313,6 +1325,7 @@ static void FavPopEnsure(HWND owner) {
 }
 
 static void FavPopHide() {
+    gFavPopItem = 0;
     if (!gFavPopTip || !gFavPopOwner) {
         return;
     }
@@ -1359,6 +1372,11 @@ static void FavPopShow(HWND hwnd, const char* text, const RECT& rcLabel) {
     if (!gFavPopTip) {
         return;
     }
+    // A tooltip can generate another move/hover notification when it appears.
+    // Do not update and reactivate the same visible tip on those notifications.
+    if (gFavPopItem == gFavHoverItem && IsWindowVisible(gFavPopTip)) {
+        return;
+    }
     TempWStr ws = ToWStrTemp(text);
     TOOLINFOW ti{};
     ti.cbSize = sizeof(ti);
@@ -1370,6 +1388,7 @@ static void FavPopShow(HWND hwnd, const char* text, const RECT& rcLabel) {
     MapWindowPoints(hwnd, HWND_DESKTOP, &pt, 1);
     SendMessageW(gFavPopTip, TTM_TRACKPOSITION, 0, MAKELPARAM(pt.x, pt.y));
     SendMessageW(gFavPopTip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
+    gFavPopItem = gFavHoverItem;
 }
 
 static void FavTreeOnMouseMove(MainWindow* win, HWND hwnd, int x, int y) {
@@ -1397,7 +1416,9 @@ static void FavTreeOnMouseMove(MainWindow* win, HWND hwnd, int x, int y) {
     }
     TRACKMOUSEEVENT tme{};
     tme.cbSize = sizeof(tme);
-    tme.dwFlags = TME_HOVER | TME_LEAVE;
+    // The row-change timer is the sole show trigger. Using TME_HOVER as well
+    // would show the popup twice and rearm it on synthetic mouse moves.
+    tme.dwFlags = TME_LEAVE;
     tme.hwndTrack = hwnd;
     tme.dwHoverTime = HOVER_DEFAULT;
     TrackMouseEvent(&tme);
@@ -1405,7 +1426,6 @@ static void FavTreeOnMouseMove(MainWindow* win, HWND hwnd, int x, int y) {
 }
 
 static void FavTreeOnMouseHover(MainWindow* win, HWND hwnd, int x, int y) {
-    gFavHoverTracking = false;
     if (TreeWrapLabelsEnabled() || !win || !win->favTreeView) {
         FavPopHide();
         return;

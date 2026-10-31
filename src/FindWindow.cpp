@@ -37,6 +37,7 @@
 #include "DarkModeSubclass.h"
 
 #include "utils/Log.h"
+#include "utils/SearchText.h"
 
 // Match the frame's caption to the current theme, including Light-Warm.
 static void ApplyTitleBarTheme(HWND hwnd) {
@@ -60,6 +61,7 @@ constexpr int kFindWindowDefaultDy = 400;
 // command ids for the window's toolbar buttons (handled in OnCommand)
 constexpr int kFindWinPinCmdId = (int)CmdLast + 51;
 constexpr int kFindWinCloseCmdId = (int)CmdLast + 53;
+constexpr int kFindWinRelatedCmdId = (int)CmdLast + 54;
 
 struct FindWindowWnd;
 
@@ -239,6 +241,8 @@ static const char* FindWindowButtonTooltip(int cmd) {
             return AppendCmdAccel(_TRA("Match Case"), cmd);
         case CmdFindToggleMatchWholeWord:
             return AppendCmdAccel(_TRA("Match Whole Word"), cmd);
+        case kFindWinRelatedCmdId:
+            return _TRA("Related search (BM25)");
         case kFindWinPinCmdId:
             return nullptr;
         case kFindWinCloseCmdId:
@@ -557,7 +561,7 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         SendMessageW(hwndBtns, TB_SETIMAGELIST, 0, (LPARAM)himl);
         SendMessageW(hwndBtns, TB_SETBUTTONSIZE, 0, MAKELONG(slot, slot));
 
-        TBBUTTON b[6]{};
+        TBBUTTON b[7]{};
         b[0].iBitmap = (int)TbIcon::ChevronUp;
         b[0].idCommand = CmdFindPrev;
         b[0].fsState = TBSTATE_ENABLED;
@@ -582,11 +586,17 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         b[5].idCommand = kFindWinCloseCmdId;
         b[5].fsState = TBSTATE_ENABLED;
         b[5].fsStyle = BTNS_BUTTON;
-        SendMessageW(hwndBtns, TB_ADDBUTTONS, 6, (LPARAM)&b);
+        b[6].iBitmap = (int)TbIcon::RelatedSearch;
+        b[6].idCommand = kFindWinRelatedCmdId;
+        b[6].fsState = TBSTATE_ENABLED | (win->findRelatedSearch ? TBSTATE_CHECKED : 0);
+        b[6].fsStyle = BTNS_CHECK;
+        SendMessageW(hwndBtns, TB_ADDBUTTONS, 7, (LPARAM)&b);
         // Find stays in the toolbar, so the floating window has no "back to toolbar" button.
         SendMessageW(hwndBtns, TB_HIDEBUTTON, kFindWinPinCmdId, MAKELONG(TRUE, 0));
         SendMessageW(hwndBtns, TB_HIDEBUTTON, kFindWinCloseCmdId, MAKELONG(TRUE, 0));
         SendMessageW(hwndBtns, TB_AUTOSIZE, 0, 0);
+        SendMessageW(hwndBtns, TB_ENABLEBUTTON, CmdFindToggleMatchCase, MAKELONG(!win->findRelatedSearch, 0));
+        SendMessageW(hwndBtns, TB_ENABLEBUTTON, CmdFindToggleMatchWholeWord, MAKELONG(!win->findRelatedSearch, 0));
     }
 
     {
@@ -1116,6 +1126,9 @@ int FindWindowWnd::FirstMatchFromCurrentPage() {
     if (n == 0) {
         return -1;
     }
+    if (win->findRelatedSearch) {
+        return 0;
+    }
     int curPage = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
     if (win->findCountValid && !win->findCountPartial) {
         for (int i = 0; i < n; i++) {
@@ -1260,6 +1273,8 @@ void FindWindowWnd::RefreshToolbarDpi() {
     int dpi = lastDpi > 0 ? lastDpi : DpiGet(hwnd);
     int icon = RoundUp(MulDiv(16, dpi, 96), 4);
     int slot = docked ? icon : std::max(icon, MulDiv(26, dpi, 96));
+    HFONT font = GetAppFontForDpi(dpi);
+    SetWindowFont(hwndBtns, font, FALSE);
     HIMAGELIST oldHiml = himl;
     himl = BuildStdToolbarImageList(icon);
     SendMessageW(hwndBtns, TB_SETIMAGELIST, 0, (LPARAM)himl);
@@ -1760,6 +1775,11 @@ bool FindWindowWnd::OnCommand(WPARAM wparam, LPARAM) {
         case CmdFindToggleMatchWholeWord:
             FindToggleMatchWholeWord(win);
             return true;
+        case kFindWinRelatedCmdId:
+            FindToggleRelatedSearch(win);
+            SendMessageW(hwndBtns, TB_CHECKBUTTON, kFindWinRelatedCmdId, MAKELONG(win->findRelatedSearch, 0));
+            FindWindowUpdateSearchOptions(win);
+            return true;
         case kFindWinPinCmdId:
             if (!docked) {
                 ToolbarFindCloseDetailed(win, true);
@@ -2072,6 +2092,7 @@ void FindWindowSetStatus(MainWindow* win, const char* s) {
 void FindWindowSetMatchCaseChecked(MainWindow* win, bool checked) {
     if (win->findWindow && win->findWindow->hwndBtns) {
         SendMessageW(win->findWindow->hwndBtns, TB_CHECKBUTTON, CmdFindToggleMatchCase, MAKELONG(checked ? 1 : 0, 0));
+        FindWindowUpdateSearchOptions(win);
     }
 }
 
@@ -2079,7 +2100,21 @@ void FindWindowSetMatchWholeWordChecked(MainWindow* win, bool checked) {
     if (win->findWindow && win->findWindow->hwndBtns) {
         SendMessageW(win->findWindow->hwndBtns, TB_CHECKBUTTON, CmdFindToggleMatchWholeWord,
                      MAKELONG(checked ? 1 : 0, 0));
+        FindWindowUpdateSearchOptions(win);
     }
+}
+
+void FindWindowUpdateSearchOptions(MainWindow* win) {
+    if (!win->findWindow || !win->findWindow->hwndBtns) {
+        return;
+    }
+    HWND edit = win->hwndFindEdit ? win->hwndFindEdit : win->findWindow->edit->hwnd;
+    bool enabled = !win->findRelatedSearch && !SearchTextIsHanQuery(HwndGetTextWTemp(edit));
+    HWND buttons = win->findWindow->hwndBtns;
+    SendMessageW(buttons, TB_ENABLEBUTTON, CmdFindToggleMatchCase, MAKELONG(enabled, 0));
+    SendMessageW(buttons, TB_ENABLEBUTTON, CmdFindToggleMatchWholeWord, MAKELONG(enabled, 0));
+    SendMessageW(buttons, TB_CHECKBUTTON, CmdFindToggleMatchCase, MAKELONG(enabled && win->findMatchCase, 0));
+    SendMessageW(buttons, TB_CHECKBUTTON, CmdFindToggleMatchWholeWord, MAKELONG(enabled && win->findMatchWholeWord, 0));
 }
 
 void FindWindowRefreshResults(MainWindow* win, bool allowNavigation) {

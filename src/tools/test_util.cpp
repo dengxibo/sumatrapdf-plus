@@ -3,6 +3,8 @@
 #include "utils/FileUtil.h"
 #include "PrintedTocPageDetector.h"
 #include "EpubMediaOverlay.h"
+#include "utils/Bm25.h"
+#include "utils/SearchText.h"
 
 // must be last due to assert() over-write
 #include "utils/UtAssert.h"
@@ -87,7 +89,102 @@ static int EpubMoDumpUnpacked(const char* dir) {
     return 0;
 }
 
+static void Bm25SearchTests() {
+    auto tokenize = [](const char* text, Vec<Bm25Token>& tokens) {
+        Vec<int> chars;
+        int bytes = (int)str::Len(text);
+        for (int i = 0; i < bytes;) {
+            chars.Append(Utf8CodepointNext(text, bytes, i));
+        }
+        Bm25Tokenize(chars.els, chars.Size(), tokens);
+    };
+    Vec<Bm25Token> query, fullName, unrelated, latin, wrapped;
+    tokenize("社保卡", query);
+    tokenize("请携带社会保障卡办理相关业务。", fullName);
+    tokenize("购买明信片和银行卡。", unrelated);
+    tokenize("Social SECURITY card", latin);
+    tokenize("社会保\n障卡", wrapped);
+    int recalled = 0, noise = 0;
+    for (auto term : query) {
+        if (!term.primary) continue;
+        bool inFullName = false, inNoise = false;
+        for (auto token : fullName) inFullName |= token.key == term.key;
+        for (auto token : unrelated) inNoise |= token.key == term.key;
+        recalled += inFullName;
+        noise += inNoise;
+    }
+    utassert(recalled == 3 && noise == 1);
+    Vec<Bm25Token> exact;
+    tokenize("社保卡补办指南", exact);
+    Vec<Bm25Token>* passages[] = {&fullName, &exact, &unrelated};
+    int tf[3][64]{}, df[64]{}, lengths[3]{};
+    for (int p = 0; p < 3; p++) {
+        for (auto token : *passages[p]) {
+            lengths[p] += token.primary;
+            for (int t = 0; t < query.Size(); t++) tf[p][t] += token.key == query[t].key;
+        }
+        for (int t = 0; t < query.Size(); t++) df[t] += tf[p][t] > 0;
+    }
+    float avg = (lengths[0] + lengths[1] + lengths[2]) / 3.f;
+    float fullScore = Bm25PassageScore(query, tf[0], df, 3, lengths[0], avg);
+    float exactScore = Bm25PassageScore(query, tf[1], df, 3, lengths[1], avg);
+    float noiseScore = Bm25PassageScore(query, tf[2], df, 3, lengths[2], avg);
+    utassert(exactScore > fullScore && fullScore > 0 && noiseScore == 0);
+    utassert(Bm25PhraseOffset(exact, query) == 0);
+    utassert(Bm25PhraseOffset(fullName, query) == -1); // recall is not literal equality
+    utassert(latin.Size() == 3);                       // English words, not matching individual letters.
+    Vec<Bm25Token> lower;
+    tokenize("social security CARD", lower);
+    for (int i = 0; i < latin.Size(); i++) utassert(latin[i].key == lower[i].key);
+    utassert(Bm25PhraseOffset(latin, lower) == 0);
+    Vec<Bm25Token> repeatQuery, repeatPassage;
+    tokenize("考试考试", repeatQuery);
+    tokenize("需要考试考试之后", repeatPassage);
+    utassert(Bm25PhraseOffset(repeatPassage, repeatQuery) == 2);
+    utassert(Bm25PhraseOffset(exact, repeatQuery) == -1);
+    Vec<Bm25Token> unwrapped;
+    tokenize("社会保障卡", unwrapped);
+    utassert(wrapped.Size() == unwrapped.Size());
+    for (int i = 0; i < wrapped.Size(); i++) utassert(wrapped[i].key == unwrapped[i].key);
+    int reverseTf[64]{}, reverseDf[64]{};
+    for (int t = 0; t < unwrapped.Size(); t++) {
+        for (auto token : exact) reverseTf[t] += token.key == unwrapped[t].key;
+        reverseDf[t] = reverseTf[t] > 0;
+    }
+    utassert(Bm25PassageScore(unwrapped, reverseTf, reverseDf, 3, lengths[1], avg) > 0);
+    utassert(Bm25TermScore(1, 1, 100, 20, 100) > Bm25TermScore(1, 1, 100, 200, 100));
+    utassert(Bm25TermScore(1, 1, 100, 50, 100) > Bm25TermScore(1, 90, 100, 50, 100));
+    utassert(Bm25TermScore(2, 1, 100, 50, 100) > Bm25TermScore(1, 1, 100, 50, 100));
+}
+
+static void SearchTextTests() {
+    utassert(SearchTextIsHanQuery(L"考试"));
+    utassert(SearchTextIsHanQuery(L"考\u3000试"));
+    utassert(SearchTextIsHanQuery(L"\U00020000试"));
+    utassert(!SearchTextIsHanQuery(L"考试PDF"));
+    utassert(!SearchTextIsHanQuery(L"考试2026"));
+    utassert(!SearchTextIsHanQuery(L"test"));
+    utassert(!SearchTextIsHanQuery(L" \t"));
+    utassert(SearchTextIsWhitespace(0x3000));
+    utassert(SearchTextIsWhitespace(0xa0));
+    utassert(SearchTextIsWhitespace(0x202f));
+    utassert(SearchTextIsWhitespace('\n'));
+    utassert(!SearchTextIsWhitespace(0x9009)); // 选 must not become a tab.
+    utassert(!SearchTextIsWhitespace(0x8bd5)); // 试
+    utassert(!SearchTextIsWhitespace(0x20000));
+}
+
 int main(int argc, char** argv) {
+    if (argc == 2 && str::Eq(argv[1], "--search-text-test")) {
+        SearchTextTests();
+        printf("Search text tests passed\n");
+        return 0;
+    }
+    if (argc == 2 && str::Eq(argv[1], "--bm25-test")) {
+        Bm25SearchTests();
+        printf("BM25 search tests passed\n");
+        return 0;
+    }
     if (argc == 5 && str::Eq(argv[1], "--toc-page-replay")) {
         Vec<TocPageFeatures> features;
         int count = atoi(argv[3]);
@@ -136,6 +233,8 @@ int main(int argc, char** argv) {
     SquareTreeTest();
     StrFormatTest();
     StrTest();
+    SearchTextTests();
+    Bm25SearchTests();
     StrVecTest();
     TrivialHtmlParser_UnitTests();
     PdfDarkModeOklab_UnitTests();

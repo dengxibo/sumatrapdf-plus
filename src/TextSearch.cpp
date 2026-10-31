@@ -14,6 +14,7 @@
 #include "TextSelection.h"
 #include "TextSearch.h"
 #include "OcrService.h"
+#include "utils/SearchText.h"
 
 // ignore spaces between CJK glyphs but not between Latin, Greek, Cyrillic, etc. letters
 // cf. http://code.google.com/p/sumatrapdf/issues/detail?id=959
@@ -84,7 +85,7 @@ static void SkipWhitespace(const char* text, int textLen, int& idx, int& byteIdx
     while (idx < textLen) {
         int nextByte = byteIdx;
         int c = Utf8CodepointNext(text, TextByteLen(text), nextByte);
-        if (!str::IsWs((char)c)) {
+        if (!SearchTextIsWhitespace(c)) {
             break;
         }
         byteIdx = nextByte;
@@ -471,8 +472,9 @@ int TextSearch::GetSearchHitStartPageNo() const {
 }
 
 void TextSearch::SetText(const WCHAR* text) {
-    this->matchWordStart = matchWholeWord || (text[0] == ' ' && text[1] != ' ');
-    this->matchWordEnd = matchWholeWord || (str::EndsWith(text, L" ") && !str::EndsWith(text, L"  "));
+    bool hanQuery = SearchTextIsHanQuery(text);
+    this->matchWordStart = !hanQuery && (matchWholeWord || (text[0] == ' ' && text[1] != ' '));
+    this->matchWordEnd = !hanQuery && (matchWholeWord || (str::EndsWith(text, L" ") && !str::EndsWith(text, L"  ")));
 
     const WCHAR* searchText = text;
     if (searchText[0] == ' ') {
@@ -976,7 +978,7 @@ TextSearch::PageAndOffset TextSearch::MatchEnd(int startOff, bool* needsMorePage
         }
         int endNextByteIdx = endByteIdx;
         int endCh = atPageEnd ? 0 : Utf8CodepointNext(currentPageText, currentPageTextByteLen, endNextByteIdx);
-        lookingAtWs = (atPageEnd && (currentPage < nPages)) || str::IsWs((char)endCh);
+        lookingAtWs = (atPageEnd && (currentPage < nPages)) || SearchTextIsWhitespace(endCh);
         bool isMatch = false;
         int extraMatchAdv = 0;
         int extraEndAdv = 0;
@@ -1008,7 +1010,7 @@ TextSearch::PageAndOffset TextSearch::MatchEnd(int startOff, bool* needsMorePage
         }
         if (isMatch) {
             ;
-        } else if (str::IsWs((char)matchCh) && lookingAtWs) {
+        } else if (SearchTextIsWhitespace(matchCh) && lookingAtWs) {
             ;
         } else if (matchCh == '-' && (0x2010 <= endCh && endCh <= 0x2014)) {
             ;
@@ -1042,7 +1044,7 @@ TextSearch::PageAndOffset TextSearch::MatchEnd(int startOff, bool* needsMorePage
         int prevMatchCh = Utf8CodepointPrev(findText, findTextByteLen, prevMatchByteIdx);
         int curMatchCh = Utf8CodepointAtByte(findText, findTextByteLen, matchByteIdx);
         if (matchIdx < findTextLen && ((!isnoncjkwordchar(prevMatchCh) && (prevMatchCh != '?' || curMatchCh != '?')) ||
-                                       (lookingAtWs && str::IsWs((char)prevMatchCh)))) {
+                                       (lookingAtWs && SearchTextIsWhitespace(prevMatchCh)))) {
             SkipWhitespace(findText, findTextLen, matchIdx, matchByteIdx);
             SkipWhitespace(currentPageText, currentPageTextLen, endIdx, endByteIdx);
             while (endIdx >= currentPageTextLen && currentPage < nPages) {

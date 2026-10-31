@@ -90,6 +90,16 @@ static const char* gIconMatchWholeWord =
   <path d="M3 16v3h18v-3" />
 </svg>)";
 
+// BM25 monogram: B on the left, 25 above m on the right. Keep the reference
+// composition but use the adjacent search toggles' fine rounded stroke.
+static const char* gIconRelatedSearch =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M3 19V5h3.5a3.5 3.5 0 0 1 0 7H3m3.5 0H7a3.5 3.5 0 0 1 0 7H3" />
+  <path stroke-width="0.9" d="M12.5 6.5c0-2.5 4-2.5 4 0c0 1.5-4 3-4 4h4M21 5h-3v2.7c4-1.5 4 4.5-.5 2.8" />
+  <path d="M12.5 19v-3.5a2.1 2.1 0 0 1 4.2 0V19m0-3.5a2.1 2.1 0 0 1 4.2 0V19" />
+</svg>)";
+
 // https://github.com/tabler/tabler-icons/blob/master/icons/zoom-in.svg
 static const char* gIconZoomIn =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -680,6 +690,7 @@ static const char* gIcons[] = {
     gIconResetAppearance,
     gIconRotate180,
     gIconCapturePageRegion,
+    gIconRelatedSearch,
 };
 // clang-format on
 

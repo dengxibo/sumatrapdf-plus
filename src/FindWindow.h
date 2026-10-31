@@ -27,6 +27,7 @@ void FindWindowClearEditText(MainWindow* win);
 void FindWindowResyncActiveEdit(MainWindow* win);
 void FindWindowSetMatchCaseChecked(MainWindow* win, bool checked);
 void FindWindowSetMatchWholeWordChecked(MainWindow* win, bool checked);
+void FindWindowUpdateSearchOptions(MainWindow* win);
 // repopulate the results list from win->findMatches (no-op if not visible).
 // allowNavigation=false for streamed partial updates: don't navigate the
 // document (navigation would cancel the in-flight count scan)

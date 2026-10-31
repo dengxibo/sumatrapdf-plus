@@ -44125,3 +44125,11 @@ tw:區域截圖
 :Open folder after successful export
 cn:导出成功后打开文件夹
 tw:匯出成功後開啟資料夾
+
+:Related search (BM25)
+cn:相关搜索（BM25）
+tw:相關搜尋（BM25）
+
+:Shorten query
+cn:请缩短关键词
+tw:請縮短關鍵詞

@@ -69,6 +69,7 @@ void FindNext(MainWindow* win);
 void FindFirst(MainWindow* win);
 void FindToggleMatchCase(MainWindow* win);
 void FindToggleMatchWholeWord(MainWindow* win);
+void FindToggleRelatedSearch(MainWindow* win);
 // called when the user edits the find bar's text
 void OnFindBarTextChanged(MainWindow* win);
 void StartFindStatusAnimation(MainWindow* win);

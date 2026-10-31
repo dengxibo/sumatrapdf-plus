@@ -1105,8 +1105,10 @@ static void extractPageText(EngineBase* engine, int pageNo) {
     FreePageTextUtf8(&pageText);
 }
 
-static int CountMatchesFindNext(EngineBase* engine, const WCHAR* term, Vec<u64>* positions = nullptr) {
+static int CountMatchesFindNext(EngineBase* engine, const WCHAR* term, Vec<u64>* positions = nullptr,
+                                bool wholeWord = false) {
     TextSearch ts(engine);
+    ts.SetMatchWholeWord(wholeWord);
     int n = 0;
     if (ts.FindFirst(1, term)) {
         n++;
@@ -1123,8 +1125,9 @@ static int CountMatchesFindNext(EngineBase* engine, const WCHAR* term, Vec<u64>*
     return n;
 }
 
-static void CollectMatchPositions(EngineBase* engine, const WCHAR* term, Vec<u64>& positions) {
+static void CollectMatchPositions(EngineBase* engine, const WCHAR* term, Vec<u64>& positions, bool wholeWord = false) {
     TextSearch ts(engine);
+    ts.SetMatchWholeWord(wholeWord);
     ts.SetText(term);
     ts.SyncPageCount();
     for (int pageNo = 1; pageNo <= ts.nPages; pageNo++) {
@@ -1306,7 +1309,7 @@ void TestSearchCollect(const Flags& ci) {
     }
 
     int failures = 0;
-    const WCHAR* terms[] = {L"the", L"and", L"a", L"of", nullptr};
+    const WCHAR* terms[] = {L"the", L"and", L"a", L"of", L"考试", L"考选试", nullptr};
     for (auto fileName : files) {
         logf("search-collect test: '%s'\n", fileName);
         auto engine = CreateEngineFromFile(fileName, nullptr, true);
@@ -1341,6 +1344,14 @@ void TestSearchCollect(const Flags& ci) {
                 logf("OK term '%S': %d matches\n", terms[i], viaFind);
             }
         }
+        Vec<u64> hanPlain, hanWhole, hanNext;
+        CollectMatchPositions(engine, L"考试", hanPlain);
+        CollectMatchPositions(engine, L"考试", hanWhole, true);
+        CountMatchesFindNext(engine, L"考试", &hanNext, true);
+        bool hanOk = EqualMatchPositions(hanPlain, hanWhole) && EqualMatchPositions(hanWhole, hanNext);
+        logf("search-han whole-word ignored: normal=%d whole=%d next=%d equal=%d\n", hanPlain.Size(), hanWhole.Size(),
+             hanNext.Size(), hanOk);
+        if (!hanOk) failures++;
         if (!BenchmarkSearchCacheStages(engine, L"the", "ordinary")) {
             failures++;
         }
