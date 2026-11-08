@@ -3,6 +3,7 @@
 
 extern "C" {
 #include <mupdf/fitz.h>
+void fz_register_ofd_handler(fz_context* ctx);
 #include <mupdf/pdf.h>
 #include <mupdf/helpers/pkcs7-windows.h>
 #include "../mupdf/source/fitz/color-imp.h"
@@ -495,7 +496,7 @@ struct PageDestinationMupdf : IPageDestination {
     char* GetName2() override;
 };
 
-char* PageDestinationMupdf ::GetValue2() {
+char* PageDestinationMupdf::GetValue2() {
     if (value) {
         return value;
     }
@@ -507,7 +508,7 @@ char* PageDestinationMupdf ::GetValue2() {
     return value;
 }
 
-char* PageDestinationMupdf ::GetName2() {
+char* PageDestinationMupdf::GetName2() {
     if (name) {
         return name;
     }
@@ -3639,6 +3640,7 @@ EngineMupdf::EngineMupdf() {
 
     install_load_windows_font_funcs(_ctx);
     fz_register_document_handlers(_ctx);
+    fz_register_ofd_handler(_ctx);
 
     darkModeEngineCache = PdfDarkModeEngineCacheCreate();
 }
@@ -4065,6 +4067,11 @@ bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
     fz_stream* file = FzOpenOrReadFile(ctx, fnCopy);
     // nameHint extension drives MuPDF's handler; converted .doc must look like .docx.
     const char* nameHint = convertedOfficeTempPath ? convertedOfficeTempPath : FilePath();
+    Kind nameKind = GuessFileTypeFromName(pathA);
+    if (nameKind == kindFileOfd || ((nameKind == kindFileZip || nameKind == kindFileCbz || !nameKind) &&
+                                    GuessFileTypeFromContent(pathA) == kindFileOfd)) {
+        nameHint = "file.ofd";
+    }
     ok = LoadFromStream(file, nameHint, pwdUI);
     if (!ok) {
         return false;
@@ -16819,7 +16826,7 @@ bool IsEngineMupdfSupportedFileType(Kind kind) {
     if (kind == kindFileSvg) {
         return true;
     }
-    if (kind == kindFileXps) {
+    if (kind == kindFileXps || kind == kindFileOfd) {
         return true;
     }
     if (kind == kindFileTxt) {
@@ -17268,6 +17275,7 @@ TempStr EngineMupdfGetPdfOutline(const char* path) {
         return nullptr;
     }
     fz_register_document_handlers(ctx);
+    fz_register_ofd_handler(ctx);
     TempStr res = nullptr;
     fz_document* doc = nullptr;
     fz_outline* outline = nullptr;
@@ -17305,6 +17313,7 @@ TempStr EngineMupdfGetPdfInfo(const char* path) {
         return nullptr;
     }
     fz_register_document_handlers(ctx);
+    fz_register_ofd_handler(ctx);
     TempStr res = nullptr;
     fz_buffer* buf = nullptr;
     fz_try(ctx) {

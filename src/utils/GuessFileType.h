@@ -5,6 +5,7 @@
 extern Kind kindFilePDF;
 extern Kind kindFilePS;
 extern Kind kindFileXps;
+extern Kind kindFileOfd;
 extern Kind kindFileDjVu;
 extern Kind kindFileChm;
 

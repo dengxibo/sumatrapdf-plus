@@ -1184,6 +1184,10 @@
     <ClCompile Include="..\mupdf\source\tools\pdfsign.c" />
     <ClCompile Include="..\mupdf\source\tools\pdftrim.c" />
     <ClCompile Include="..\mupdf\source\xps\xps-common.c" />
+    <ClCompile Include="..\src\mupdf\ofd.c" />
+    <ClCompile Include="..\src\mupdf\ofd-crypto.c" />
+    <ClCompile Include="..\src\mupdf\ofd-decrypt.c" />
+    <ClCompile Include="..\src\mupdf\ofd-seal.c" />
     <ClCompile Include="..\mupdf\source\xps\xps-doc.c" />
     <ClCompile Include="..\mupdf\source\xps\xps-glyphs.c" />
     <ClCompile Include="..\mupdf\source\xps\xps-gradient.c" />

@@ -13,6 +13,7 @@
 Kind kindFilePDF = "filePDF";
 Kind kindFilePS = "filePS";
 Kind kindFileXps = "fileXPS";
+Kind kindFileOfd = "fileOFD";
 Kind kindFileDjVu = "fileDjVu";
 Kind kindFileChm = "fileChm";
 Kind kindFilePng = "filePng";
@@ -79,6 +80,7 @@ Kind kindFileAvif = "fileAvif";
     V(".cb7", kindFileCb7)        \
     V(".cbt", kindFileCbt)        \
     V(".pdf", kindFilePDF)        \
+    V(".ofd", kindFileOfd)        \
     V(".xps", kindFileXps)        \
     V(".oxps", kindFileXps)       \
     V(".chm", kindFileChm)        \
@@ -453,6 +455,9 @@ Kind GuessFileTypeFromContent(const char* path) {
             }
             if (IsOoxmlArchive(archive)) {
                 res = kindFileOffice;
+            }
+            if (archive->GetFileId("OFD.xml") != (size_t)-1 || archive->GetFileId("Encryptions.xml") != (size_t)-1) {
+                res = kindFileOfd;
             }
             delete archive;
         }
