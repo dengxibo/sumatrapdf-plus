@@ -1,5 +1,6 @@
 [SumatraPDF]
-Latest: 3.7.87
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.87/SumatraPDF-Plus.exe
-Notes: Add optional BM25 related search, improve Chinese search and localized tooltips, and fix Favorites tooltip flickering.
-NotesZh: 新增 BM25 相关搜索，改进中文搜索和提示本地化，修复收藏夹悬停提示闪烁。
+Latest: 3.7.88
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.88/SumatraPDF-Plus.exe
+Notes: Preserve EPUB illustration size hierarchy, fix percentage and table-cell sizing, and improve image/caption pagination.
+NotesZh: 保留 EPUB 插图大小层次，修正百分比及并排图尺寸，改进图片与图注分页。
+
