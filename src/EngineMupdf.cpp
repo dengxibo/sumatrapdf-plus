@@ -4560,169 +4560,26 @@ figcaption, caption, p.caption, div.caption, span.caption,
     return nullptr;
 }
 
-// MuPDF has no max-height; comic panels use explicit height in pt — same for cnepub alone* figures.
+// Only explicitly full-page artwork gets a viewport-derived height. Ordinary
+// illustrations keep publisher widths; MuPDF does not implement CSS max-width.
 static TempStr BuildMupdfReflowEpubImageFitCss(float ldyPt) {
     float panelH = ldyPt - 16.f;
     if (panelH < 400.f) {
         panelH = 400.f;
     }
-    float h90 = panelH * 0.88f;
-    float h80 = panelH * 0.78f;
-    float h70 = panelH * 0.68f;
-    float h60 = panelH * 0.58f;
-    float h50 = panelH * 0.48f;
-    float h40 = panelH * 0.38f;
-    return str::FormatTemp(
-        R"(/* Sumatra: cnepub figures — one reflow page, explicit height (MuPDF ignores max-height). */
-img.kindle-cn-bodycontent-image-alone100 {
-  display: block !important;
-  page-break-before: always !important;
-  width: auto !important;
-  max-width: 90%% !important;
-  height: %.0fpt !important;
-  margin: 0.8em auto !important;
-}
-img.kindle-cn-bodycontent-image-alone80,
-img.kindle-cn-bodycontent-image-alone80-1 {
-  display: block !important;
-  page-break-before: always !important;
-  width: auto !important;
-  max-width: 72%% !important;
-  height: %.0fpt !important;
-  margin: 0.8em auto !important;
-}
-img.kindle-cn-bodycontent-image-alone70 {
-  display: block !important;
-  page-break-before: always !important;
-  width: auto !important;
-  max-width: 63%% !important;
-  height: %.0fpt !important;
-  margin: 0.8em auto !important;
-}
-img.kindle-cn-bodycontent-image-alone60 {
-  display: block !important;
-  page-break-before: always !important;
-  width: auto !important;
-  max-width: 54%% !important;
-  height: %.0fpt !important;
-  margin: 0.8em auto !important;
-}
-img.kindle-cn-bodycontent-image-alone50 {
-  display: block !important;
-  page-break-before: always !important;
-  width: auto !important;
-  max-width: 50%% !important;
-  height: %.0fpt !important;
-  margin: 0.8em auto !important;
-}
-img.kindle-cn-bodycontent-image-alone40,
-img.kindle-cn-bodycontent-image-alone45 {
-  display: block !important;
-  page-break-before: always !important;
-  width: auto !important;
-  max-width: 45%% !important;
-  height: %.0fpt !important;
-  margin: 0.8em auto !important;
-}
-/* With-note: publisher %% width + auto height; page-break on large figures. */
-img.kindle-cn-bodycontent-image-alone100-withnote,
-img.kindle-cn-bodycontent-image-alone80-withnote,
-img.kindle-cn-bodycontent-image-alone70-withnote,
-img.kindle-cn-bodycontent-image-alone60-withnote,
-img.kindle-cn-bodycontent-image-alone50-withnote,
-img.kindle-cn-bodycontent-image-alone45-withnote,
-img.kindle-cn-bodycontent-image-alone40-withnote {
-  display: block !important;
-  page-break-before: always !important;
-  vertical-align: top !important;
-  height: auto !important;
-  margin: 0 auto 0 auto !important;
-}
-img.kindle-cn-bodycontent-image-alone30-withnote,
-img.kindle-cn-bodycontent-image-alone20-withnote {
-  display: block !important;
-  page-break-before: auto !important;
-  height: auto !important;
-  margin: 0.4em auto 0 auto !important;
-}
-img.kindle-cn-bodycontent-image-alone100-withnote {
-  max-width: 90%% !important;
-}
-img.kindle-cn-bodycontent-image-alone80-withnote {
-  max-width: 72%% !important;
-}
-img.kindle-cn-bodycontent-image-alone70-withnote {
-  max-width: 63%% !important;
-}
-img.kindle-cn-bodycontent-image-alone60-withnote {
-  max-width: 54%% !important;
-}
-img.kindle-cn-bodycontent-image-alone50-withnote {
-  max-width: 50%% !important;
-}
-img.kindle-cn-bodycontent-image-alone45-withnote,
-img.kindle-cn-bodycontent-image-alone40-withnote {
-  max-width: 45%% !important;
-}
-img.kindle-cn-bodycontent-image-alone30-withnote {
-  max-width: 27%% !important;
-}
-img.kindle-cn-bodycontent-image-alone20-withnote {
-  max-width: 18%% !important;
-}
-div.kindle-cn-bodycontent-div-alone100,
-div.kindle-cn-bodycontent-div-alone100a {
-  page-break-before: always !important;
-  page-break-inside: avoid !important;
-  margin: 0.4em auto !important;
-}
-div.kindle-cn-frame-zhijiao div.kindle-cn-bodycontent-div-alone100,
-div.kindle-cn-frame-zhijiao div.kindle-cn-bodycontent-div-alone100a,
-div.kindle-cn-frame-yuanjiao div.kindle-cn-bodycontent-div-alone100,
-div.kindle-cn-frame-yuanjiao div.kindle-cn-bodycontent-div-alone100a {
-  page-break-before: always !important;
-}
-h1 + div.kindle-cn-bodycontent-div-alone100,
-h2 + div.kindle-cn-bodycontent-div-alone100,
-h3 + div.kindle-cn-bodycontent-div-alone100,
-h4 + div.kindle-cn-bodycontent-div-alone100,
-h5 + div.kindle-cn-bodycontent-div-alone100,
-h6 + div.kindle-cn-bodycontent-div-alone100,
-h1 + div.kindle-cn-bodycontent-div-alone100a,
-h2 + div.kindle-cn-bodycontent-div-alone100a,
-h3 + div.kindle-cn-bodycontent-div-alone100a,
-h4 + div.kindle-cn-bodycontent-div-alone100a,
-h5 + div.kindle-cn-bodycontent-div-alone100a,
-h6 + div.kindle-cn-bodycontent-div-alone100a {
-  margin-top: 0.2em !important;
-}
-div.kindle-cn-bodycontent-div-alone100 p.kindle-cn-picture-txt-withmanycharactors,
-div.kindle-cn-bodycontent-div-alone100 p.kindle-cn-picture-txt-withfewcharactors,
-div.kindle-cn-bodycontent-div-alone100a p.kindle-cn-picture-txt-withmanycharactors,
-div.kindle-cn-bodycontent-div-alone100a p.kindle-cn-picture-txt-withfewcharactors,
-div.kindle-cn-bodycontent-div-alone100 + p.kindle-cn-picture-txt-withmanycharactors,
-div.kindle-cn-bodycontent-div-alone100 + p.kindle-cn-picture-txt-withfewcharactors,
-div.kindle-cn-bodycontent-div-alone100a + p.kindle-cn-picture-txt-withmanycharactors,
-div.kindle-cn-bodycontent-div-alone100a + p.kindle-cn-picture-txt-withfewcharactors {
-  margin-top: 0 !important;
-  margin-bottom: 0.3em !important;
-}
+    return str::FormatTemp(R"(
 .image_full, .image_full_caption, .image_full_landscape, .image_full_caption_landscape {
   page-break-before: always !important;
 }
 .image_full img, .image_full_caption img, .image_full_landscape img, .image_full_caption_landscape img {
   display: block !important;
   width: auto !important;
-  max-width: 100%% !important;
   height: %.0fpt !important;
   margin-left: auto !important;
   margin-right: auto !important;
 }
-figure, div.figure, div.image, div.picture, div.pic {
-  page-break-before: always !important;
-}
 )",
-        h90, h80, h70, h60, h50, h40, panelH);
+                           panelH);
 }
 
 static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight) {
@@ -4943,7 +4800,6 @@ static const char* kEpubCnCompareTableCss =
     R"(/* cnepub 人物对比表：td width="40/45/10%" 定列宽（html-parse + layout_table） */
 table {
   table-layout: fixed !important;
-  width: 100% !important;
   border-collapse: collapse !important;
 }
 td.kindle-cn-table-rn1, td.rt1 {
@@ -5150,10 +5006,7 @@ body > svg, body > div > svg {
   height: auto !important;
   margin: 0 auto !important;
 }
-img, div img, figure img {
-  display: block !important;
-  margin: 0.8em 0 !important;
-}
+/* Preserve inline images (symbols, equations and chapter ornaments). */
 /* p img omitted: Oxford Bookworm comic panels (p.picture > a > img) must stay block-level. */
 /* Penguin trade EPUBs use portrait_xsmall (28% in the print stylesheet) for
    inline figures. Bump the screen size and keep caption width matched so the
@@ -5236,7 +5089,7 @@ body.calibre div.calibre1 > p.calibre2:only-of-type {
 figure img, div.figure img, div.fig img, div.image img, div.images img, div.pic img, div.illustration img, div.illus img,
 p.figure img, p.fig img, p.image img, p.images img, p.pic img, p.illustration img, p.illus img {
   display: block !important;
-  margin: 0.8em 0 !important;
+  margin: 0.8em auto !important;
 }
 /* HiResonator/KF8 dual-image EPUBs ship .squeeze-epub + .squeeze-amzn pairs.
    Put the most specific selectors first: mupdf uses the first matching
@@ -5298,8 +5151,6 @@ div.kindle-cn-bodycontent-div-left,
 div.kindle-cn-bodycontent-div-left1 {
   float: none !important;
   clear: both !important;
-  width: auto !important;
-  max-width: none !important;
   margin: 1em auto !important;
   text-align: center !important;
   text-indent: 0 !important;
@@ -5309,17 +5160,11 @@ img.kindle-cn-bodycontent-divright-image-withoutnote,
 img.kindle-cn-bodycontent-divleft-image-withnote,
 img.kindle-cn-bodycontent-divleft-image-withoutnote {
   display: block !important;
-  width: auto !important;
-  max-width: 30% !important;
-  height: auto !important;
   margin: 0 auto 0.5em auto !important;
 }
 div.kindle-cn-para-center img,
 p.kindle-cn-para-center img {
   display: block !important;
-  width: auto !important;
-  max-height: 10.5em !important;
-  height: auto !important;
   margin: 0.5em auto !important;
 }
 /* Firefly/cnepub reuse zhijiao1 for list boxes (bodyContent_101/187) as well as diary
@@ -5334,8 +5179,6 @@ div.kindle-cn-frame-zhijiao1 {
 div.kindle-cn-frame-zhijiao1 > p,
 div.kindle-cn-frame-zhijiao1 > div {
   display: block !important;
-  width: auto !important;
-  max-width: 100% !important;
   text-align: left !important;
   text-indent: 0 !important;
 }
@@ -5347,17 +5190,12 @@ div.kindle-cn-frame-zhijiao1 > div.kindle-cn-bodycontent-div-right,
 div.kindle-cn-frame-zhijiao1 > div.kindle-cn-bodycontent-div-right1 {
   float: none !important;
   clear: both !important;
-  width: auto !important;
-  max-width: none !important;
   margin: 1em auto !important;
   text-align: center !important;
 }
 div.kindle-cn-frame-zhijiao1 img.kindle-cn-bodycontent-divright-image-withnote,
 div.kindle-cn-frame-zhijiao1 img.kindle-cn-bodycontent-divright-image-withoutnote {
   display: block !important;
-  width: auto !important;
-  max-width: 30% !important;
-  height: auto !important;
   margin: 0 auto 0.5em auto !important;
 }
 div.kindle-cn-para-center,
@@ -5386,8 +5224,6 @@ div.kindle-cn-frame-zhijiao3 .kindle-cn-para-center {
 table.kindle-cn-tourism-double_image_with_notes-1,
 table.kindle-cn-tourism-triple_image_with_notes-1 {
   display: table !important;
-  width: 100% !important;
-  max-width: 100% !important;
   margin: 1em auto !important;
   border-collapse: collapse !important;
   table-layout: fixed !important;
@@ -5407,21 +5243,17 @@ table.kindle-cn-tourism-triple_image_with_notes-1 td.kindle-cn-tourism-triple_im
   line-height: 1.42 !important;
 }
 table.kindle-cn-tourism-double_image_with_notes-1 td.kindle-cn-tourism-double_image_with_notes-2 {
-  width: 50% !important;
   vertical-align: bottom !important;
 }
 table.kindle-cn-tourism-double_image_with_notes-1 td.kindle-cn-tourism-double_image_with_notes-3 {
-  width: 50% !important;
   font-size: 0.85em !important;
   padding: 0.35em 0.6em 0.8em 0.6em !important;
   text-align: left !important;
 }
 table.kindle-cn-tourism-triple_image_with_notes-1 td.kindle-cn-tourism-triple_image_with_notes_2 {
-  width: 33.33% !important;
   vertical-align: bottom !important;
 }
 table.kindle-cn-tourism-triple_image_with_notes-1 td.kindle-cn-tourism-triple_image_with_notes-3 {
-  width: 33.33% !important;
   font-size: 0.85em !important;
   padding: 0.35em 0.5em 0.8em 0.5em !important;
   text-align: left !important;
@@ -5429,9 +5261,6 @@ table.kindle-cn-tourism-triple_image_with_notes-1 td.kindle-cn-tourism-triple_im
 img.kindle-cn-tourism-double_image_with_notes-4,
 img.kindle-cn-tourism-triple_image_with_notes-4 {
   display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  height: auto !important;
   margin: 0 !important;
 }
 p.kindle-cn-picture-txt-right {
@@ -5440,84 +5269,15 @@ p.kindle-cn-picture-txt-right {
   margin-left: auto !important;
   margin-right: auto !important;
 }
+/* Publisher percentages express the size hierarchy. Do not replace them
+   with intrinsic widths or a fixed fraction of the page height. */
 div.kindle-cn-bodycontent-div-alone100,
 div.kindle-cn-bodycontent-div-alone100a {
   display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
   margin: 1.1em auto !important;
   text-align: center !important;
   text-indent: 0 !important;
   clear: both;
-  page-break-before: always !important;
-}
-img.kindle-cn-bodycontent-image-alone80,
-img.kindle-cn-bodycontent-image-alone80-1 {
-  display: block !important;
-  width: auto !important;
-  max-width: 72% !important;
-  margin: 0.8em auto !important;
-  height: auto !important;
-}
-img.kindle-cn-bodycontent-image-alone80-withnote {
-  display: block !important;
-  width: auto !important;
-  max-width: 72% !important;
-  margin: 0.5em auto 0.05em auto !important;
-  height: auto !important;
-}
-img.kindle-cn-bodycontent-image-alone100,
-img.kindle-cn-bodycontent-image-alone100-withnote,
-img.kindle-cn-bodycontent-image-alone70,
-img.kindle-cn-bodycontent-image-alone70-withnote,
-img.kindle-cn-bodycontent-image-alone60,
-img.kindle-cn-bodycontent-image-alone60-withnote,
-img.kindle-cn-bodycontent-image-alone50,
-img.kindle-cn-bodycontent-image-alone50-withnote,
-img.kindle-cn-bodycontent-image-alone45,
-img.kindle-cn-bodycontent-image-alone45-withnote,
-img.kindle-cn-bodycontent-image-alone40,
-img.kindle-cn-bodycontent-image-alone40-withnote,
-img.kindle-cn-bodycontent-image-alone30,
-img.kindle-cn-bodycontent-image-alone30-withnote,
-img.kindle-cn-bodycontent-image-alone20,
-img.kindle-cn-bodycontent-image-alone20-withnote {
-  display: block !important;
-  width: auto !important;
-  margin: 0.8em auto !important;
-  height: auto !important;
-}
-img.kindle-cn-bodycontent-image-alone70,
-img.kindle-cn-bodycontent-image-alone70-withnote {
-  max-width: 63% !important;
-}
-img.kindle-cn-bodycontent-image-alone60,
-img.kindle-cn-bodycontent-image-alone60-withnote {
-  max-width: 54% !important;
-}
-img.kindle-cn-bodycontent-image-alone50,
-img.kindle-cn-bodycontent-image-alone50-withnote {
-  max-width: 45% !important;
-}
-img.kindle-cn-bodycontent-image-alone45,
-img.kindle-cn-bodycontent-image-alone45-withnote {
-  max-width: 40% !important;
-}
-img.kindle-cn-bodycontent-image-alone40,
-img.kindle-cn-bodycontent-image-alone40-withnote {
-  max-width: 36% !important;
-}
-img.kindle-cn-bodycontent-image-alone30,
-img.kindle-cn-bodycontent-image-alone30-withnote {
-  max-width: 27% !important;
-}
-img.kindle-cn-bodycontent-image-alone20,
-img.kindle-cn-bodycontent-image-alone20-withnote {
-  max-width: 18% !important;
-}
-img.kindle-cn-bodycontent-image-alone100,
-img.kindle-cn-bodycontent-image-alone100-withnote {
-  max-width: 90% !important;
 }
 p.kindle-cn-picture-txt-withmanycharactors,
 p.kindle-cn-picture-txt-withfewcharactors {
