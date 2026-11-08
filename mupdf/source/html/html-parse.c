@@ -1561,13 +1561,45 @@ static void gen2_break(fz_context *ctx, struct genstate *g, fz_html_box *root_bo
 	g->at_bol = 1;
 }
 
-static fz_html_box *gen2_block(fz_context *ctx, struct genstate *g, fz_html_box *root_box, fz_xml *node, fz_css_style *style)
-{
-	fz_html_box *this_box;
-	root_box = find_block_context(ctx, root_box);
-	this_box = new_box(ctx, g, node, BOX_BLOCK, style);
-	append_box(ctx, root_box, this_box);
-	return this_box;
+static int html_has_class_token(const char* class_att, const char* token);
+
+/* Only group a single illustration and its explicit caption, never a general
+ * paragraph, sidebar, table, or a figure containing several images. */
+static int is_image_caption_container(fz_xml* node) {
+    const char* tag = fz_xml_tag(node);
+    const char* cls = fz_xml_att(node, "class");
+    fz_xml* child;
+    int images = 0, captions = 0;
+    if (!tag || (strcmp(tag, "figure") && !html_has_class_token(cls, "kindle-cn-bodycontent-div-alone100") &&
+                 !html_has_class_token(cls, "kindle-cn-bodycontent-div-alone100a")))
+        return 0;
+    for (child = fz_xml_down(node); child; child = fz_xml_next(child)) {
+        const char* ctag = fz_xml_tag(child);
+        const char* text = fz_xml_text(child);
+        if (!ctag) {
+            if (text && text[strspn(text, " \t\r\n")]) return 0;
+            continue;
+        }
+        if (!strcmp(ctag, "img"))
+            images++;
+        else if (!strcmp(ctag, "figcaption") ||
+                 html_has_class_token(fz_xml_att(child, "class"), "kindle-cn-picture-txt-withmanycharactors") ||
+                 html_has_class_token(fz_xml_att(child, "class"), "kindle-cn-picture-txt-withfewcharactors"))
+            captions++;
+        else
+            return 0;
+    }
+    return images == 1 && captions == 1;
+}
+
+static fz_html_box* gen2_block(fz_context* ctx, struct genstate* g, fz_html_box* root_box, fz_xml* node,
+                               fz_css_style* style) {
+    fz_html_box* this_box;
+    root_box = find_block_context(ctx, root_box);
+    this_box = new_box(ctx, g, node, BOX_BLOCK, style);
+    this_box->keep_image_caption = is_image_caption_container(node);
+    append_box(ctx, root_box, this_box);
+    return this_box;
 }
 
 static void
@@ -1685,58 +1717,61 @@ static fz_html_box *gen2_table_cell(fz_context *ctx, struct genstate *g, fz_html
 	return this_box;
 }
 
-static void gen2_image_common(fz_context *ctx, struct genstate *g, fz_html_box *root_box, fz_xml *node, fz_image *img, int display, fz_css_style *style)
-{
-	fz_html_box *img_block_box;
-	fz_html_box *img_inline_box;
+static void gen2_image_common(fz_context* ctx, struct genstate* g, fz_html_box* root_box, fz_xml* node, fz_image* img,
+                              int display, fz_css_style* style) {
+    fz_html_box* img_block_box;
+    fz_html_box* img_inline_box;
 
-	/* <img> is handled in gen2_children, not gen2_tag, so DIS_NONE must
-	   be checked here. KF8/EPUB dual-image books (squeeze-epub + squeeze-amzn)
-	   hide one copy with display:none; skipping this draws both. */
-	if (display == DIS_NONE)
-	{
-		fz_drop_image(ctx, img);
-		return;
-	}
+    /* <img> is handled in gen2_children, not gen2_tag, so DIS_NONE must
+       be checked here. KF8/EPUB dual-image books (squeeze-epub + squeeze-amzn)
+       hide one copy with display:none; skipping this draws both. */
+    if (display == DIS_NONE) {
+        fz_drop_image(ctx, img);
+        return;
+    }
 
-	if (display == DIS_INLINE || display == DIS_INLINE_BLOCK)
-	{
-		root_box = find_inline_context(ctx, g, root_box);
-		img_inline_box = new_box(ctx, g, node, BOX_INLINE, style);
-		append_box(ctx, root_box, img_inline_box);
-		generate_image(ctx, img_inline_box, img, g);
-	}
-	else
-	{
-		root_box = find_block_context(ctx, root_box);
-		img_block_box = new_box(ctx, g, node, BOX_BLOCK, style);
-		append_box(ctx, root_box, img_block_box);
+    if (display == DIS_INLINE || display == DIS_INLINE_BLOCK) {
+        root_box = find_inline_context(ctx, g, root_box);
+        img_inline_box = new_box(ctx, g, node, BOX_INLINE, style);
+        append_box(ctx, root_box, img_inline_box);
+        generate_image(ctx, img_inline_box, img, g);
+    } else {
+        fz_css_style block_style = *style;
+        fz_css_style image_style = *style;
+        /* Resolve width on the outer box so its border, padding and auto
+         * margins still surround the image. The image fills that width;
+         * applying the publisher percentage twice turns 50% into 25%.
+         * Only the image needs the explicit height. */
+        block_style.height.value = 0;
+        block_style.height.unit = N_AUTO;
+        if (style->width.unit == N_PERCENT) {
+            image_style.width.value = 100;
+            image_style.width.unit = N_PERCENT;
+        }
+        if (style->margin[1].unit == N_AUTO && style->margin[3].unit == N_AUTO) block_style.text_align = TA_CENTER;
+        root_box = find_block_context(ctx, root_box);
+        img_block_box = new_box(ctx, g, node, BOX_BLOCK, &block_style);
+        append_box(ctx, root_box, img_block_box);
 
-		root_box = find_inline_context(ctx, g, img_block_box);
-		img_inline_box = new_box(ctx, g, NULL, BOX_INLINE, style);
-		append_box(ctx, root_box, img_inline_box);
-		generate_image(ctx, img_inline_box, img, g);
-	}
+        root_box = find_inline_context(ctx, g, img_block_box);
+        img_inline_box = new_box(ctx, g, NULL, BOX_INLINE, &image_style);
+        append_box(ctx, root_box, img_inline_box);
+        generate_image(ctx, img_inline_box, img, g);
+    }
 }
 
-static int html_has_class_token(const char *class_att, const char *token)
-{
-	const char *p;
-	size_t n;
+static int html_has_class_token(const char* class_att, const char* token) {
+    const char* p;
+    size_t n;
 
-	if (!class_att || !token || !token[0])
-		return 0;
-	n = strlen(token);
-	for (p = class_att; *p; )
-	{
-		while (*p == ' ' || *p == '\t')
-			p++;
-		if (!strncmp(p, token, n) && (p[n] == 0 || p[n] == ' ' || p[n] == '\t'))
-			return 1;
-		while (*p && *p != ' ' && *p != '\t')
-			p++;
-	}
-	return 0;
+    if (!class_att || !token || !token[0]) return 0;
+    n = strlen(token);
+    for (p = class_att; *p;) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!strncmp(p, token, n) && (p[n] == 0 || p[n] == ' ' || p[n] == '\t')) return 1;
+        while (*p && *p != ' ' && *p != '\t') p++;
+    }
+    return 0;
 }
 
 static void gen2_image_html(fz_context *ctx, struct genstate *g, fz_html_box *root_box, fz_xml *node, int display, fz_css_style *style)

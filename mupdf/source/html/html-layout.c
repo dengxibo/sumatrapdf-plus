@@ -597,6 +597,7 @@ typedef struct {
     hb_buffer_t* hb_buf;
     fz_html_restarter* restart;
     fz_html_tree* tree;
+    int measure_only; /* Unpaginated figure/caption measurement, using the same image sizes. */
 } layout_data;
 
 /* "are we in a restarting context, and still skipping?" */
@@ -637,7 +638,7 @@ static void keep_flow_images_on_one_page(fz_html_box* box, layout_data* ld, fz_h
     float page_top = ld->page[T];
     fz_html_flow* node;
 
-    if (page_h <= 1.f) return;
+    if (ld->measure_only || page_h <= 1.f) return;
     for (node = a; node != b; node = node->next) {
         float rel, edge, shift;
         fz_html_flow* m;
@@ -671,7 +672,7 @@ static int flush_line(fz_context* ctx, fz_html_box* box, layout_data* ld, float 
     float page_h = ld->page[B] - ld->page[T];
     float page_top = ld->page[T];
     line_h = measure_line(a, b, &baseline);
-    if (page_h > 0) {
+    if (page_h > 0 && !ld->measure_only) {
         avail = page_h - fmodf(box->s.layout.b - page_top, page_h);
         /* If the line is larger than the available space skip to the start
          * of the next page. */
@@ -959,87 +960,49 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
         node->breaks_line = 0; /* reset line breaks from previous layout */
 
         if (node->type == FLOW_IMAGE) {
-            float max_w, max_h;
-            float xs = 1, ys = 1, s;
-            float aspect = 1;
-            float page_h;
-            float intr_w, intr_h, est_w, est_h;
+            float page_h = ld->page[B] - ld->page[T];
+            float available_w = ld->bounds[R] - ld->bounds[L];
+            float aspect, scale = 1;
+            float spacing = 0;
+            fz_html_box* ancestor;
 
-            /* If this figure won't fit in the page remainder, start on a fresh page
-             * (cnepub withnote figures lack page-break in publisher CSS). */
-            intr_w = node->content.image->w * 72.0f / 96.0f;
-            intr_h = node->content.image->h * 72.0f / 96.0f;
-            est_w = intr_w;
-            est_h = intr_h;
-            max_w = ld->bounds[R] - ld->bounds[L];
-            if (intr_w > 0 && intr_h > 0) {
-                if (node->box->style->width.unit != N_AUTO)
-                    est_w = fz_from_css_number(node->box->style->width, top->s.layout.em, max_w, intr_w);
-                if (node->box->style->height.unit != N_AUTO)
-                    est_h = fz_from_css_number(node->box->style->height, top->s.layout.em, max_w, intr_h);
-                else
-                est_h = intr_h * est_w / intr_w;
+            /* A full-page image still has to fit inside its enclosing margins
+             * and padding. Otherwise a cover at the start of a chapter leaves
+             * an empty first page before flush_line moves it to the next one. */
+            for (ancestor = node->box->up; ancestor; ancestor = ancestor->up) {
+                if (ancestor->type == BOX_BLOCK) {
+                    spacing += ancestor->u.block.margin[T] + ancestor->u.block.margin[B] + ancestor->u.block.border[T] +
+                               ancestor->u.block.border[B] + ancestor->u.block.padding[T] +
+                               ancestor->u.block.padding[B];
+                }
             }
-            {
-                float page_slice = ld->page[B] - ld->page[T];
-                float avail = layout_page_remainder(ld, ld->bounds[T]);
-                /* Explicit box (Word wp:extent): break only when it does not
-                 * fit. The 40pt slack is for auto-height EPUB figures. */
-                float slack = (node->box->style->height.unit == N_AUTO) ? 40.f : 0.f;
-                if (page_slice > 0 && avail < page_slice - 1.f && est_h > avail - slack)
-                    layout_flow_image_page_break(ctx, ld, box, node->box, PB_ALWAYS);
-            }
+            if (spacing > 0 && spacing < page_h) page_h -= spacing;
 
-            layout_flow_image_page_break(ctx, ld, box, node->box, node->box->style->page_break_before);
+            if (!ld->measure_only)
+                layout_flow_image_page_break(ctx, ld, box, node->box, node->box->style->page_break_before);
 
-            page_h = ld->bounds[B] - ld->bounds[T];
-
-            max_w = ld->bounds[R] - ld->bounds[L];
-            max_h = page_h;
-
-            /* NOTE: We ignore the image DPI here, since most images in EPUB files have bogus values. */
+            /* EPUB image DPI is often bogus: CSS uses 96 px per inch. Resolve
+             * percentages against the actual containing block (including table
+             * cells), once. The full page, not its remainder, limits height.
+             * flush_line moves an image that fits a page to the next page. */
             node->w = node->content.image->w * 72.0f / 96.0f;
             node->h = node->content.image->h * 72.0f / 96.0f;
             aspect = node->h ? node->w / node->h : 0;
-
             if (node->box->style->width.unit != N_AUTO)
-                node->w = fz_from_css_number(node->box->style->width, top->s.layout.em, ld->bounds[R] - ld->bounds[L],
-                                             node->w);
+                node->w = fz_from_css_number(node->box->style->width, top->s.layout.em, available_w, node->w);
             if (node->box->style->height.unit != N_AUTO)
                 node->h = fz_from_css_number(node->box->style->height, top->s.layout.em, page_h, node->h);
             if (node->box->style->width.unit == N_AUTO && node->box->style->height.unit != N_AUTO)
                 node->w = node->h * aspect;
             if (node->box->style->width.unit != N_AUTO && node->box->style->height.unit == N_AUTO)
-                node->h = (aspect == 0) ? 0 : (node->w / aspect);
+                node->h = aspect == 0 ? 0 : node->w / aspect;
 
-            /* Shrink image to fit on one page if needed */
-            if (max_w > 0 && node->w > max_w) xs = max_w / node->w;
-            if (max_h > 0 && node->h > max_h) ys = max_h / node->h;
-            s = fz_min(xs, ys);
-            node->w = node->w * s;
-            node->h = node->h * s;
-
-            /* Never taller than one reflow page (avoids clipped split across fz pages). */
-            {
-                float slice_h = ld->page[B] - ld->page[T];
-                float avail_h = layout_page_remainder(ld, ld->bounds[T]);
-                if (avail_h > 0 && avail_h < slice_h) slice_h = avail_h;
-                if (slice_h > 0 && node->h > slice_h) {
-                    float t = slice_h / node->h;
-                    node->w *= t;
-                    node->h = slice_h;
-                }
-                /* auto height + publisher % width (cnepub withnote): leave room for caption. */
-                if (slice_h > 0 && node->box->style->height.unit == N_AUTO &&
-                    node->box->style->width.unit == N_PERCENT) {
-                    float cap = slice_h - 88.f;
-                    if (cap > 0 && node->h > cap) {
-                        float t = cap / node->h;
-                        node->w *= t;
-                        node->h = cap;
-                    }
-                }
-            }
+            /* Shrink only when the image exceeds its container or a full page.
+             * No fixed caption allowance, page-height target, or upscaling. */
+            if (available_w > 0 && node->w > available_w) scale = available_w / node->w;
+            if (page_h > 0 && node->h * scale > page_h) scale = page_h / node->h;
+            node->w *= scale;
+            node->h *= scale;
 
         } else if (node->type == FLOW_ANCHOR) {
             node->h = 0;
@@ -1165,6 +1128,7 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
 }
 
 static float advance_for_spacing(fz_context* ctx, layout_data* ld, float start_b, float spacing, int* eop) {
+    if (ld->measure_only) return start_b + spacing;
     float page_h = ld->page[B] - ld->page[T];
     float page_top = ld->page[T];
     float avail = page_h - fmodf(start_b - page_top, page_h);
@@ -1176,6 +1140,7 @@ static float advance_for_spacing(fz_context* ctx, layout_data* ld, float start_b
 }
 
 static int layout_block_page_break(fz_context* ctx, layout_data* ld, float* yp, int page_break) {
+    if (ld->measure_only) return 0;
     fz_html_restarter* restart = ld->restart;
     float page_h = ld->page[B] - ld->page[T];
     float page_top = ld->page[T];
@@ -2385,8 +2350,8 @@ static void collapse_table_borders(fz_context* ctx, table_grid* grid, border_col
         table_cell* cell0 = cell_at(ctx, grid, w - 1, y);
 
         if (cell0->spanned == 1 || cell0->box == NULL) continue;
-            if (bci->max_right_border < cell0->box->u.block.border[R])
-                bci->max_right_border = cell0->box->u.block.border[R];
+        if (bci->max_right_border < cell0->box->u.block.border[R])
+            bci->max_right_border = cell0->box->u.block.border[R];
     }
     bci->max_left_border = 0;
     for (y = 0; y < h; y++) {
@@ -2507,6 +2472,8 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
     box->s.layout.b += spacing;
 
     table = new_table_grid(ctx, spacing);
+    avail_w = fz_from_css_number(box->style->width, box->s.layout.em, ld->bounds[R] - ld->bounds[L],
+                                 ld->bounds[R] - ld->bounds[L]);
 
     fz_var(colw);
 
@@ -2543,7 +2510,7 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
                     cell_pad = table_cell_padding(ctx, cell);
                 if (fz_css_number_defined_not_auto(cell->style->width)) {
                     float em = box->s.layout.em;
-                    float table_avail_w = ld->bounds[R] - ld->bounds[L];
+                    float table_avail_w = avail_w - spacing * (table->w + 1);
                     float w = fz_from_css_number(cell->style->width, em, table_avail_w, 0) + cell_pad;
                     tc->fixed = 1;
                     tc->minw = w;
@@ -2914,6 +2881,24 @@ static int layout_block(fz_context* ctx, layout_data* ld, fz_html_box* box) {
         /* In the event that no content fits, we want to restart with us, not with the
          * content that doesn't fit. */
         if (restart->potential == NULL) restart->potential = box;
+    }
+
+    if (box->keep_image_caption && !restart && !ld->measure_only) {
+        float page_h = ld->page[B] - ld->page[T];
+        float available = layout_page_remainder(ld, ld->bounds[T]);
+        if (page_h > 0 && available < page_h - 1.f) {
+            layout_data measure = *ld;
+            float start = ld->bounds[T];
+            float height;
+            measure.measure_only = 1;
+            layout_block(ctx, &measure, box);
+            height = measure.used[B] - start;
+            if (height <= page_h && height > available) {
+                layout_block_page_break(ctx, ld, &ld->bounds[T], PB_ALWAYS);
+                layout_extend_bounds_to_page_bottom(ld);
+                ld->used[T] = ld->used[B] = ld->bounds[T];
+            }
+        }
     }
 
     /* TODO: remove 'vertical' margin adjustments across automatic page breaks */
@@ -4944,7 +4929,7 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
                 }
             }
             if (!skip_bg && paint_bg)
-            draw_rect(ctx, dev, ctm, page_top, box->style->background_color, bg_x0, bg_y0, bg_x1, bg_y1);
+                draw_rect(ctx, dev, ctm, page_top, box->style->background_color, bg_x0, bg_y0, bg_x1, bg_y1);
         }
 
         if (!skipping) {
