@@ -170,7 +170,7 @@ static EngineBase* CreateEngineForKind(Kind kind, Kind contentHintKind, const ch
     }
     int dpi = DpiGet(nullptr);
     EngineBase* engine = nullptr;
-    if (kind == kindFilePDF || kind == kindFileXps) {
+    if (kind == kindFilePDF || kind == kindFileXps || kind == kindFileOfd) {
         engine = CreateEngineMupdfFromFile(path, kind, dpi, pwdUI);
         return engine;
     }
@@ -285,6 +285,10 @@ EngineBase* CreateEngineFromFile(const char* path, PasswordUI* pwdUI, bool enabl
     Kind contentHint = nullptr;
     if (IsEngineCbxSupportedFileType(kind)) {
         contentHint = GuessFileTypeFromContent(path);
+        // OFD packages may contain images; do not open renamed OFDs as comics.
+        if (contentHint == kindFileOfd) {
+            kind = contentHint;
+        }
     }
 
     EngineBase* engine = CreateEngineForKind(kind, contentHint, path, pwdUI, enableChmEngine);

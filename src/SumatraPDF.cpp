@@ -8376,6 +8376,7 @@ static TempWStr GetFileFilterTemp() {
     } fileFormats[] = {
         {_TRA("PDF documents"), "*.pdf;*.p7m", true},
         {_TRA("XPS documents"), "*.xps;*.oxps", true},
+        {"OFD documents", "*.ofd", true},
         {_TRA("DjVu documents"), "*.djvu", true},
         {_TRA("Postscript documents"), "*.ps;*.eps", IsEnginePsAvailable()},
         {_TRA("Comic books"), "*.cbz;*.cbr;*.cb7;*.cbt", true},
