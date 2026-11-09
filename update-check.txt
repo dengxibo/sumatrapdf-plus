@@ -1,6 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.88
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.88/SumatraPDF-Plus.exe
-Notes: Preserve EPUB illustration size hierarchy, fix percentage and table-cell sizing, and improve image/caption pagination.
-NotesZh: 保留 EPUB 插图大小层次，修正百分比及并排图尺寸，改进图片与图注分页。
-
+Latest: 3.7.89
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.89/SumatraPDF-Plus.exe
+Notes: Fix precision wheel zoom, prefer OCR text selection over image links, add current chapter location, and refine sidebar splitter hit testing.
+NotesZh: 修复触控板缩放过快、OCR 选字误触图片链接，新增定位当前章节，改善侧栏分隔条命中。
