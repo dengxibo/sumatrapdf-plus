@@ -5,6 +5,8 @@
 #include "utils/WinUtil.h"
 
 #include "wingui/UIModels.h"
+#include "wingui/Layout.h"
+#include "wingui/WinGui.h"
 
 #include "Settings.h"
 #include "AppSettings.h"
@@ -29,6 +31,7 @@
 #include "EbookFontMenu.h"
 #include "OcrService.h"
 #include "EbookAnnotations.h"
+#include "TableOfContents.h"
 
 // clang-format off
 
@@ -396,6 +399,12 @@ AppCommandCtx NewAppCommandCtx(MainWindow* win, Point cursorPos) {
 }
 
 CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, CommandSurface surface) {
+    if (cmdId == CmdTocLocateCurrentChapter) {
+        if (CanLocateCurrentTocItem(ctx.win)) {
+            return CommandVisibility::Show;
+        }
+        return surface == CommandSurface::Palette ? CommandVisibility::Hide : CommandVisibility::Disable;
+    }
     if (cmdId <= CmdFirst) {
         return CommandVisibility::Hide;
     }

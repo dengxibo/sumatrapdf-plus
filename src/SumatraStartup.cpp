@@ -708,9 +708,8 @@ bool PumpAppMessage(MSG& msg) {
     if (TextViewWindowPreTranslate(msg) || ImageEditWindowPreTranslate(msg) || InlineTranslatePopupPreTranslate(msg)) {
         return true;
     }
-    // The splitter is one pixel. The <-> arrow is wider than that, and its
-    // hotspot is the middle. Annotations, Ask AI, bookmarks, and thumbnails
-    // all use this strip, including clicks that land on a child control.
+    // Share a narrow splitter hit strip across sidebar pages. Its hit test
+    // protects header buttons, edits and native scrollbar pixels.
     bool splitterCursor = false;
     if (msg.message == WM_LBUTTONDOWN || msg.message == WM_NCLBUTTONDOWN || msg.message == WM_MOUSEMOVE ||
         msg.message == WM_NCMOUSEMOVE || msg.message == WM_SETCURSOR) {
@@ -1755,7 +1754,8 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     FileWatcherInit();
 
     if (flags.testRenderPage) {
-        if (getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW") || getenv("SUMATRA_TEST_ANNOTATION_UI")) {
+        if (getenv("SUMATRA_TEST_TOOLBAR_OVERFLOW") || getenv("SUMATRA_TEST_ANNOTATION_UI") ||
+            getenv("SUMATRA_TEST_TOC_LOCATE") || getenv("SUMATRA_TEST_OCR_IMAGE_LINKS")) {
             RegisterWinClass();
             InstanceInit();
         }

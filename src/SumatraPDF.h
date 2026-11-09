@@ -25,6 +25,7 @@ bool IsSidebarSplitterLiveDrag();
 // so a themed bar cannot peek out. The selection stroke sits on that edge.
 constexpr int kSidebarScrollbarMaskClientOverlap = 2;
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp);
+bool IsSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, POINT screenPoint);
 // Grow the ToC sidebar to at least minDx (clamped to half the frame). No-op if already wide enough.
 void EnsureSidebarDxAtLeast(MainWindow* win, int minDx);
 void SetSidebarColumnDx(MainWindow* win, int dx);

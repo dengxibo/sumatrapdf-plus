@@ -13846,7 +13846,7 @@ int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest) {
     return pageNo > 0 ? pageNo : 0;
 }
 
-int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo) {
+int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo, bool allowResolve) {
     if (!engine || engine->kind != kindEngineMupdf || EngineIsProgressiveEbookLoading(engine)) {
         return bakedPageNo > 0 ? bakedPageNo : 0;
     }
@@ -13867,9 +13867,11 @@ int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, 
                 return metaPage;
             }
         }
-        int livePage = ResolveMupdfLinkPageNo1(e, uri, nullptr);
-        if (livePage > 0) {
-            return livePage;
+        if (allowResolve) {
+            int livePage = ResolveMupdfLinkPageNo1(e, uri, nullptr);
+            if (livePage > 0) {
+                return livePage;
+            }
         }
     }
     int live = EngineMupdfFastOutlinePageNo(engine, dest);

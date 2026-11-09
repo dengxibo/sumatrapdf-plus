@@ -58,6 +58,8 @@ static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, boo
         icon = TbIcon::ChevronUp;
     } else if (kind == 3) {
         icon = TbIcon::CalibrateToc;
+    } else if (kind == 4) {
+        icon = TbIcon::LocateToc;
     }
     DrawSvgIcon(hdc, iconRc, icon, iconCol, iconBgCol);
 }
@@ -151,6 +153,9 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     // TODO: make this work in rtl
     if (!isRtl) {
         x = w->firstActionPos.x;
+        if (!w->locateActionPos.IsEmpty()) {
+            x = w->locateActionPos.x;
+        }
         if (x == 0 && w->nRightButtons > 0) {
             x = w->rightBtnPos[0].x;
         }
@@ -181,6 +186,9 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
                      iconCol);
     DrawHeaderAction(hdc, w->thirdActionPos, 3, w->thirdActionPos.Contains(curPos), w->pressedAction == 3, w->bgColor,
                      iconCol);
+    DrawHeaderAction(hdc, w->locateActionPos, 4, w->locateActionEnabled && w->locateActionPos.Contains(curPos),
+                     w->pressedAction == 4, w->bgColor,
+                     w->locateActionEnabled ? iconCol : ThemeWindowTextDisabledColor());
 
     HWND hwnd = w->hwnd;
     for (int i = 0; i < w->nViewButtons; i++) {
@@ -293,6 +301,8 @@ LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             secondAction.Call();
         } else if (action == 3 && thirdActionPos.Contains(cursorPos)) {
             thirdAction.Call();
+        } else if (action == 4 && locateActionEnabled && locateActionPos.Contains(cursorPos)) {
+            locateAction.Call();
         } else if (action >= 11 && action <= 15) {
             int idx = action - 11;
             if (idx < nViewButtons && viewBtns[idx].enabled && viewBtnPos[idx].Contains(cursorPos)) {
@@ -329,6 +339,8 @@ LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 pressedAction = 2;
             } else if (thirdActionPos.Contains(cursorPos)) {
                 pressedAction = 3;
+            } else if (locateActionEnabled && locateActionPos.Contains(cursorPos)) {
+                pressedAction = 4;
             }
         }
         if (pressedAction != 0) {
@@ -394,6 +406,22 @@ void LabelWithCloseWnd::ClearThirdHeaderAction() {
         actionsTooltip->Update(thirdActionTooltipId, "", Rect(), false);
     }
     Layout();
+}
+
+void LabelWithCloseWnd::SetLocateAction(const Func0& action, const char* tooltip) {
+    locateAction = action;
+    locateActionTooltip = tooltip;
+    if (actionsTooltip && locateActionTooltipId < 0 && tooltip) {
+        locateActionTooltipId = actionsTooltip->Add(HeaderActionTooltipTemp(tooltip), locateActionPos, false);
+    }
+    Layout();
+}
+
+void LabelWithCloseWnd::SetLocateActionEnabled(bool enabled) {
+    if (locateActionEnabled != enabled) {
+        locateActionEnabled = enabled;
+        HwndScheduleRepaint(hwnd);
+    }
 }
 
 void LabelWithCloseWnd::SetViewButtons(const LabelViewButton* buttons, int count) {
@@ -506,6 +534,7 @@ void LabelWithCloseWnd::Layout() {
     firstActionPos = {};
     secondActionPos = {};
     thirdActionPos = {};
+    locateActionPos = {};
     int viewDx = DpiScale(hwnd, kViewBtnDx);
     int viewDy = DpiScale(hwnd, kViewBtnDy);
     int viewGap = DpiScale(hwnd, kViewBtnGapDx);
@@ -596,7 +625,28 @@ void LabelWithCloseWnd::Layout() {
     for (int i = nViewButtons; i < 5; i++) {
         viewBtnPos[i] = {};
     }
+    if (headerActionsVisible && locateAction.IsValid() && !firstActionPos.IsEmpty()) {
+        int actionDx = DpiScale(hwnd, kHeaderActionDx);
+        int gapDx = DpiScale(hwnd, kHeaderActionGapDx);
+        int lx = isRtl ? firstActionPos.x + firstActionPos.dx + gapDx : firstActionPos.x - gapDx - actionDx;
+        Rect candidate(lx, firstActionPos.y, actionDx, firstActionPos.dy);
+        bool fits = lx >= padXScaled && lx + actionDx <= dx - padXScaled;
+        for (int i = 0; i < nViewButtons; i++) {
+            const Rect& v = viewBtnPos[i];
+            if (lx < v.x + v.dx + viewGap && v.x < lx + actionDx + viewGap) {
+                fits = false;
+            }
+        }
+        if (fits) {
+            locateActionPos = candidate;
+        }
+    }
     if (actionsTooltip) {
+        if (locateActionTooltipId >= 0) {
+            actionsTooltip->Update(locateActionTooltipId,
+                                   locateActionPos.IsEmpty() ? "" : HeaderActionTooltipTemp(locateActionTooltip),
+                                   locateActionPos, false);
+        }
         for (int i = 0; i < nViewButtons; i++) {
             if (viewBtnTooltipId[i] >= 0) {
                 actionsTooltip->Update(viewBtnTooltipId[i],
@@ -643,6 +693,11 @@ void LabelWithCloseWnd::UpdateHeaderActionTooltips() {
         actionsTooltip->Update(thirdActionTooltipId, HeaderActionTooltipTemp(thirdActionTooltip), thirdActionPos,
                                false);
     }
+    if (locateActionTooltipId >= 0) {
+        actionsTooltip->Update(locateActionTooltipId,
+                               locateActionPos.IsEmpty() ? "" : HeaderActionTooltipTemp(locateActionTooltip),
+                               locateActionPos, false);
+    }
 }
 
 // cmd is both the id of the window as well as id of WM_COMMAND sent
@@ -676,6 +731,9 @@ Size LabelWithCloseWnd::GetIdealSize() {
     size.dx += btnDx;
     if (firstAction.IsValid() && secondAction.IsValid()) {
         int n = thirdAction.IsValid() ? 3 : 2;
+        if (locateAction.IsValid()) {
+            n++;
+        }
         size.dx += n * DpiScale(this->hwnd, kHeaderActionDx);
         size.dx += (n - 1) * DpiScale(this->hwnd, kHeaderActionGapDx);
         size.dx += DpiScale(this->hwnd, kHeaderCloseGapDx);

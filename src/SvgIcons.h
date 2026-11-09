@@ -73,6 +73,7 @@ enum class TbIcon {
     Rotate180,
     CapturePageRegion,
     RelatedSearch,
+    LocateToc,
     kMax
 };
 

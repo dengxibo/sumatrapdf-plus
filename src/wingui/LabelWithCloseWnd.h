@@ -38,6 +38,8 @@ struct LabelWithCloseWnd : Wnd {
                           const char* secondTooltip);
     void SetThirdHeaderAction(const Func0& action, const char* tooltip);
     void ClearThirdHeaderAction();
+    void SetLocateAction(const Func0& action, const char* tooltip);
+    void SetLocateActionEnabled(bool enabled);
     void UpdateActionsTooltipTheme();
     void UpdateHeaderActionTooltips();
     void SetViewButtons(const LabelViewButton* buttons, int count);
@@ -53,6 +55,11 @@ struct LabelWithCloseWnd : Wnd {
     Rect firstActionPos{};
     Rect secondActionPos{};
     Rect thirdActionPos{};
+    Rect locateActionPos{};
+    Func0 locateAction;
+    bool locateActionEnabled = false;
+    const char* locateActionTooltip = nullptr;
+    int locateActionTooltipId = -1;
     Rect viewBtnPos[5]{};
     LabelViewButton viewBtns[5]{};
     int nViewButtons = 0;

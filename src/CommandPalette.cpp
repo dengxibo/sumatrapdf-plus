@@ -253,6 +253,7 @@ struct CommandPaletteWnd : Wnd {
 };
 
 struct CommandPaletteBuildCtx {
+    MainWindow* win = nullptr;
     const char* filePath = nullptr;
     bool isDocLoaded = false;
     bool supportsAnnots = false;
@@ -292,6 +293,7 @@ static const char* SkipWS(const char* s) {
 
 static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
     AppCommandCtx appCtx;
+    appCtx.win = ctx.win;
     appCtx.filePath = ctx.filePath;
     appCtx.isDocLoaded = ctx.isDocLoaded;
     appCtx.supportsAnnots = ctx.supportsAnnots;
@@ -771,6 +773,7 @@ void CommandPaletteWnd::CollectTabsMru(MainWindow* mainWin, WindowTab* currTab) 
 
 void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
     CommandPaletteBuildCtx ctx;
+    ctx.win = mainWin;
     ctx.isDocLoaded = mainWin->IsDocLoaded();
     WindowTab* currTab = mainWin->CurrentTab();
     ctx.filePath = currTab ? currTab->filePath : nullptr;

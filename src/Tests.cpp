@@ -7,8 +7,12 @@
 #include "utils/FileUtil.h"
 #include "utils/TgaReader.h"
 #include "utils/Timer.h"
+#include "utils/Dpi.h"
 
 #include "wingui/UIModels.h"
+#include "wingui/Layout.h"
+#include "wingui/WinGui.h"
+#include "wingui/LabelWithCloseWnd.h"
 
 #include "Settings.h"
 #include "DocProperties.h"
@@ -40,6 +44,13 @@
 #include "PrintedTocModel.h"
 #include "TocCalib.h"
 #include "TocStructureScan.h"
+#include "TableOfContents.h"
+#include "SidebarThumbs.h"
+#include "WindowTab.h"
+#include "DisplayModel.h"
+#include "DisplayMode.h"
+#include "CommandAvailability.h"
+#include "Canvas.h"
 
 #include "utils/Log.h"
 
@@ -792,7 +803,331 @@ static bool TestFreeTextBorderColor(const Flags& flags, const char* folder) {
     return ok;
 }
 
+static void CollectLocateTestBranches(TocItem* item, Vec<TocItem*>& branches) {
+    for (; item; item = item->next) {
+        if (item->child) {
+            branches.Append(item);
+            CollectLocateTestBranches(item->child, branches);
+        }
+    }
+}
+
+static bool TestLocateCurrentChapter(const Flags& flags, const char* reportPath) {
+    if (flags.fileNames.IsEmpty()) {
+        return false;
+    }
+    FILE* report = fopen(reportPath, "w");
+    if (!report) {
+        return false;
+    }
+    defer {
+        fclose(report);
+    };
+    LoadArgs args(flags.fileNames[0], nullptr);
+    args.syncLoad = true;
+    args.showWin = false;
+    args.noSavePrefs = true;
+    MainWindow* win = LoadDocument(&args);
+    if (!win || !win->ctrl || !win->ctrl->AsFixed()) {
+        fprintf(report, "load-failed win=%d ctrl=%d\n", win != nullptr, win && win->ctrl);
+        return false;
+    }
+    SetWindowPos(win->hwndFrame, nullptr, 0, 0, 1100, 800, SWP_NOZORDER | SWP_NOACTIVATE);
+    DisplayModel* dm = win->ctrl->AsFixed();
+    EngineBase* engine = dm->GetEngine();
+    EngineMupdfSetReflowLoadWhenForeground(engine, true);
+    bool allPassed = true;
+    if (EngineIsProgressiveEbookLoading(engine)) {
+        ScrollState before = dm->GetScrollState();
+        int history = dm->navHistory.Size();
+        size_t historyIdx = dm->navHistoryIdx;
+        DWORD t = GetTickCount();
+        bool located = LocateCurrentTocItem(win);
+        ScrollState after = dm->GetScrollState();
+        bool passed = before.page == after.page && fabs(before.y - after.y) < 2 && history == dm->navHistory.Size() &&
+                      historyIdx == dm->navHistoryIdx;
+        fprintf(report, "progressive located=%d ms=%lu still-loading=%d passed=%d\n", located, GetTickCount() - t,
+                EngineIsProgressiveEbookLoading(engine), passed);
+        allPassed &= passed;
+    }
+    DWORD start = GetTickCount();
+    while (EngineIsProgressiveEbookLoading(engine) && GetTickCount() - start < 120000) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        Sleep(10);
+    }
+    TocTree* initialToc = win->ctrl->GetToc();
+    if (!initialToc || !initialToc->root || !initialToc->root->child) {
+        bool passed = !CanLocateCurrentTocItem(win) && !LocateCurrentTocItem(win);
+        fprintf(report, "no-toc passed=%d\n", passed);
+        return passed;
+    }
+    ShowSidebarPage(win, SidebarView::Bookmarks);
+    LoadTocTree(win);
+    WindowTab* tab = win->CurrentTab();
+    if (!tab->currToc || !win->tocTreeView) {
+        fprintf(report, "toc-load-failed loaded=%d visible=%d doc=%d toc=%d tree=%d\n", win->tocLoaded, win->tocVisible,
+                win->IsDocLoaded(), tab->currToc != nullptr, win->tocTreeView != nullptr);
+        return false;
+    }
+    auto sameScroll = [](const ScrollState& a, const ScrollState& b) {
+        return a.page == b.page && fabs(a.y - b.y) < 2 && (a.x < 0 || b.x < 0 || fabs(a.x - b.x) < 2);
+    };
+    int sample = std::min(10, engine->PageCount());
+    dm->GoToPage(1, false);
+    if (!TocItemBestMatchForPage(tab->currToc->root->child, win->ctrl->CurrentPageNo(), engine)) {
+        win->tocFilterEdit->SetText("keep-this-filter");
+        TocFilterChanged(win);
+        ScrollState before = dm->GetScrollState();
+        bool passed = !LocateCurrentTocItem(win) && sameScroll(before, dm->GetScrollState()) &&
+                      str::Eq(win->tocFilterEdit->GetTextTemp(), "keep-this-filter");
+        fprintf(report, "before-first-entry passed=%d\n", passed);
+        allPassed &= passed;
+    }
+    DisplayMode modes[] = {DisplayMode::Continuous, DisplayMode::SinglePage, DisplayMode::Facing};
+    for (DisplayMode mode : modes) {
+        win->ctrl->SetDisplayMode(mode);
+        for (int scenario = 0; scenario < 6; scenario++) {
+            ShowSidebarPage(win, SidebarView::Bookmarks);
+            win->tocFilterEdit->SetText("");
+            TocFilterChanged(win);
+            dm->EnsureReflowLayoutForPage(sample);
+            dm->GoToPage(sample, true);
+            dm->SetScrollState(ScrollState(sample, -1, 150));
+            int page = win->ctrl->CurrentPageNo();
+            TocItem* target = TocItemBestMatchForPage(tab->currToc->root->child, page, engine);
+            if (!target) {
+                fprintf(report, "no-match mode=%d page=%d\n", (int)mode, page);
+                return false;
+            }
+            win->tocTreeView->CollapseAll();
+            Vec<TocItem*> branches;
+            Vec<bool> branchStates;
+            CollectLocateTestBranches(tab->currToc->root->child, branches);
+            auto onTargetPath = [&](TocItem* branch) {
+                for (TocItem* p = target->parent; p; p = p->parent) {
+                    if (p == branch) return true;
+                }
+                return false;
+            };
+            for (TocItem* branch : branches) {
+                if (!onTargetPath(branch)) {
+                    TreeView_Expand(win->tocTreeView->hwnd, win->tocTreeView->GetHandleByTreeItem((TreeItem)branch),
+                                    TVE_EXPAND);
+                    break;
+                }
+            }
+            for (TocItem* branch : branches) {
+                branchStates.Append(win->tocTreeView->IsExpanded((TreeItem)branch));
+            }
+            UpdateTocExpansionState(tab->tocState, win->tocTreeView, tab->currToc);
+            if (scenario == 1) {
+                win->tocFilterEdit->SetText("zzzz-no-matching-bookmark");
+                TocFilterChanged(win);
+            } else if (scenario == 2) {
+                SetSidebarVisibility(win, false, false);
+            } else if (scenario == 3) {
+                ShowSidebarPage(win, SidebarView::Thumbnails);
+            } else if (scenario == 4) {
+                ShowSidebarPage(win, SidebarView::Favorites);
+            }
+            ScrollState before = dm->GetScrollState();
+            int history = dm->navHistory.Size();
+            size_t historyIdx = dm->navHistoryIdx;
+            bool located = LocateCurrentTocItem(win);
+            bool selected = win->tocTreeView->GetSelection() == (TreeItem)target;
+            if (str::EndsWithI(flags.fileNames[0], "samepage.pdf")) {
+                selected &= str::Eq(target->title, "Earlier same-page heading");
+            }
+            bool expanded = true;
+            bool othersKept = true;
+            for (int i = 0; i < branches.Size(); i++) {
+                if (!onTargetPath(branches.At(i))) {
+                    othersKept &= win->tocTreeView->IsExpanded((TreeItem)branches.At(i)) == branchStates.At(i);
+                }
+            }
+            HWND hwndTree = win->tocTreeView->hwnd;
+            HTREEITEM h = win->tocTreeView->GetHandleByTreeItem((TreeItem)target);
+            for (HTREEITEM p = TreeView_GetParent(hwndTree, h); p; p = TreeView_GetParent(hwndTree, p)) {
+                expanded &= (TreeView_GetItemState(hwndTree, p, TVIS_EXPANDED) & TVIS_EXPANDED) != 0;
+            }
+            RECT rc{};
+            RECT client{};
+            GetClientRect(hwndTree, &client);
+            bool visible = TreeView_GetItemRect(hwndTree, h, &rc, FALSE) && rc.bottom > 0 && rc.top < client.bottom;
+            ScrollState after = dm->GetScrollState();
+            bool passed = located && selected && expanded && visible && othersKept && sameScroll(before, after) &&
+                          history == dm->navHistory.Size() && historyIdx == dm->navHistoryIdx &&
+                          CurrentSidebarView(win) == SidebarView::Bookmarks && win->tocVisible &&
+                          str::IsEmpty(win->tocFilterEdit->GetTextTemp());
+            // Repeated invocation must not add history or move the viewport.
+            passed &= LocateCurrentTocItem(win) && sameScroll(after, dm->GetScrollState()) &&
+                      history == dm->navHistory.Size() && historyIdx == dm->navHistoryIdx;
+            fprintf(
+                report,
+                "mode=%d scenario=%d located=%d selected=%d expanded=%d visible=%d scroll=%d history=%d passed=%d\n",
+                (int)mode, scenario, located, selected, expanded, visible, sameScroll(before, after),
+                history == dm->navHistory.Size() && historyIdx == dm->navHistoryIdx, passed);
+            allPassed &= passed;
+        }
+    }
+    win->tocDragArmed = true;
+    bool guarded = !CanLocateCurrentTocItem(win) && !LocateCurrentTocItem(win);
+    win->tocDragArmed = false;
+    allPassed &= guarded;
+    fprintf(report, "drag-guard passed=%d\n", guarded);
+    LabelWithCloseWnd* label = win->tocLabelWithClose;
+    int widths[] = {120, 180, 320, 640};
+    for (int width : widths) {
+        SetWindowPos(label->hwnd, nullptr, 0, 0, width, label->GetIdealSize().dy, SWP_NOZORDER | SWP_NOACTIVATE);
+        label->Layout();
+        Rect r = label->locateActionPos;
+        bool passed = r.IsEmpty() || (r.x >= 0 && r.x + r.dx <= width);
+        for (int i = 0; i < label->nViewButtons; i++) {
+            Rect v = label->viewBtnPos[i];
+            passed &= r.IsEmpty() || r.x + r.dx <= v.x || r.x >= v.x + v.dx;
+        }
+        if (width == 640) {
+            passed &= !r.IsEmpty();
+        }
+        fprintf(report, "header width=%d locate=%d,%d passed=%d\n", width, r.x, r.dx, passed);
+        allPassed &= passed;
+    }
+    SetSidebarColumnDx(win, 300);
+    RelayoutTocContainer(win);
+    RECT split{}, header{}, filter{};
+    GetWindowRect(win->sidebarSplitter->hwnd, &split);
+    GetWindowRect(label->hwnd, &header);
+    GetWindowRect(win->tocFilterEdit->hwnd, &filter);
+    POINT line = {split.left, (split.top + split.bottom) / 2};
+    int reach = DpiScale(win->hwndFrame, 2);
+    POINT nearby = {split.right + reach - 1, line.y};
+    POINT outside = {split.right + reach, line.y};
+    POINT closeEdge = {split.left - 1, (header.top + header.bottom) / 2};
+    POINT filterEdge = {split.left - 1, (filter.top + filter.bottom) / 2};
+    bool splitterPassed = IsSidebarSplitterHit(win, win->sidebarSplitter->hwnd, line) &&
+                          IsSidebarSplitterHit(win, win->hwndCanvas, nearby) &&
+                          !IsSidebarSplitterHit(win, win->hwndCanvas, outside) &&
+                          !IsSidebarSplitterHit(win, label->hwnd, closeEdge) &&
+                          !IsSidebarSplitterHit(win, win->tocFilterEdit->hwnd, filterEdge);
+    HWND tree = win->tocTreeView->hwnd;
+    RECT treeRect{}, treeClient{};
+    GetWindowRect(tree, &treeRect);
+    SetWindowPos(tree, nullptr, 0, 0, treeRect.right - treeRect.left, DpiScale(tree, 8),
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    GetWindowRect(tree, &treeRect);
+    GetClientRect(tree, &treeClient);
+    MapWindowPoints(tree, HWND_DESKTOP, (POINT*)&treeClient, 2);
+    POINT scrollEdge = {treeRect.right - 1, (treeRect.top + treeRect.bottom) / 2};
+    bool hasScrollbar = treeClient.right < treeRect.right;
+    bool scrollbarPassed = !hasScrollbar || !IsSidebarSplitterHit(win, tree, scrollEdge);
+    fprintf(report, "splitter narrow-strip=%d scrollbar-present=%d scrollbar-priority=%d\n", splitterPassed,
+            hasScrollbar, scrollbarPassed);
+    allPassed &= splitterPassed && scrollbarPassed;
+    RelayoutTocContainer(win);
+    if (EngineMupdfCanEditToc(engine)) {
+        bool started = StartTocCalibFromExisting(win);
+        bool passed = started && !CanLocateCurrentTocItem(win) && !LocateCurrentTocItem(win) &&
+                      !label->locateActionEnabled && !label->thirdActionPos.IsEmpty();
+        fprintf(report, "calibration-guard passed=%d\n", passed);
+        allPassed &= passed;
+    }
+    fprintf(report, "Overall: %s\n", allPassed ? "PASS" : "FAIL");
+    return allPassed;
+}
+
+static bool TestOcrImageLinks(const Flags& flags, const char* reportPath) {
+    if (flags.fileNames.IsEmpty()) return false;
+    FILE* report = fopen(reportPath, "w");
+    if (!report) return false;
+    defer {
+        fclose(report);
+    };
+    LoadArgs args(flags.fileNames[0], nullptr);
+    args.syncLoad = true;
+    args.showWin = false;
+    args.noSavePrefs = true;
+    MainWindow* win = LoadDocument(&args);
+    if (!win || !win->AsFixed()) return false;
+    SetWindowPos(win->hwndFrame, nullptr, 0, 0, 1100, 800, SWP_NOZORDER | SWP_NOACTIVATE);
+    DisplayModel* dm = win->AsFixed();
+    EngineBase* engine = dm->GetEngine();
+    win->ctrl->SetDisplayMode(DisplayMode::SinglePage);
+    EngineMupdfSetReflowLoadWhenForeground(engine, true);
+    dm->EnsureReflowLayoutForPage(1);
+    dm->GoToPage(1, false);
+    EngineMupdfEnsurePageLinksForHitTest(engine, 1);
+    EngineMupdfEnsurePageImagesForHitTest(engine, 1);
+    RectF image{}, textLink{};
+    for (IPageElement* el : engine->GetElements(1)) {
+        if (el->Is(kindPageElementImage)) image = el->GetRect();
+    }
+    for (IPageElement* el : engine->GetElements(1)) {
+        RectF rect = el->GetRect();
+        if (el->Is(kindPageElementDest) && rect.dx < image.dx / 2) textLink = rect;
+    }
+    if (image.IsEmpty() || textLink.IsEmpty()) {
+        fprintf(report, "missing-fixture-elements image=%d text-link=%d\n", !image.IsEmpty(), !textLink.IsEmpty());
+        return false;
+    }
+    bool passed = true;
+    for (int scenario = 0; scenario < 9; scenario++) {
+        dm->GoToPage(1, false);
+        DeleteOldSelectionInfo(win, true);
+        PageText text{};
+        text.text = str::Dup(L"OCR LINK");
+        text.len = 8;
+        text.coords = AllocArray<Rect>(text.len);
+        int gx = (int)(image.x + image.dx / 4);
+        int gy = (int)(image.y + image.dy / 2);
+        for (int n = 0; n < 3; n++) text.coords[n] = Rect(gx + n * 12, gy, 11, 16);
+        for (int n = 4; n < 8; n++) {
+            text.coords[n] = Rect((int)textLink.x + (n - 4) * 5, (int)textLink.y, 5, (int)textLink.dy);
+        }
+        engine->SetCachedPageText(1, text, {});
+        if (scenario == 4) engine->ClearOcrTried(1);
+        Point start = dm->CvtToScreen(1, PointF((float)gx + 4, (float)gy + 8));
+        Point end = dm->CvtToScreen(1, PointF((float)gx + 30, (float)gy + 8));
+        if (scenario == 7 || scenario == 8) {
+            end = dm->CvtToScreen(1, PointF(image.x + image.dx * .8f, image.y + image.dy * .8f));
+        }
+        if (scenario == 3) start = dm->CvtToScreen(1, PointF(image.x + image.dx * .8f, image.y + image.dy * .8f));
+        if (scenario == 5) start = dm->CvtToScreen(1, PointF(textLink.x + 3, textLink.y + textLink.dy / 2));
+        int history = dm->navHistory.Size();
+        size_t historyIdx = dm->navHistoryIdx;
+        SendMessageW(win->hwndCanvas, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(start.x, start.y));
+        bool selected = win->mouseAction == MouseAction::SelectingText;
+        bool stayedOnDown = win->ctrl->CurrentPageNo() == 1;
+        if (scenario == 1 || scenario == 2 || scenario == 7) {
+            SendMessageW(win->hwndCanvas, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(end.x, end.y));
+            if (scenario == 2) SendMessageW(win->hwndCanvas, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(start.x, start.y));
+        }
+        if (scenario == 6) CancelDrag(win);
+        Point up = scenario == 1 || scenario == 7 || scenario == 8 ? end : start;
+        SendMessageW(win->hwndCanvas, WM_LBUTTONUP, 0, MAKELPARAM(up.x, up.y));
+        bool expectLink = scenario == 3 || scenario == 4 || scenario == 5;
+        bool navigated = win->ctrl->CurrentPageNo() != 1;
+        bool historyUnchanged = dm->navHistory.Size() == history && dm->navHistoryIdx == historyIdx;
+        bool ok = stayedOnDown && navigated == expectLink && (expectLink || historyUnchanged) &&
+                  (expectLink || selected) && (scenario != 1 || win->showSelection) && !win->ocrImageLinkSelection;
+        fprintf(report, "scenario=%d down-stayed=%d selecting=%d navigated=%d history-unchanged=%d passed=%d\n",
+                scenario, stayedOnDown, selected, navigated, historyUnchanged, ok);
+        passed &= ok;
+    }
+    fprintf(report, "Overall: %s\n", passed ? "PASS" : "FAIL");
+    return passed;
+}
+
 void TestRenderPage(const Flags& i) {
+    if (const char* report = getenv("SUMATRA_TEST_OCR_IMAGE_LINKS")) {
+        ExitProcess(TestOcrImageLinks(i, report) ? 0 : 1);
+    }
+    if (const char* report = getenv("SUMATRA_TEST_TOC_LOCATE")) {
+        ExitProcess(TestLocateCurrentChapter(i, report) ? 0 : 1);
+    }
     if (const char* folder = getenv("SUMATRA_TEST_FREETEXT_BORDER")) {
         ExitProcess(TestFreeTextBorderColor(i, folder) ? 0 : 1);
     }

@@ -297,6 +297,7 @@ export const commands = [
     "CmdOpenAskAi", "Open Ask AI",
     "CmdExportPageImages", "Export pages as images...",
     "CmdCapturePageRegion", "Capture Page Region",
+    "CmdTocLocateCurrentChapter", "Locate Current Chapter",
     "CmdNone", "Do nothing",
 ];
 

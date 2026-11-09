@@ -10367,6 +10367,60 @@ bool IsSidebarSplitterLiveDrag() {
     return gSidebarSplitterWrapSuspended;
 }
 
+bool IsSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, POINT pt) {
+    if (!win || !win->sidebarSplitter || !win->sidebarSplitter->hwnd || !IsWindowEnabled(win->hwndFrame) ||
+        GetAncestor(sourceHwnd, GA_ROOT) != win->hwndFrame) {
+        return false;
+    }
+    RECT rc{};
+    GetWindowRect(win->sidebarSplitter->hwnd, &rc);
+    // A small logical tolerance helps grab the one-pixel line. Cursor artwork
+    // is not a hit target: accessibility cursor sizes can make it very wide.
+    int reach = DpiScale(win->hwndFrame, 2);
+    if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - reach || pt.x >= rc.right + reach) {
+        return false;
+    }
+    if (PtInRect(&rc, pt)) {
+        return true;
+    }
+    HWND tree = win->tocTreeView ? win->tocTreeView->hwnd : nullptr;
+    HWND fav = win->favTreeView ? win->favTreeView->hwnd : nullptr;
+    HWND bodies[] = {tree, fav, win->hwndSidebarThumbs, win->hwndCanvas};
+    // Never borrow the native scrollbars' nonclient pixels for resizing.
+    for (HWND body : bodies) {
+        if (!body || !(GetWindowLongW(body, GWL_STYLE) & WS_VISIBLE)) {
+            continue;
+        }
+        RECT outer{}, client{};
+        GetWindowRect(body, &outer);
+        GetClientRect(body, &client);
+        MapWindowPoints(body, HWND_DESKTOP, (POINT*)&client, 2);
+        if (PtInRect(&outer, pt) && !PtInRect(&client, pt)) {
+            return false;
+        }
+    }
+    // Header buttons, search edits, calibration controls and embedded editors
+    // own their pixels, even when flush against the divider.
+    if (win->hwndTocBox) {
+        POINT local = pt;
+        ScreenToClient(win->hwndTocBox, &local);
+        RECT toc{};
+        GetClientRect(win->hwndTocBox, &toc);
+        if (PtInRect(&toc, local)) {
+            if (TocCalibBarVisible(win) && local.y >= toc.bottom - TocCalibBarDy(win)) {
+                return false;
+            }
+            HWND child = ChildWindowFromPointEx(win->hwndTocBox, local, CWP_SKIPINVISIBLE);
+            if (child && child != win->hwndTocBox && child != tree && child != fav && child != win->hwndSidebarThumbs) {
+                return false;
+            }
+        }
+    }
+    return sourceHwnd == win->hwndFrame || sourceHwnd == win->hwndTocBox || sourceHwnd == win->hwndCanvas ||
+           sourceHwnd == tree || sourceHwnd == fav || sourceHwnd == win->hwndSidebarThumbs ||
+           sourceHwnd == win->sidebarSplitter->hwnd;
+}
+
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp) {
     if (!win || !win->sidebarSplitter || !win->sidebarSplitter->hwnd || !IsWindowVisible(win->sidebarSplitter->hwnd)) {
         return false;
@@ -10385,30 +10439,19 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
     } else {
         GetCursorPos(&pt);
     }
-    RECT rc{};
-    GetWindowRect(win->sidebarSplitter->hwnd, &rc);
-    // The <-> hotspot is the pointer, in the middle of the arrow. Either tip
-    // is SizeWeCursorReachPx() away, so a click on the tip misses a 1px line.
-    // The drag strip is that whole glyph, on every sidebar page.
-    int reach = SizeWeCursorReachPx();
-    int leftTol = reach;
-    int rightTol = reach;
-    // Bookmark-calibration row buttons sit flush against the splitter. A left
-    // tolerance that reaches into that row steals the icon click into a width
-    // drag. The line itself still drags.
-    bool onCalibRow = false;
-    if (TocCalibBarVisible(win) && win->hwndTocBox) {
-        RECT tocRc{};
-        GetWindowRect(win->hwndTocBox, &tocRc);
-        int barDy = TocCalibBarDy(win);
-        onCalibRow = pt.y >= tocRc.bottom - barDy && pt.y < tocRc.bottom;
-    }
-    if (onCalibRow) {
-        leftTol = 0;
-    }
-    if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - leftTol || pt.x >= rc.right + rightTol) {
+    static HWND cursorOwner = nullptr;
+    if (!IsSidebarSplitterHit(win, sourceHwnd, pt)) {
+        if (cursorOwner && GetCapture() != cursorOwner) {
+            // Some custom header controls have no class cursor. Leaving a
+            // virtual hit strip must not leave the resize cursor stuck there.
+            if (GetCursor() == LoadCursorW(nullptr, IDC_SIZEWE)) {
+                SetCursorCached(IDC_ARROW);
+            }
+            cursorOwner = nullptr;
+        }
         return false;
     }
+    cursorOwner = win->sidebarSplitter->hwnd;
     SetCursorCached(IDC_SIZEWE);
     if (msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN) {
         ScreenToClient(win->sidebarSplitter->hwnd, &pt);
@@ -12753,6 +12796,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             break;
         }
+
+        case CmdTocLocateCurrentChapter:
+            LocateCurrentTocItem(win);
+            break;
 
         case CmdDocumentShowOutline: {
             if (tab && tab->ctrl && tab->ctrl->HasToc()) {

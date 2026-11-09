@@ -741,7 +741,7 @@ void ToggleTocBox(MainWindow* win) {
     ShowOrToggleSidebarView(win, SidebarView::Bookmarks);
 }
 
-static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
+static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine, bool cachedOnly = false) {
     if (!item) {
         return 0;
     }
@@ -756,6 +756,12 @@ static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
 
     Kind destKind = dest->GetKind();
     if (destKind == kindDestinationMupdf) {
+        if (cachedOnly) {
+            if (!EngineMupdfIsOutlineDestReachable(engine, dest)) {
+                return 0;
+            }
+            return EngineMupdfTocItemPageNoForSync(engine, dest, item->pageNo, false);
+        }
         if (!EngineIsProgressiveEbookLoading(engine)) {
             int syncPage = EngineMupdfTocItemPageNoForSync(engine, dest, item->pageNo);
             if (syncPage > 0) {
@@ -813,13 +819,13 @@ int CountTocItems(TocItem* item) {
 // Pick the deepest TOC entry whose page is <= pageNo. Among siblings with the same
 // page (common when EPUB fragments fail to resolve), keep the earliest entry so we
 // do not jump ahead to a later chapter while still reading earlier content.
-TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine) {
+static TocItem* TocItemBestMatchForPageImpl(TocItem* item, int pageNo, EngineBase* engine, bool cachedOnly) {
     TocItem* currItem = nullptr;
 
     for (; item; item = item->next) {
-        int itemPage = TocItemPageNoForMatch(item, engine);
+        int itemPage = TocItemPageNoForMatch(item, engine, cachedOnly);
         if (1 <= itemPage && itemPage <= pageNo) {
-            int currPage = currItem ? TocItemPageNoForMatch(currItem, engine) : 0;
+            int currPage = currItem ? TocItemPageNoForMatch(currItem, engine, cachedOnly) : 0;
             if (!currItem || itemPage > currPage) {
                 currItem = item;
             }
@@ -828,13 +834,29 @@ TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine) 
             break;
         }
 
-        TocItem* subItem = TocItemBestMatchForPage(item->child, pageNo, engine);
+        TocItem* subItem = TocItemBestMatchForPageImpl(item->child, pageNo, engine, cachedOnly);
         if (subItem) {
             currItem = subItem;
         }
     }
 
     return currItem;
+}
+
+TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine) {
+    return TocItemBestMatchForPageImpl(item, pageNo, engine, false);
+}
+
+bool CanLocateCurrentTocItem(MainWindow* win) {
+    if (!win || !win->IsDocLoaded() || !win->ctrl || !win->ctrl->HasToc() || TocCalibIsActive(win) ||
+        win->tocDragging || win->tocDragArmed) {
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    TocTree* toc = tab && tab->currToc ? tab->currToc : win->ctrl->GetToc();
+    // PDFs can advertise a bookmark sidebar even with no outline, to offer TOC
+    // extraction. That empty sidebar has nothing for this command to locate.
+    return toc && toc->root && toc->root->child;
 }
 
 static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm) {
@@ -900,6 +922,9 @@ static TocItem* FindVisibleParentTreeItem(TreeView* treeView, TocItem* ti) {
 }
 
 void UpdateTocSelection(MainWindow* win, int currPageNo) {
+    if (win->tocLabelWithClose) {
+        win->tocLabelWithClose->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
+    }
     SidebarThumbsSyncCurrentPage(win);
     if (!win->tocLoaded || !win->tocVisible || win->tocKeepSelection) {
         return;
@@ -1235,11 +1260,13 @@ static void TocFocusItem(MainWindow* win, TocItem* item, bool navigate) {
     if (!win || !win->tocTreeView || !win->tocTreeView->treeModel || !win->tocTreeView->hwnd) {
         return;
     }
+    bool oldSuppress = win->tocSuppressGoTo;
+    bool oldKeep = win->tocKeepSelection;
     win->tocSuppressGoTo = true;
     win->tocKeepSelection = true;
     win->tocTreeView->SelectItem(item ? (TreeItem)item : TreeModel::kNullItem);
-    win->tocKeepSelection = false;
-    win->tocSuppressGoTo = false;
+    win->tocKeepSelection = oldKeep;
+    win->tocSuppressGoTo = oldSuppress;
     if (navigate && item) {
         GoToTocTreeItem(win, (TreeItem)item, true);
     }
@@ -1269,6 +1296,85 @@ static void TocSelectOnly(MainWindow* win, TocItem* item, bool navigate) {
         ids.Append(item->id);
     }
     TocSetSelectedIds(win, ids, item ? item->id : 0, item, navigate);
+}
+
+static bool HasTocFilter(MainWindow* win);
+
+bool LocateCurrentTocItem(MainWindow* win) {
+    if (!CanLocateCurrentTocItem(win)) {
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    DisplayModel* dm = win->ctrl->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    bool loading = EngineIsProgressiveEbookLoading(engine);
+    auto unavailable = [&]() {
+        const char* msg = loading || (dm && dm->ShouldSkipTocSelectionUpdate())
+                              ? _TRA("The table of contents is still loading. Please try again shortly.")
+                              : _TRA("No table of contents entry matches the current position.");
+        ShowTemporaryNotification(win->hwndCanvas, msg);
+        return false;
+    };
+    if (dm && dm->ShouldSkipTocSelectionUpdate()) {
+        return unavailable();
+    }
+    TocTree* toc = tab->currToc ? tab->currToc : win->ctrl->GetToc();
+    int page = win->ctrl->CurrentPageNo();
+    TocItem* target = toc && toc->root ? TocItemBestMatchForPageImpl(toc->root->child, page, engine, true) : nullptr;
+    if (!target) {
+        return unavailable();
+    }
+
+    ScrollState scroll;
+    if (dm) {
+        scroll = dm->GetScrollState();
+    }
+    bool oldSuppress = win->tocSuppressGoTo;
+    bool oldKeep = win->tocKeepSelection;
+    win->tocSuppressGoTo = win->tocKeepSelection = true;
+    defer {
+        win->tocSuppressGoTo = oldSuppress;
+        win->tocKeepSelection = oldKeep;
+    };
+    ShowSidebarPage(win, SidebarView::Bookmarks);
+    LoadTocTree(win);
+    if (!win->tocVisible || !win->tocLoaded || !win->tocTreeView) {
+        return false;
+    }
+    // Switching sidebar pages can restore a saved bookmark filter. Clear it
+    // only after finding a match in the full TOC, preserving other view queries.
+    if (win->tocFilterEdit && HasTocFilter(win)) {
+        win->tocFilterEdit->SetText("");
+    }
+    if (win->tocFilteredTree) {
+        TocFilterChanged(win);
+    }
+    toc = tab->currToc;
+    target = toc && toc->root ? TocItemBestMatchForPageImpl(toc->root->child, page, engine, true) : nullptr;
+    if (!target) {
+        return unavailable();
+    }
+    TreeView* tree = win->tocTreeView;
+    HTREEITEM handle = tree->GetHandleByTreeItem((TreeItem)target);
+    if (!handle) {
+        return unavailable();
+    }
+    Vec<HTREEITEM> parents;
+    for (HTREEITEM p = TreeView_GetParent(tree->hwnd, handle); p; p = TreeView_GetParent(tree->hwnd, p)) {
+        parents.Append(p);
+    }
+    for (int i = parents.Size() - 1; i >= 0; i--) {
+        TreeView_Expand(tree->hwnd, parents.At(i), TVE_EXPAND);
+    }
+    TocSelectOnly(win, target, false);
+    FlushTocTreeWrapHeights(win);
+    TreeView_EnsureVisible(tree->hwnd, handle);
+    UpdateTocExpansionState(tab->tocState, tree, toc);
+    if (dm && !(dm->GetScrollState() == scroll)) {
+        dm->SetScrollState(scroll);
+    }
+    HwndSetFocus(win->hwndFrame);
+    return true;
 }
 
 static void CollectTocItemIds(TocItem* item, Vec<int>& ids) {
@@ -1333,6 +1439,9 @@ static void TocCancelDrag(MainWindow* win) {
     bool wasDragging = win->tocDragging;
     win->tocDragArmed = false;
     win->tocDragging = false;
+    if (win->tocLabelWithClose) {
+        win->tocLabelWithClose->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
+    }
     win->tocDropItem = nullptr;
     win->tocDropPos = 1;
     if (wasDragging) {
@@ -4212,6 +4321,7 @@ void LayoutTreeContainer(LabelWithCloseWnd* l, HWND hwndTree) {
 // Position label, filter edit, and tree window within toc container.
 static void LayoutTocContainer(MainWindow* win) {
     LabelWithCloseWnd* l = win->tocLabelWithClose;
+    l->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
     Edit* edit = win->tocFilterEdit;
     TreeView* treeView = win->tocTreeView;
     HWND hwndContainer = win->hwndTocBox;
@@ -4833,6 +4943,7 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
                        (win->tocSelectedIds.Size() <= 1 && (TocItem*)tv->GetSelection() == item);
         win->tocDragArmed = PdfTocEditableEngine(win) && !HasTocFilter(win) && IsPdfTocBookmarkItem(win, item);
         win->tocDragging = false;
+        win->tocLabelWithClose->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
         win->tocDragWasSelected = already && win->tocSelectedIds.Size() > 1;
         win->tocDragStart = pt;
         win->tocDragItemId = item->id;
@@ -4859,6 +4970,7 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
         if (!win->tocDragging && (abs(dx) > threshX || abs(dy) > threshY)) {
             if (!win->tocDragArmed || HasTocFilter(win) || !PdfTocEditableEngine(win)) {
                 win->tocDragArmed = false;
+                win->tocLabelWithClose->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
                 if (GetCapture() == hwnd) {
                     ReleaseCapture();
                 }
@@ -4887,6 +4999,7 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
         POINT upPt = pt;
         win->tocDragArmed = false;
         win->tocDragging = false;
+        win->tocLabelWithClose->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
         win->tocDropItem = nullptr;
         KillTimer(hwnd, kTocDragExpandTimerId);
         if (GetCapture() == hwnd) {
@@ -4913,6 +5026,7 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
         if (win->tocDragging || win->tocDragArmed) {
             win->tocDragArmed = false;
             win->tocDragging = false;
+            win->tocLabelWithClose->SetLocateActionEnabled(CanLocateCurrentTocItem(win));
             win->tocDropItem = nullptr;
             KillTimer(hwnd, kTocDragExpandTimerId);
             InvalidateRect(hwnd, nullptr, FALSE);
@@ -5411,6 +5525,9 @@ static void ApplyTocFilter(MainWindow* win, const char* filter) {
         return;
     }
     TreeView* treeView = win->tocTreeView;
+    if (filter && *filter && !win->tocFilteredTree && treeView && treeView->treeModel == tab->currToc) {
+        UpdateTocExpansionState(tab->tocState, treeView, tab->currToc);
+    }
     // free previous filtered tree; clear treeModel first if it still references it
     if (win->tocFilteredTree) {
         if (treeView && treeView->treeModel == win->tocFilteredTree) {
@@ -5535,6 +5652,10 @@ static void CollapseAllToc(MainWindow* win) {
     if (win && win->tocTreeView) {
         win->tocTreeView->CollapseAll();
     }
+}
+
+static void TocHeaderLocate(MainWindow* win) {
+    HwndSendCommand(win->hwndFrame, CmdTocLocateCurrentChapter);
 }
 
 static void ExpandAllToc(MainWindow* win) {
@@ -5787,6 +5908,7 @@ void CreateToc(MainWindow* win) {
 
     l->SetHeaderActions(MkFunc0(ExpandAllToc, win), _TRN("Expand All"), MkFunc0(CollapseAllToc, win),
                         _TRN("Collapse All"));
+    l->SetLocateAction(MkFunc0(TocHeaderLocate, win), _TRN("Locate Current Chapter"));
 
     auto treeView = new TreeView();
     TreeView::CreateArgs args;

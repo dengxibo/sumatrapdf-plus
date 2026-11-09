@@ -47821,3 +47821,15 @@ tw:相關搜尋（BM25）
 :Shorten query
 cn:请缩短关键词
 tw:請縮短關鍵詞
+
+:Locate Current Chapter
+cn:定位当前章节
+tw:定位目前章節
+
+:The table of contents is still loading. Please try again shortly.
+cn:目录仍在加载，请稍后重试。
+tw:目錄仍在載入，請稍後重試。
+
+:No table of contents entry matches the current position.
+cn:当前位置没有对应目录项。
+tw:目前位置沒有對應目錄項目。

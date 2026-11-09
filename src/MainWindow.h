@@ -474,6 +474,8 @@ struct MainWindow {
 
     ILinkHandler* linkHandler = nullptr;
     IPageElement* linkOnLastButtonDown = nullptr;
+    // OCR selection owns this gesture even if release lands outside its glyphs.
+    bool ocrImageLinkSelection = false;
     AutoFreeStr urlOnLastButtonDown;
     Annotation* annotationUnderCursor = nullptr;
     // highlight rectangle for element under cursor during context menu (in page coordinates)

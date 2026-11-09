@@ -571,6 +571,18 @@ In the crop window, drag to draw a new selection, drag one of the eight handles 
 
 ## Responsive toolbar
 
+`CmdTocLocateCurrentChapter` (**Locate Current Chapter / 定位当前章节**) opens the
+document's bookmark sidebar, clears its search filter, expands only the current
+chapter's ancestor path, and selects and reveals the matching entry without
+navigating the document. It is available from **View**, the command palette and
+the locate icon beside Expand/Collapse in the bookmark header. There is no default
+shortcut; a custom shortcut can use this command ID. In a very narrow sidebar the
+icon hides while the menu and palette remain available. Documents without a TOC,
+bookmark calibration and bookmark dragging disable this command. While EPUB
+pagination is incomplete, it uses available page mappings and may ask you to try
+again; it does not force a complete pagination pass. Entries on the same page use
+the existing conservative chapter-matching rule.
+
 When the window becomes narrow, lower-priority tools move into the **More tools** menu, grouped by function. Widen the window to restore them. The menu retains checked and disabled states, custom toolbar commands, and OCR/read-aloud options. Search keeps the same edit control and query while resizing. In very narrow windows the search field collapses secondary icons; these commands remain in the menu. If the page-number field cannot fit, use **Navigation → Go to Page...** from the menu. Tab from search reaches the toolbar overflow button; Enter or Space opens the menu.
 
 

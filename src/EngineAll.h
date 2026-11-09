@@ -133,7 +133,8 @@ int EngineMupdfEpubChapterForPath(EngineBase* engine, const char* docPath);
 const char* EngineMupdfEpubPathForChapter(EngineBase* engine, int chapter);
 bool EngineIsProgressiveEbookLoading(EngineBase* engine);
 int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest);
-int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo);
+int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo,
+                                    bool allowResolve = true);
 int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut);

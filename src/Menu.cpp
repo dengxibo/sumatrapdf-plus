@@ -12,6 +12,8 @@
 #include "utils/WinUtil.h"
 
 #include "wingui/UIModels.h"
+#include "wingui/Layout.h"
+#include "wingui/WinGui.h"
 
 #include "Settings.h"
 #include "AppSettings.h"
@@ -37,6 +39,7 @@
 #include "ExternalViewers.h"
 #include "Favorites.h"
 #include "SidebarThumbs.h"
+#include "TableOfContents.h"
 #include "FileThumbnails.h"
 #include "Selection.h"
 #include "WordLookup.h"
@@ -294,6 +297,10 @@ static MenuDef menuDefView[] = {
     {
         _TRN("Show Book&marks"),
         CmdToggleBookmarks,
+    },
+    {
+        _TRN("Locate Current Chapter"),
+        CmdTocLocateCurrentChapter,
     },
     {
         _TRN("Show &Thumbnails"),
@@ -1909,6 +1916,7 @@ static void MenuUpdateStateForWindow(MainWindow* win) {
 
     bool enabled = win->IsDocLoaded() && tab && tab->ctrl->HasToc();
     MenuSetEnabled(win->menu, CmdToggleBookmarks, enabled);
+    MenuSetEnabled(win->menu, CmdTocLocateCurrentChapter, CanLocateCurrentTocItem(win));
     MenuSetEnabled(win->menu, CmdToggleThumbnails, SidebarViewAvailable(win, SidebarView::Thumbnails));
 
     bool documentSpecific = win->IsDocLoaded();

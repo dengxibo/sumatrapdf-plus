@@ -1067,6 +1067,7 @@ void CancelDrag(MainWindow* win) {
     win->mouseAction = MouseAction::None;
     win->linkOnLastButtonDown = nullptr;
     win->annotationBeingDragged = nullptr;
+    win->ocrImageLinkSelection = false;
     win->ebookAnnotationDragPending = nullptr;
     win->annotationBeingResized = false;
     win->ocrRegionPending = false;
@@ -2644,6 +2645,42 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     }
 }
 
+static bool OcrTextOverridesImageLink(MainWindow* win, Point pt, IPageElement* link) {
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !link || !link->Is(kindPageElementDest) || !HasPermission(Perm::CopySelection)) {
+        return false;
+    }
+    int pageNo = dm->GetPageNoByPoint(pt);
+    EngineBase* engine = dm->GetEngine();
+    // Use recognized text already cached for this page. Never start OCR or
+    // extract text just to decide the hover cursor.
+    if (!dm->ValidPageNo(pageNo) || !engine->HasCachedOcrText(pageNo) || !dm->IsOverText(pt)) {
+        return false;
+    }
+    PointF pos = dm->CvtFromScreen(pt, pageNo);
+    RectF linkRect = link->GetRect();
+    Vec<IPageElement*> elements = engine->GetElements(pageNo);
+    for (IPageElement* element : elements) {
+        if (!element->Is(kindPageElementImage)) {
+            continue;
+        }
+        RectF image = element->GetRect();
+        if (image.IsEmpty() || !image.Contains(pos)) {
+            continue;
+        }
+        // Only an image-sized link yields to OCR. A normal text link has a
+        // smaller rectangle and remains clickable, even on the same page.
+        // Allow subpixel rounding between the image and link rectangles.
+        constexpr float epsilon = 0.5f;
+        if (linkRect.x <= image.x + epsilon && linkRect.y <= image.y + epsilon &&
+            linkRect.x + linkRect.dx >= image.x + image.dx - epsilon &&
+            linkRect.y + linkRect.dy >= image.y + image.dy - epsilon) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     // lf("Left button clicked on %d %d", x, y);
     if (IsRightDragging(win)) {
@@ -2671,6 +2708,7 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     HwndSetFocus(win->hwndFrame);
+    win->ocrImageLinkSelection = false;
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
     if (win->imageRegionPending || (IsAltPressed() && IsShiftPressed() && !IsCtrlPressed())) {
@@ -2839,7 +2877,10 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
         if (pageEl) {
             if (pageEl->Is(kindPageElementDest) && IsPageElementLinkReachable(win->ctrl, pageEl)) {
-                win->linkOnLastButtonDown = pageEl;
+                win->ocrImageLinkSelection = OcrTextOverridesImageLink(win, pt, pageEl);
+                if (!win->ocrImageLinkSelection) {
+                    win->linkOnLastButtonDown = pageEl;
+                }
             }
         }
     }
@@ -2915,6 +2956,8 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
 static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
+    bool ocrImageLinkSelection = win->ocrImageLinkSelection;
+    win->ocrImageLinkSelection = false;
 
     if (win->mouseAction != MouseAction::ImageRegion && HandwrittenSignatureOnMouseUp(win, x, y)) {
         return;
@@ -3097,7 +3140,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     win->linkOnLastButtonDown = nullptr;
 
     WindowTab* tab = win->CurrentTab();
-    if (didDragMouse) {
+    if (didDragMouse || ocrImageLinkSelection) {
         // no-op
         return;
     }
@@ -4150,6 +4193,11 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     EngineBase* engine = dm->GetEngine();
     bool isPdf = engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
     IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo, !isPdf);
+    if (OcrTextOverridesImageLink(win, pt, pageEl)) {
+        SetCursorCached(IDC_IBEAM);
+        win->DeleteToolTip();
+        return TRUE;
+    }
     if (!pageEl) {
         SetTextOrArrorCursor(dm, pt);
         win->DeleteToolTip();
