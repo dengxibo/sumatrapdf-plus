@@ -3,6 +3,7 @@
 OCR output is injected deterministically into the normal engine text cache;
 this tests interaction without depending on the installed recognition model.
 """
+import argparse
 import io
 import os
 import subprocess
@@ -11,6 +12,9 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--exe', type=Path, default=Path('out/dbg64/SumatraPDF-Plus.exe'))
+args = parser.parse_args()
 root = Path('out/ocr-image-links').resolve()
 root.mkdir(parents=True, exist_ok=True)
 image = io.BytesIO()
@@ -32,7 +36,7 @@ with zipfile.ZipFile(root / 'linked-image.epub', 'w') as z:
     z.writestr('a.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>A</title></head><body style="font-size:12px"><p><a href="b.xhtml">LINK</a></p><p><a href="b.xhtml"><img src="image.png" style="width:120px;height:80px"/></a></p></body></html>')
     z.writestr('b.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>B</title></head><body><h1>Destination</h1></body></html>')
     z.writestr('image.png', data)
-exe = Path('out/dbg64/SumatraPDF-Plus.exe').resolve()
+exe = args.exe.resolve()
 for ext in ('pdf', 'epub'):
     settings = root / f'settings-{ext}'
     settings.mkdir(exist_ok=True)
