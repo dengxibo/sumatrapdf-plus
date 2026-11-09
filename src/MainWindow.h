@@ -415,6 +415,7 @@ struct MainWindow {
     // Ctrl/right-button wheel zoom: coalesce a flick into one SetZoomVirtual
     bool wheelZoomPending = false;
     bool wheelZoomApplying = false;
+    int wheelZoomRemainder = 0;
     float wheelZoomTarget = 0;
     Point wheelZoomPt{};
     DWORD wheelZoomLastMsgTime = 0;

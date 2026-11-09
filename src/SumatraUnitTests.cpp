@@ -405,6 +405,23 @@ static void AiTocSettingsRoundTripTest() {
 }
 
 static void WheelScrollPixelsTest() {
+    int zoomRemainder = 0;
+    int zoomSteps = 0;
+    for (int i = 0; i < WHEEL_DELTA; i++) {
+        zoomSteps += WheelZoomSteps(1, zoomRemainder);
+        utassert(zoomSteps == (i + 1) / WHEEL_DELTA);
+    }
+    utassert(zoomSteps == 1 && zoomRemainder == 0);
+    for (int i = 0; i < WHEEL_DELTA; i++) {
+        zoomSteps += WheelZoomSteps(-1, zoomRemainder);
+    }
+    utassert(zoomSteps == 0 && zoomRemainder == 0);
+    utassert(WheelZoomSteps(30, zoomRemainder) == 0);
+    utassert(WheelZoomSteps(-30, zoomRemainder) == 0 && zoomRemainder == 0);
+    utassert(WheelZoomSteps(300, zoomRemainder) == 2 && zoomRemainder == 60);
+    utassert(WheelZoomSteps(60, zoomRemainder) == 1 && zoomRemainder == 0);
+    utassert(WheelZoomSteps(-240, zoomRemainder) == -2 && zoomRemainder == 0);
+    utassert(WheelZoomSteps(0, zoomRemainder) == 0 && zoomRemainder == 0);
     auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
     utassert(prefs->wheelScrollLines == 0);
     prefs->wheelScrollLines = 7;

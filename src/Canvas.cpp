@@ -4340,11 +4340,21 @@ static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
         return;
     }
     if (!gGlobalPrefs || gGlobalPrefs->zoomIncrement <= 0) {
-        float newZoom = win->ctrl->GetNextZoomStep(delta < 0 ? kZoomMin : kZoomMax);
-        SmartZoom(win, newZoom, &pt, false);
+        DWORD msgTime = GetMessageTime();
+        if (msgTime - win->wheelZoomLastMsgTime >= 500) {
+            win->wheelZoomRemainder = 0;
+        }
+        win->wheelZoomLastMsgTime = msgTime;
+        int steps = WheelZoomSteps(delta, win->wheelZoomRemainder);
+        while (steps != 0) {
+            float newZoom = win->ctrl->GetNextZoomStep(steps < 0 ? kZoomMin : kZoomMax);
+            SmartZoom(win, newZoom, &pt, false);
+            steps += steps < 0 ? 1 : -1;
+        }
         return;
     }
 
+    win->wheelZoomRemainder = 0;
     AccumulateWheelZoom(win, wp, pt, GetMessageTime());
     DrainQueuedWheelZoom(win);
     SetTimer(win->hwndCanvas, kWheelZoomTimerID, kWheelZoomDebounceMs, nullptr);
@@ -4408,6 +4418,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         ZoomByMouseWheel(win, wp);
         return 0;
     }
+    win->wheelZoomRemainder = 0;
 
     bool hScroll = (LOWORD(wp) & MK_SHIFT) || IsShiftPressed();
     bool vScroll = !hScroll;

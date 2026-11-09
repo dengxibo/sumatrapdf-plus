@@ -3,6 +3,13 @@
 
 void UpdateDeltaPerLine();
 
+// Precision wheels can split one notch into many small messages.
+inline int WheelZoomSteps(int delta, int& remainder) {
+    int total = remainder + delta;
+    remainder = total % WHEEL_DELTA;
+    return total / WHEEL_DELTA;
+}
+
 inline int ValidWheelScrollLines(int lines) {
     return lines >= 1 && lines <= 100 ? lines : 0;
 }
