@@ -67,4 +67,4 @@ TempStr BuildEbookReaderFontCss(EbookTypographyKind typographyKind);
 TempStr BuildEbookFallbackFontCss();
 TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind);
 // displayDpi: same DPI used for fz_layout_document page size (EngineMupdf::displayDPI).
-TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath = nullptr);
+TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath = nullptr, bool preserveRelativeSizes = false);

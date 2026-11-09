@@ -4938,34 +4938,8 @@ p {
   margin-top: 0.42em !important;
   margin-bottom: 0.42em !important;
 }
-p, li, blockquote, td, th, span, div, body,
-section, article, main,
-.calibre,
-.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
-.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
-.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
-.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
-  font-weight: 400 !important;
-}
-.noindent-bodycontent-1-fangsong,
-.bodycontent-1-fangsong,
-.bodycontent-2-fangsong,
-.bodycontent-1-fangsong-top,
-.noindent-bodycontent-1-fangsong-top,
-.bodycontent-1-top,
-.noindent-bodycontent-1-top,
-.bodycontent-1-fangsong-top1,
-.bodycontent-2-fangsong-top,
-.hang-bodycontent-1-fangsong,
-.noindent-bodycontent,
-.bodycontent,
-.songti,
-span.songti {
-  font-weight: 400 !important;
-}
-strong, b {
-  font-weight: 700 !important;
-}
+/* Preserve publisher weights, including headings, emphasis and table headers.
+   Calibre class numbers have no semantic meaning and must not reset weight. */
 li, blockquote {
   line-height: 1.5;
 }
@@ -5380,7 +5354,7 @@ li, blockquote {
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
         if (GetEbookReaderFontSizePt(filePath) > 0.f && !isOffice) {
-            TempStr sizeCss = BuildEbookForceFontSizeCss(displayDpi, filePath);
+            TempStr sizeCss = BuildEbookForceFontSizeCss(displayDpi, filePath, isEpub);
             if (sizeCss) {
                 ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", sizeCss) : sizeCss;
             }

@@ -73,7 +73,7 @@ TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind) {
     return nullptr;
 }
 
-TempStr BuildEbookForceFontSizeCss(int displayDpi, const char*) {
+TempStr BuildEbookForceFontSizeCss(int displayDpi, const char*, bool) {
     (void)displayDpi;
     return nullptr;
 }

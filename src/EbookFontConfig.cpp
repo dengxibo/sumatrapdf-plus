@@ -629,7 +629,7 @@ p {
     return str::JoinTemp(css, "\n", latinInlineCss);
 }
 
-TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath) {
+TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath, bool preserveRelativeSizes) {
     float pt = GetEbookReaderFontSizePt(filePath);
     if (pt <= 0.f) {
         return nullptr;
@@ -643,7 +643,8 @@ TempStr BuildEbookForceFontSizeCss(int displayDpi, const char* filePath) {
   font-size: %.1fpx !important;
 }
 )",
-        kEbookForceFontSelectors, layoutPx);
+        // EPUB descendants retain publisher em/percent sizes and semantic defaults.
+        preserveRelativeSizes ? "body" : kEbookForceFontSelectors, layoutPx);
 }
 
 TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind) {
