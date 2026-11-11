@@ -627,8 +627,8 @@ static const char* gIconCapturePageRegion =
 static const char* gIconLocateToc =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M9 5H5v4M15 5h4v4M5 15v4h4M19 15v4h-4" />
-  <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+  <path d="M10 7H7v3M14 7h3v3M7 14v3h3M17 14v3h-3" />
+  <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
 </svg>)";
 
 static const char* gIcons[] = {
