@@ -153,6 +153,9 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     // TODO: make this work in rtl
     if (!isRtl) {
         x = w->firstActionPos.x;
+        if (!w->locateActionPos.IsEmpty()) {
+            x = w->locateActionPos.x;
+        }
         if (x == 0 && w->nRightButtons > 0) {
             x = w->rightBtnPos[0].x;
         }
@@ -569,49 +572,28 @@ void LabelWithCloseWnd::Layout() {
             anchorX = rightBtnPos[0].x;
         }
     }
-    int left = isRtl ? closeBtnPos.x + closeBtnPos.dx + DpiScale(hwnd, kHeaderActionGapDx) : padXScaled;
-    int viewY = (dy - viewDy) / 2;
-    for (int i = 0; i < nViewButtons; i++) {
-        viewBtnPos[i] = Rect(left, viewY, viewDx, viewDy);
-        left += viewDx + viewGap;
-    }
-    for (int i = nViewButtons; i < 5; i++) {
-        viewBtnPos[i] = {};
-    }
     if (headerActionsVisible && firstAction.IsValid() && secondAction.IsValid()) {
         int actionDx = DpiScale(hwnd, kHeaderActionDx);
         int actionDy = DpiScale(hwnd, kHeaderActionDy);
         int gapDx = DpiScale(hwnd, kHeaderActionGapDx);
         int actionY = (dy - actionDy) / 2;
-        // Outwards from the close mark: calibrate, locate, collapse, expand.
-        int nActions = thirdAction.IsValid() ? 3 : 2;
-        bool showLocate = false;
-        if (locateAction.IsValid()) {
-            // Locate takes one more slot. Leave it out when the outermost slot
-            // would run off the header or into the view buttons.
-            int span = (nActions + 1) * actionDx + nActions * gapDx;
-            int lx = isRtl ? anchorRight + closeGapDx + span - actionDx : anchorX - closeGapDx - span;
-            showLocate = lx >= padXScaled && lx + actionDx <= dx - padXScaled;
-            for (int i = 0; i < nViewButtons; i++) {
-                const Rect& v = viewBtnPos[i];
-                if (lx < v.x + v.dx + viewGap && v.x < lx + actionDx + viewGap) {
-                    showLocate = false;
-                }
+        if (isRtl) {
+            if (thirdAction.IsValid()) {
+                thirdActionPos = Rect(anchorRight + closeGapDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(thirdActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
+            } else {
+                secondActionPos = Rect(anchorRight + closeGapDx, actionY, actionDx, actionDy);
             }
+            firstActionPos = Rect(secondActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
+        } else {
+            if (thirdAction.IsValid()) {
+                thirdActionPos = Rect(anchorX - closeGapDx - actionDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(thirdActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+            } else {
+                secondActionPos = Rect(anchorX - closeGapDx - actionDx, actionY, actionDx, actionDy);
+            }
+            firstActionPos = Rect(secondActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
         }
-        int ax = isRtl ? anchorRight + closeGapDx : anchorX - closeGapDx - actionDx;
-        int stepDx = isRtl ? actionDx + gapDx : -(actionDx + gapDx);
-        if (thirdAction.IsValid()) {
-            thirdActionPos = Rect(ax, actionY, actionDx, actionDy);
-            ax += stepDx;
-        }
-        if (showLocate) {
-            locateActionPos = Rect(ax, actionY, actionDx, actionDy);
-            ax += stepDx;
-        }
-        secondActionPos = Rect(ax, actionY, actionDx, actionDy);
-        ax += stepDx;
-        firstActionPos = Rect(ax, actionY, actionDx, actionDy);
         if (actionsTooltip) {
             actionsTooltip->Update(firstActionTooltipId, HeaderActionTooltipTemp(firstActionTooltip), firstActionPos,
                                    false);
@@ -632,6 +614,31 @@ void LabelWithCloseWnd::Layout() {
         }
         if (thirdActionTooltipId >= 0) {
             actionsTooltip->Update(thirdActionTooltipId, "", Rect(), false);
+        }
+    }
+    int left = isRtl ? closeBtnPos.x + closeBtnPos.dx + DpiScale(hwnd, kHeaderActionGapDx) : padXScaled;
+    int viewY = (dy - viewDy) / 2;
+    for (int i = 0; i < nViewButtons; i++) {
+        viewBtnPos[i] = Rect(left, viewY, viewDx, viewDy);
+        left += viewDx + viewGap;
+    }
+    for (int i = nViewButtons; i < 5; i++) {
+        viewBtnPos[i] = {};
+    }
+    if (headerActionsVisible && locateAction.IsValid() && !firstActionPos.IsEmpty()) {
+        int actionDx = DpiScale(hwnd, kHeaderActionDx);
+        int gapDx = DpiScale(hwnd, kHeaderActionGapDx);
+        int lx = isRtl ? firstActionPos.x + firstActionPos.dx + gapDx : firstActionPos.x - gapDx - actionDx;
+        Rect candidate(lx, firstActionPos.y, actionDx, firstActionPos.dy);
+        bool fits = lx >= padXScaled && lx + actionDx <= dx - padXScaled;
+        for (int i = 0; i < nViewButtons; i++) {
+            const Rect& v = viewBtnPos[i];
+            if (lx < v.x + v.dx + viewGap && v.x < lx + actionDx + viewGap) {
+                fits = false;
+            }
+        }
+        if (fits) {
+            locateActionPos = candidate;
         }
     }
     if (actionsTooltip) {
