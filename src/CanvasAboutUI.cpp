@@ -116,8 +116,14 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM wp) {
         gGlobalPrefs->showStartPage = true;
         win->RedrawAll(true);
     } else if (str::Eq(url, kLinkHomePageToggleView)) {
-        bool listView = gGlobalPrefs && str::EqI(gGlobalPrefs->homePageViewMode, "list");
-        str::ReplaceWithCopy(&gGlobalPrefs->homePageViewMode, listView ? "thumbnails" : "list");
+        const char* mode = gGlobalPrefs->homePageViewMode;
+        const char* nextMode = "covers";
+        if (str::EqI(mode, "covers")) {
+            nextMode = "list";
+        } else if (str::EqI(mode, "list")) {
+            nextMode = "thumbnails";
+        }
+        str::ReplaceWithCopy(&gGlobalPrefs->homePageViewMode, nextMode);
         ResetHomePageScroll(win);
     } else if (str::Eq(url, kLinkHomePageToggleSort)) {
         gGlobalPrefs->homePageSortByFrequentlyRead = !gGlobalPrefs->homePageSortByFrequentlyRead;
@@ -288,6 +294,16 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
 
         case WM_MOUSEWHEEL: {
             int delta = GET_WHEEL_DELTA_WPARAM(wp);
+            if ((GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) && str::EqI(gGlobalPrefs->homePageViewMode, "covers")) {
+                int dx = gGlobalPrefs->homePageThumbnailDx;
+                dx = dx > 0 ? std::clamp(dx, 160, 280) : kThumbnailDx;
+                int resized = std::clamp(dx + MulDiv(delta, 24, WHEEL_DELTA), 160, 280);
+                if (resized != dx) {
+                    gGlobalPrefs->homePageThumbnailDx = resized;
+                    ResetHomePageScroll(win);
+                }
+                return 0;
+            }
             HomePageOnMouseWheel(win, delta);
             return 0;
         }

@@ -241,16 +241,18 @@ int fz_font_is_monospaced(fz_context *ctx, fz_font *font);
 */
 fz_rect fz_font_bbox(fz_context *ctx, fz_font *font);
 
+/* Ask for an installed face without applying reader font substitutions. */
+enum { FZ_SYSTEM_FONT_LOCAL = 2 };
+
 /**
 	Type for user supplied system font loading hook.
-
 	name: The name of the font to load.
 
 	bold: 1 if a bold font desired, 0 otherwise.
 
 	italic: 1 if an italic font desired, 0 otherwise.
 	needs_exact_metrics: 1 if an exact metric match is required for
-	the font requested.
+	the font requested, or FZ_SYSTEM_FONT_LOCAL for a CSS local() lookup.
 
 	Returns a new font handle, or NULL if no font found (or on error).
 */

@@ -91,6 +91,7 @@ fz_load_html_font(fz_context *ctx, fz_html_font_set *set,
 	const unsigned char *data;
 	int best_score = 0;
 	fz_font *best_font = NULL;
+	const char *best_local = NULL;
 	fz_font *font;
 	int size;
 
@@ -99,13 +100,14 @@ fz_load_html_font(fz_context *ctx, fz_html_font_set *set,
 		if (!strcmp(family, custom->family))
 		{
 			int score =
-				1 * (is_bold == custom->is_bold) +
-				2 * (is_italic == custom->is_italic) +
-				4 * (is_small_caps == custom->is_small_caps);
+			    1 * (is_bold == custom->is_bold) +
+			    2 * (is_italic == custom->is_italic) +
+			    4 * (is_small_caps == custom->is_small_caps);
 			if (score > best_score)
 			{
 				best_score = score;
 				best_font = custom->font;
+				best_local = !strncmp(custom->src, "local:", 6) ? custom->src : NULL;
 			}
 		}
 	}
@@ -113,6 +115,23 @@ fz_load_html_font(fz_context *ctx, fz_html_font_set *set,
 	// We found a perfect match!
 	if (best_font && best_score == 1 + 2 + 4)
 		return best_font;
+
+	/* Publishers often declare a local family once, then use it for bold
+	 * headings as well. Keep that family and resolve the requested style. */
+	if (best_local)
+	{
+		font = fz_load_system_font(ctx, best_local + 6, is_bold, is_italic, FZ_SYSTEM_FONT_LOCAL);
+		if (!font)
+			return best_font;
+		font->flags.ft_substitute = 0;
+		fz_try(ctx)
+		    fz_add_html_font_face(ctx, set, family, is_bold, is_italic, is_small_caps, best_local, font);
+		fz_always(ctx)
+		    fz_drop_font(ctx, font);
+		fz_catch(ctx)
+		    fz_rethrow(ctx);
+		return font;
+	}
 
 	// Try to load a perfect match.
 	data = fz_lookup_builtin_font(ctx, family, is_bold, is_italic, &size);

@@ -1156,74 +1156,94 @@ fz_match_css_at_page(fz_context *ctx, fz_css_match *match, fz_css *css)
 	}
 }
 
-void
-fz_add_css_font_face(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_css_property *declaration, int tainted)
+/* The lexer represents local(...) as a function with a list of arguments. */
+static int
+css_local_font_name(fz_css_value *args, char *name, size_t size)
+{
+	if (!args)
+		return 0;
+	if (args->type == CSS_STRING && !args->next)
+		return *args->data && fz_strlcpy(name, args->data, size) < size;
+
+	name[0] = 0;
+	for (; args; args = args->next)
+	{
+		if (args->type != CSS_KEYWORD)
+			return 0;
+		if (*name && fz_strlcat(name, " ", size) >= size)
+			return 0;
+		if (fz_strlcat(name, args->data, size) >= size)
+			return 0;
+	}
+	return *name != 0;
+}
+
+static int
+try_css_font_source(fz_context *ctx, fz_html_font_set *set, fz_archive *zip,
+		    const char *base_uri, fz_css_value *source, const char *family,
+		    int is_bold, int is_italic, int is_small_caps, int tainted)
 {
 	fz_html_font_face *custom;
-	fz_css_property *prop;
 	fz_font *font = NULL;
 	fz_buffer *buf = NULL;
 	fz_stream *stm = NULL;
-	int is_bold, is_italic, is_small_caps;
 	char path[2048];
+	int loaded = 0;
+	int local = source->type == '(' && !fz_strcasecmp(source->data, "local");
 
-	const char *family = "serif";
-	const char *weight = "normal";
-	const char *style = "normal";
-	const char *variant = "normal";
-	const char *src = NULL;
-
-	for (prop = declaration; prop; prop = prop->next)
+	if (local)
 	{
-		if (prop->name == PRO_FONT_FAMILY) family = prop->value->data;
-		if (prop->name == PRO_FONT_WEIGHT) weight = prop->value->data;
-		if (prop->name == PRO_FONT_STYLE) style = prop->value->data;
-		if (prop->name == PRO_FONT_VARIANT) variant = prop->value->data;
-		if (prop->name == PRO_SRC) src = prop->value->data;
+		fz_strlcpy(path, "local:", sizeof path);
+		if (!css_local_font_name(source->args, path + 6, sizeof path - 6))
+			return 0;
 	}
-
-	if (!src)
-		return;
-
-	is_bold = is_bold_from_font_weight(weight);
-	is_italic = is_italic_from_font_style(style);
-	is_small_caps = !strcmp(variant, "small-caps");
-
-	fz_strlcpy(path, base_uri, sizeof path);
-	fz_strlcat(path, "/", sizeof path);
-	fz_strlcat(path, src, sizeof path);
-	fz_urldecode(path);
+	else if (source->type == CSS_URI)
+	{
+		fz_strlcpy(path, base_uri, sizeof path);
+		fz_strlcat(path, "/", sizeof path);
+		if (fz_strlcat(path, source->data, sizeof path) >= sizeof path)
+			return 0;
+		fz_urldecode(path);
+	}
+	else
+		return 0;
 
 	for (custom = set->custom; custom; custom = custom->next)
 		if (!strcmp(custom->src, path) && !strcmp(custom->family, family) &&
-				custom->is_bold == is_bold &&
-				custom->is_italic == is_italic &&
-				custom->is_small_caps == is_small_caps)
-			return; /* already loaded */
+		    custom->is_bold == is_bold && custom->is_italic == is_italic && custom->is_small_caps == is_small_caps)
+			return 1;
 
 	fz_var(buf);
 	fz_var(font);
 	fz_var(stm);
+	fz_var(loaded);
 
 	fz_try(ctx)
 	{
-		if (fz_has_archive_entry(ctx, zip, path))
+		if (local)
 		{
-			buf = fz_read_archive_entry(ctx, zip, path);
-		}
-		else if (!tainted)
-		{
-			stm = fz_try_open_file(ctx, src);
-			if (stm == NULL)
-				fz_throw(ctx, FZ_ERROR_FORMAT, "cannot locate font '%s' specified by css", src);
-			buf = fz_read_all(ctx, stm, 0);
+			font = fz_load_system_font(ctx, path + 6, is_bold, is_italic, FZ_SYSTEM_FONT_LOCAL);
+			if (font)
+				font->flags.ft_substitute = 0;
 		}
 		else
 		{
-			fz_throw(ctx, FZ_ERROR_FORMAT, "cannot locate font '%s' specified by css", src);
+			if (fz_has_archive_entry(ctx, zip, path))
+				buf = fz_read_archive_entry(ctx, zip, path);
+			else if (!tainted)
+			{
+				stm = fz_try_open_file(ctx, source->data);
+				if (stm)
+					buf = fz_read_all(ctx, stm, 0);
+			}
+			if (buf)
+				font = fz_new_font_from_buffer(ctx, NULL, buf, 0, 0);
 		}
-		font = fz_new_font_from_buffer(ctx, NULL, buf, 0, 0);
-		fz_add_html_font_face(ctx, set, family, is_bold, is_italic, is_small_caps, path, font);
+		if (font)
+		{
+			fz_add_html_font_face(ctx, set, family, is_bold, is_italic, is_small_caps, path, font);
+			loaded = 1;
+		}
 	}
 	fz_always(ctx)
 	{
@@ -1235,8 +1255,43 @@ fz_add_css_font_face(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, co
 	{
 		fz_rethrow_if(ctx, FZ_ERROR_TRYLATER);
 		fz_rethrow_if(ctx, FZ_ERROR_SYSTEM);
-		fz_report_error(ctx);
-		fz_warn(ctx, "cannot load font-face: %s", src);
+		fz_ignore_error(ctx);
+	}
+	return loaded;
+}
+
+void fz_add_css_font_face(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_css_property *declaration, int tainted)
+{
+	const char *family = "serif";
+	const char *weight = "normal";
+	const char *style = "normal";
+	const char *variant = "normal";
+	fz_css_value *source = NULL;
+	fz_css_property *prop;
+
+	for (prop = declaration; prop; prop = prop->next)
+	{
+		if (prop->name == PRO_FONT_FAMILY) family = prop->value->data;
+		if (prop->name == PRO_FONT_WEIGHT) weight = prop->value->data;
+		if (prop->name == PRO_FONT_STYLE) style = prop->value->data;
+		if (prop->name == PRO_FONT_VARIANT) variant = prop->value->data;
+		if (prop->name == PRO_SRC) source = prop->value;
+	}
+
+	int is_bold = is_bold_from_font_weight(weight);
+	int is_italic = is_italic_from_font_style(style);
+	int is_small_caps = !strcmp(variant, "small-caps");
+	while (source)
+	{
+		if (try_css_font_source(ctx, set, zip, base_uri, source, family, is_bold, is_italic, is_small_caps, tainted))
+			return;
+
+		/* Skip the remaining format/tech descriptors for this candidate. */
+		do
+			source = source->next;
+		while (source && source->type != ',');
+		if (source)
+			source = source->next;
 	}
 }
 
@@ -1852,13 +1907,38 @@ fz_default_css_style(fz_context *ctx, fz_css_style *style)
 	style->leading = make_undefined_number();
 }
 
-void
-fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, fz_css_match *match)
+static int
+is_cjk_sans_family(const char *name)
+{
+	static const char *prefixes[] = {
+	    "heiti", "songhei", "simhei", "stheiti", "pingfang", "microsoft yahei", "microsoftyahei",
+	    "source han sans", "sourcehansans", "noto sans cjk", "notosanscjk", "黑体", "黑體", "微软雅黑", "微軟雅黑"};
+	for (int i = 0; i < nelem(prefixes); ++i)
+		if (!fz_strncasecmp(name, prefixes[i], strlen(prefixes[i])))
+			return 1;
+	return 0;
+}
+
+static fz_font *
+select_css_font(fz_context *ctx, fz_html_font_set *set, const char *family, int bold, int italic, int small_caps)
+{
+	fz_font *font = fz_load_html_font(ctx, set, family, bold, italic, small_caps);
+	if (!font || !bold || !set->prefer_regular_cjk_sans)
+		return font;
+	if (!is_cjk_sans_family(family) && !is_cjk_sans_family(fz_font_name(ctx, font)))
+		return font;
+	fz_font *regular = fz_load_html_font(ctx, set, family, 0, italic, small_caps);
+	if (regular && !fz_font_flags(regular)->is_bold && !fz_font_flags(regular)->fake_bold)
+		return regular;
+	return font;
+}
+
+void fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, fz_css_match *match)
 {
 	fz_css_value *value;
 
-	fz_css_color black = { 0, 0, 0, 255 };
-	fz_css_color transparent = { 0, 0, 0, 0 };
+	fz_css_color black = {0, 0, 0, 255};
+	fz_css_color transparent = {0, 0, 0, 0};
 
 	fz_default_css_style(ctx, style);
 
@@ -1867,6 +1947,8 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 	style->text_decoration = text_decoration_from_property(match);
 	style->page_break_before = page_break_from_property(match, PRO_PAGE_BREAK_BEFORE);
 	style->page_break_after = page_break_from_property(match, PRO_PAGE_BREAK_AFTER);
+	value = value_from_property(match, PRO_ORPHANS);
+	style->allow_single_orphan = value && value->type == CSS_NUMBER && fz_css_strtof(value->data, NULL) == 1;
 
 	value = value_from_property(match, PRO_TEXT_ALIGN);
 	if (value)
@@ -2043,7 +2125,7 @@ fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, 
 			/* ignore numbers and keywords used in font short-hand syntax */
 			if (value->type == CSS_STRING || (value->type == CSS_KEYWORD && !keyword_in_list(value->data, font_family_ignore, nelem(font_family_ignore))))
 			{
-				style->font = fz_load_html_font(ctx, set, value->data, is_bold, is_italic, style->small_caps);
+				style->font = select_css_font(ctx, set, value->data, is_bold, is_italic, style->small_caps);
 				if (style->font)
 					break;
 			}

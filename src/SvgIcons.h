@@ -37,6 +37,8 @@ enum class TbIcon {
     ChevronDown,
     HomeList,
     HomeThumbnails,
+    HomeLandscape,
+    HomePortrait,
     Close,
     Pin,
     ArrowsDiagonal,

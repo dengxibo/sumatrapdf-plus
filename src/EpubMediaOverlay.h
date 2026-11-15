@@ -80,6 +80,7 @@ struct EpubPackage {
     const char* opfDir = nullptr;
     const char* version = nullptr;
     const char* navPath = nullptr;
+    const char* coverImagePath = nullptr;
     const char* activeClass = nullptr;
     const char* playbackActiveClass = nullptr;
     const char* narrator = nullptr;

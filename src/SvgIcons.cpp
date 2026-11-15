@@ -318,6 +318,23 @@ static const char* gIconHomeThumbnails =
   <rect x="14" y="14" width="6" height="6" rx="1" />
 </svg>)";
 
+#define HOME_GRID_START                                                                                                                                                                           \
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.76" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">)" \
+    R"(<rect x="0" y="0" width="24" height="24" stroke="none" />)"
+
+#define HOME_GRID_RECTS                                                \
+    R"(<rect x="3.75" y="4.75" width="6.5" height="5.5" rx="1.1" />)"  \
+    R"(<rect x="13.75" y="4.75" width="6.5" height="5.5" rx="1.1" />)" \
+    R"(<rect x="3.75" y="13.75" width="6.5" height="5.5" rx="1.1" />)" \
+    R"(<rect x="13.75" y="13.75" width="6.5" height="5.5" rx="1.1" />)"
+
+static const char* gIconHomeLandscape = HOME_GRID_START HOME_GRID_RECTS "</svg>";
+static const char* gIconHomePortrait =
+    HOME_GRID_START R"GRID(<g transform="rotate(90 12 12)">)GRID" HOME_GRID_RECTS "</g></svg>";
+
+#undef HOME_GRID_RECTS
+#undef HOME_GRID_START
+
 // Recently opened: official Microsoft Fluent UI System Icons "History 20
 // Regular", geometry used verbatim:
 // https://github.com/microsoft/fluentui-system-icons/blob/main/assets/History/SVG/ic_fluent_history_20_regular.svg
@@ -662,6 +679,8 @@ static const char* gIcons[] = {
     gIconChevronDown,
     gIconHomeList,
     gIconHomeThumbnails,
+    gIconHomeLandscape,
+    gIconHomePortrait,
     gIconClose,
     gIconPin,
     gIconArrowsDiagonal,

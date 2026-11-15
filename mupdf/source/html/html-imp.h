@@ -63,6 +63,7 @@ struct fz_html_font_set_s
 {
 	fz_font *fonts[12]; /* Times, Helvetica, Courier in R,I,B,BI */
 	fz_html_font_face *custom;
+	int prefer_regular_cjk_sans;
 };
 
 #define UCS_MAX 0x10ffff
@@ -322,6 +323,7 @@ struct fz_css_style_s
 	unsigned int position : 2;
 	unsigned int border_collapse : 1;
 	unsigned int hyphens : 2;
+	unsigned int allow_single_orphan : 1;
 };
 
 struct fz_css_style_splay_s {

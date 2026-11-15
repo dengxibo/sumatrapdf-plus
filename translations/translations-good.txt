@@ -47552,6 +47552,54 @@ tw:標題候選將傳送至已設定的 API。\r\n收到回覆後自動匯入目
 cn:正文目录 API 请求失败。
 tw:正文目錄 API 請求失敗。
 
+:Switch to landscape thumbnails
+br:Alternar para miniaturas horizontais
+cn:切换到横版缩略图
+de:Zu Miniaturansichten im Querformat wechseln
+es:Cambiar a miniaturas horizontales
+fr:Passer aux miniatures en paysage
+it:Passa alle miniature orizzontali
+ja:横長のサムネイル表示に切り替え
+kr:가로 썸네일 보기로 전환
+nl:Overschakelen naar liggende miniaturen
+pl:Przełącz na poziome miniatury
+pt:Mudar para miniaturas horizontais
+ru:Переключиться на горизонтальные миниатюры
+tr:Yatay küçük resimlere geç
+tw:切換到橫向縮圖
+uk:Перейти до горизонтальних мініатюр
+:Switch to list view
+br:Alternar para a visualização em lista
+cn:切换到列表视图
+de:Zur Listenansicht wechseln
+es:Cambiar a la vista de lista
+fr:Passer à la vue en liste
+it:Passa alla vista elenco
+ja:リスト表示に切り替え
+kr:목록 보기로 전환
+nl:Overschakelen naar lijstweergave
+pl:Przełącz na widok listy
+pt:Mudar para a vista de lista
+ru:Переключиться на вид списка
+tr:Liste görünümüne geç
+tw:切換到清單檢視
+uk:Перейти до вигляду списку
+:Switch to portrait thumbnails
+br:Alternar para miniaturas verticais
+cn:切换到竖版缩略图
+de:Zu Miniaturansichten im Hochformat wechseln
+es:Cambiar a miniaturas verticales
+fr:Passer aux miniatures en portrait
+it:Passa alle miniature verticali
+ja:縦長のサムネイル表示に切り替え
+kr:세로 썸네일 보기로 전환
+nl:Overschakelen naar staande miniaturen
+pl:Przełącz na pionowe miniatury
+pt:Mudar para miniaturas verticais
+ru:Переключиться на вертикальные миниатюры
+tr:Dikey küçük resimlere geç
+tw:切換到直向縮圖
+uk:Перейти до вертикальних мініатюр
 :Switch to Web AI
 cn:切换到网页版 AI
 tw:切換至網頁版 AI

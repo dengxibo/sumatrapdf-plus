@@ -75,12 +75,12 @@ NoHomeTab = false
 ; count. If false, shows most recently opened first
 HomePageSortByFrequentlyRead = false
 
-; Valid values: thumbnails, list (introduced in version 3.7)
+; Valid values: thumbnails, covers, list. The Home view button cycles these layouts.
 HomePageViewMode = thumbnails
 
 ; preferred home page thumbnail width in pixels; layout grows or shrinks
-; slightly so the grid fills the window. List view is unchanged. Valid range:
-; 160-280 (introduced in version 3.7)
+; slightly so the grid fills the window. In cover view, use Ctrl+mouse wheel
+; to change this value. Valid range: 160-280 (introduced in version 3.7)
 HomePageThumbnailDx = 212
 
 ; if true, a document will be reloaded automatically whenever it's changed

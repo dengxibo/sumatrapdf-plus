@@ -81,6 +81,8 @@
 #include "ImageSaveCropResize.h"
 #include "StressTesting.h"
 #include "EpubPerfLog.h"
+#include "EpubMediaOverlay.h"
+#include "FzImgReader.h"
 #include "HomePage.h"
 #include "OverlayScrollbar.h"
 #include "SumatraDialogs.h"
@@ -1183,36 +1185,26 @@ static void ThumbnailRenderFinished(ThumbnailRenderData* d, PageRenderRequest* r
     delete d;
 }
 
-static RectF GetThumbnailCropRect(EngineBase* engine, int pageNo, Size targetSize) {
-    RectF pageRect = engine->PageMediabox(pageNo);
-    if (pageRect.IsEmpty() || targetSize.dx <= 0 || targetSize.dy <= 0) {
-        return pageRect;
+static float GetThumbnailZoom(EngineBase* engine, int pageNo, const RectF& pageRect, Size size) {
+    if (pageRect.IsEmpty() || size.IsEmpty()) {
+        return 0.f;
     }
-
-    pageRect = engine->Transform(pageRect, pageNo, 1.0f, 0);
-    float targetAspect = (float)targetSize.dx / (float)targetSize.dy;
-    float pageAspect = pageRect.dx / pageRect.dy;
-    if (pageAspect > targetAspect) {
-        float cropDx = pageRect.dy * targetAspect;
-        pageRect.x += (pageRect.dx - cropDx) / 2.f;
-        pageRect.dx = cropDx;
-    } else {
-        float cropDy = pageRect.dx / targetAspect;
-        pageRect.y += (pageRect.dy - cropDy) / 2.f;
-        pageRect.dy = cropDy;
+    RectF transformed = engine->Transform(pageRect, pageNo, 1.f, 0);
+    if (transformed.IsEmpty()) {
+        return 0.f;
     }
-    return engine->Transform(pageRect, pageNo, 1.0f, 0, true);
+    return std::min(size.dx / transformed.dx, size.dy / transformed.dy);
 }
 
 void ControllerCallbackHandler::RenderThumbnail(DisplayModel* dm, Size size, const OnBitmapRendered* saveThumbnail) {
     auto engine = dm->GetEngine();
-    RectF pageRect = GetThumbnailCropRect(engine, 1, size);
-    if (pageRect.IsEmpty()) {
+    RectF pageRect = engine->PageMediabox(1);
+    float zoom = GetThumbnailZoom(engine, 1, pageRect, size);
+    if (zoom <= 0.f) {
         // saveThumbnail must always be called for clean-up code
         saveThumbnail->Call(nullptr);
         return;
     }
-    float zoom = size.dx / (float)pageRect.dx;
 
     // always render thumbnails with anti-aliasing for quality
     bool savedAntiAlias = engine->disableAntiAlias;
@@ -1239,7 +1231,122 @@ static void CreateThumbnailFromFileFinish(CreateThumbnailFromFileData* d) {
     delete d;
 }
 
+static RenderedBitmap* LoadEpubCoverThumbnail(const char* path) {
+    auto* archive = OpenArchiveFromFile(path, ArchiveLoadMode::Lazy, {});
+    if (!archive) {
+        return nullptr;
+    }
+    defer {
+        delete archive;
+    };
+
+    auto* container = archive->GetFileDataByName("META-INF/container.xml");
+    if (!container || !container->data) {
+        return nullptr;
+    }
+    AutoFreeStr opfPath = EpubParseContainerXml(container->data, container->fileSizeUncompressed);
+    auto* opf = opfPath ? archive->GetFileDataByName(opfPath) : nullptr;
+    EpubPackage pkg;
+    if (!opf || !opf->data || !EpubParsePackage(&pkg, opfPath, opf->data, opf->fileSizeUncompressed) ||
+        !pkg.coverImagePath) {
+        return nullptr;
+    }
+    auto* cover = archive->GetFileDataByName(pkg.coverImagePath);
+    if (!cover || !cover->data) {
+        return nullptr;
+    }
+    auto* image = BitmapFromData(ByteSlice((const u8*)cover->data, cover->fileSizeUncompressed));
+    if (!image) {
+        return nullptr;
+    }
+    defer {
+        delete image;
+    };
+    int width = (int)image->GetWidth();
+    int height = (int)image->GetHeight();
+    if (width <= 0 || height <= 0) {
+        return nullptr;
+    }
+    double scale = std::min({1.0, 320.0 / width, 480.0 / height});
+    int dx = std::max(1, (int)(width * scale + 0.5));
+    int dy = std::max(1, (int)(height * scale + 0.5));
+    Gdiplus::Bitmap thumbnail(dx, dy, PixelFormat32bppARGB);
+    {
+        Gdiplus::Graphics graphics(&thumbnail);
+        graphics.Clear((Gdiplus::ARGB)Gdiplus::Color::White);
+        graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        if (graphics.DrawImage(image, 0, 0, dx, dy) != Gdiplus::Ok) {
+            return nullptr;
+        }
+    }
+    HBITMAP bitmap = nullptr;
+    if (thumbnail.GetHBITMAP((Gdiplus::ARGB)Gdiplus::Color::White, &bitmap) != Gdiplus::Ok) {
+        return nullptr;
+    }
+    return new RenderedBitmap(bitmap, {dx, dy});
+}
+
+// A fallback cover page may place the artwork in one corner of a large white page.
+static RenderedBitmap* TrimEpubThumbnailMargins(RenderedBitmap* bitmap) {
+    if (!bitmap) {
+        return nullptr;
+    }
+    Size size = bitmap->GetSize();
+    Gdiplus::Bitmap src(bitmap->GetBitmap(), nullptr);
+    Gdiplus::Rect bounds(0, 0, size.dx, size.dy);
+    Gdiplus::BitmapData pixels{};
+    if (src.LockBits(&bounds, Gdiplus::ImageLockModeRead, PixelFormat32bppRGB, &pixels) != Gdiplus::Ok) {
+        return nullptr;
+    }
+
+    int left = size.dx, top = size.dy, right = 0, bottom = 0, nonWhite = 0;
+    for (int y = 0; y < size.dy; ++y) {
+        const auto* row = (const u8*)pixels.Scan0 + y * pixels.Stride;
+        for (int x = 0; x < size.dx; ++x) {
+            const u8* p = row + x * 4;
+            if (p[0] >= 248 && p[1] >= 248 && p[2] >= 248) {
+                continue;
+            }
+            left = std::min(left, x);
+            top = std::min(top, y);
+            right = std::max(right, x + 1);
+            bottom = std::max(bottom, y + 1);
+            ++nonWhite;
+        }
+    }
+    src.UnlockBits(&pixels);
+
+    int width = right - left;
+    int height = bottom - top;
+    // Require a substantial, dense block of artwork. Text pages keep their layout.
+    if (width < std::max(1, size.dx / 4) || height < std::max(1, size.dy / 4) || nonWhite * 5 < width * height * 3 ||
+        width * height * 5 > size.dx * size.dy * 4) {
+        return nullptr;
+    }
+    left = std::max(0, left - 1);
+    top = std::max(0, top - 1);
+    right = std::min(size.dx, right + 1);
+    bottom = std::min(size.dy, bottom + 1);
+    Gdiplus::Bitmap* cropped = src.Clone(left, top, right - left, bottom - top, PixelFormat32bppRGB);
+    if (!cropped) {
+        return nullptr;
+    }
+    HBITMAP result = nullptr;
+    auto status = cropped->GetHBITMAP((Gdiplus::ARGB)Gdiplus::Color::White, &result);
+    delete cropped;
+    return status == Gdiplus::Ok ? new RenderedBitmap(result, {right - left, bottom - top}) : nullptr;
+}
+
 static void CreateThumbnailFromFileThread(CreateThumbnailFromFileData* d) {
+    bool epub = str::EndsWithI(d->filePath, ".epub");
+    if (epub) {
+        d->bmp = LoadEpubCoverThumbnail(d->filePath);
+        if (d->bmp) {
+            auto fn = MkFunc0<CreateThumbnailFromFileData>(CreateThumbnailFromFileFinish, d);
+            uitask::Post(fn, "SetThumbnailFromFile");
+            return;
+        }
+    }
     SetCreateEngineForThumbnail(true);
     defer {
         SetCreateEngineForThumbnail(false);
@@ -1250,16 +1357,23 @@ static void CreateThumbnailFromFileThread(CreateThumbnailFromFileData* d) {
         delete d;
         return;
     }
-    RectF pageRect = GetThumbnailCropRect(engine, 1, Size{kThumbnailDx, kThumbnailDy});
-    if (pageRect.IsEmpty()) {
+    RectF pageRect = engine->PageMediabox(1);
+    Size size = epub ? Size{320, 480} : Size{kThumbnailDx, kThumbnailDy};
+    float zoom = GetThumbnailZoom(engine, 1, pageRect, size);
+    if (zoom <= 0.f) {
         engine->Release();
         delete d;
         return;
     }
-    float zoom = (float)kThumbnailDx / (float)pageRect.dx;
     RenderPageArgs args(1, zoom, 0, &pageRect);
     d->bmp = engine->RenderPage(args);
     engine->Release();
+    if (epub) {
+        if (auto* cropped = TrimEpubThumbnailMargins(d->bmp)) {
+            delete d->bmp;
+            d->bmp = cropped;
+        }
+    }
     auto fn = MkFunc0<CreateThumbnailFromFileData>(CreateThumbnailFromFileFinish, d);
     uitask::Post(fn, "SetThumbnailFromFile");
 }

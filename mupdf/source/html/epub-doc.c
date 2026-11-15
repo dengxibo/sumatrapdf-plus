@@ -1220,6 +1220,7 @@ epub_init(fz_context *ctx, fz_archive *zip, fz_stream *accel)
 		doc->super.is_reflowable = 1;
 
 		doc->set = fz_new_html_font_set(ctx);
+		doc->set->prefer_regular_cjk_sans = 1;
 		epub_load_accelerator(ctx, doc, accel);
 		epub_parse_header(ctx, doc);
 	}
@@ -1338,6 +1339,7 @@ fz_reset_epub_html_font_set(fz_context *ctx, fz_document *doc_)
 	doc->super.layout_em = 0;
 	fz_drop_html_font_set(ctx, doc->set);
 	doc->set = fz_new_html_font_set(ctx);
+	doc->set->prefer_regular_cjk_sans = 1;
 	doc->user_css_sum = checksum_css(ctx, doc->super.user_css);
 }
 

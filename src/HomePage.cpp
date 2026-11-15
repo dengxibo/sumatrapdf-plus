@@ -6,6 +6,7 @@
 #include "utils/ScopedWin.h"
 #include "utils/Dpi.h"
 #include "utils/FileUtil.h"
+#include "utils/GdiPlusUtil.h"
 #include "utils/WinUtil.h"
 #include "utils/SquareTreeParser.h"
 
@@ -1068,6 +1069,10 @@ static int HomePageThumbDisplayDy(MainWindow* win) {
     return kThumbnailDy;
 }
 
+static bool HomePageUsesCoverView() {
+    return gGlobalPrefs && str::EqI(gGlobalPrefs->homePageViewMode, "covers");
+}
+
 static int HomePagePreferredThumbDx() {
     int dx = kThumbnailDx;
     if (gGlobalPrefs && gGlobalPrefs->homePageThumbnailDx > 0) {
@@ -1085,8 +1090,12 @@ static int HomePagePreferredThumbDx() {
 // Grow/shrink thumbnail size around the preferred width so the grid fills the
 // canvas. Cap at ~±12–20% so the 212px cache does not look too blurry.
 static void ComputeHomeThumbGrid(HWND dpiHwnd, int canvasDx, int& colsOut, int& thumbDxOut, int& thumbDyOut,
-                                 int& startXOut, int& gapXOut) {
+                                 int& startXOut, int& gapXOut, bool covers = false) {
     int preferred = HomePagePreferredThumbDx();
+    int minCardDx = covers ? 96 : 120;
+    if (covers) {
+        preferred = preferred * 2 / 3;
+    }
     int gapX = kThumbsSpaceBetweenX;
     int marginL = kThumbsMarginLeft;
     int marginR = kThumbsMarginRight;
@@ -1096,8 +1105,8 @@ static void ComputeHomeThumbGrid(HWND dpiHwnd, int canvasDx, int& colsOut, int& 
     }
     int minDx = (preferred * 88 + 50) / 100;
     int maxDx = (preferred * 120 + 50) / 100;
-    if (minDx < 120) {
-        minDx = 120;
+    if (minDx < minCardDx) {
+        minDx = minCardDx;
     }
 
     auto fillDx = [&](int nCols) -> int {
@@ -1127,11 +1136,11 @@ static void ComputeHomeThumbGrid(HWND dpiHwnd, int canvasDx, int& colsOut, int& 
             dx = maxDx;
         }
     }
-    if (dx < 120) {
-        dx = 120;
+    if (dx < minCardDx) {
+        dx = minCardDx;
     }
 
-    int thumbDy = (dx * kThumbnailDy + kThumbnailDx / 2) / kThumbnailDx;
+    int thumbDy = covers ? (dx * 3 + 1) / 2 : (dx * kThumbnailDy + kThumbnailDx / 2) / kThumbnailDx;
     int content = cols * dx + (cols - 1) * gapX;
     int startX = marginL + std::max(0, (avail - content) / 2);
     int minStart = DpiScale(dpiHwnd, kInnerPadding);
@@ -1955,6 +1964,8 @@ void LayoutHomePage(HomePageLayout& l) {
         } else if (nFilesForLayout == 0) {
             thumbsStartX = kThumbsMarginLeft;
         }
+    } else if (HomePageUsesCoverView()) {
+        ComputeHomeThumbGrid(dpiHwnd, rc.dx, thumbsColsForLayout, thumbDx, thumbDy, thumbsStartX, thumbGapX, true);
     } else {
         thumbsColsForLayout = headerCols;
         thumbDx = headerThumbDx;
@@ -2041,7 +2052,9 @@ void LayoutHomePage(HomePageLayout& l) {
         l.rcIconView.y = centerY - headerRowDy / 2;
         l.rcIconSort.y = centerY - headerRowDy / 2;
         win->staticLinks.Append(new StaticLink(l.rcIconView, kLinkHomePageToggleView,
-                                               listView ? _TRA("List view") : _TRA("Thumbnail view")));
+                                               listView                  ? _TRA("Switch to landscape thumbnails")
+                                               : HomePageUsesCoverView() ? _TRA("Switch to list view")
+                                                                         : _TRA("Switch to portrait thumbnails")));
         win->staticLinks.Append(new StaticLink(l.rcIconSort, kLinkHomePageToggleSort,
                                                frequent ? _TRA("Frequently Read") : _TRA("Recently Opened")));
         win->staticLinks.Append(new StaticLink(l.rcIconOpen, kLinkOpenFile, _TRA("Open File...")));
@@ -2139,7 +2152,8 @@ void LayoutHomePage(HomePageLayout& l) {
         HFONT labelFont = HomePageThumbLabelFont(win->hwndCanvas);
         int labelDy = HomePageThumbLabelDy(dpiHwnd, hdc, labelFont);
         int labelGapY = HomePageThumbLabelGapY(dpiHwnd);
-        int spaceBetweenY = std::max(kThumbsSpaceBetweenY, labelGapY + labelDy + DpiScale(dpiHwnd, 12));
+        int rowGap = HomePageUsesCoverView() ? DpiScale(dpiHwnd, 36) : kThumbsSpaceBetweenY;
+        int spaceBetweenY = std::max(rowGap, labelGapY + labelDy + DpiScale(dpiHwnd, 12));
         rowDy = thumbDy + spaceBetweenY;
         // include last row's filename band in scrollable content height
         contentDy = thumbsRows > 0 ? (thumbsRows - 1) * rowDy + thumbDy + labelGapY + labelDy : 0;
@@ -2300,6 +2314,35 @@ static bool IsThumbnailMostlyBlank(RenderedBitmap* bmp) {
     return maxLightness < 0.08f;
 }
 
+static int ThumbnailTopWhitespace(RenderedBitmap* bitmap) {
+    Size size = bitmap->GetSize();
+    Gdiplus::Bitmap image(bitmap->GetBitmap(), nullptr);
+    Gdiplus::Rect bounds(0, 0, size.dx, size.dy);
+    Gdiplus::BitmapData data{};
+    if (image.LockBits(&bounds, Gdiplus::ImageLockModeRead, PixelFormat32bppRGB, &data) != Gdiplus::Ok) {
+        return 0;
+    }
+    defer {
+        image.UnlockBits(&data);
+    };
+
+    int minInk = std::max(2, size.dx / 100);
+    int consecutiveRows = 0;
+    for (int y = 0; y < size.dy; ++y) {
+        const auto* row = (const u8*)data.Scan0 + y * data.Stride;
+        int ink = 0;
+        for (int x = 0; x < size.dx && ink < minInk; ++x) {
+            const u8* p = row + x * 4;
+            ink += std::min({p[0], p[1], p[2]}) < 240;
+        }
+        consecutiveRows = ink >= minInk ? consecutiveRows + 1 : 0;
+        if (consecutiveRows == 2) {
+            return y - 1;
+        }
+    }
+    return 0;
+}
+
 static void DrawThumbnailPlaceholder(HDC hdc, FileState* fs, const Rect& page) {
     SHFILEINFO sfi{};
     WCHAR* pathW = ToWStrTemp(fs->filePath);
@@ -2316,22 +2359,89 @@ static void DrawThumbnailPlaceholder(HDC hdc, FileState* fs, const Rect& page) {
     DestroyIcon(sfi.hIcon);
 }
 
+static Rect FitThumbnailInRect(Size src, Rect dst) {
+    double scale = std::min((double)dst.dx / src.dx, (double)dst.dy / src.dy);
+    int dx = std::max(1, (int)(src.dx * scale + 0.5));
+    int dy = std::max(1, (int)(src.dy * scale + 0.5));
+    return {dst.x + (dst.dx - dx) / 2, dst.y + (dst.dy - dy) / 2, dx, dy};
+}
+
+static Rect CoverRectInRect(Size src, Rect dst) {
+    double scale = std::max((double)dst.dx / src.dx, (double)dst.dy / src.dy);
+    int dx = std::max(dst.dx, (int)(src.dx * scale + 0.5));
+    int dy = std::max(dst.dy, (int)(src.dy * scale + 0.5));
+    return {dst.x + (dst.dx - dx) / 2, dst.y + (dst.dy - dy) / 2, dx, dy};
+}
+
+static COLORREF ThumbnailPaddingColor(HDC hdc, RenderedBitmap* bmp) {
+    COLORREF background = ThemeThumbnailBackgroundColor();
+    HDC source = CreateCompatibleDC(hdc);
+    if (!source) {
+        return background;
+    }
+    HGDIOBJ old = SelectObject(source, bmp->GetBitmap());
+    Size size = bmp->GetSize();
+    int red = 0, green = 0, blue = 0, count = 0;
+    for (int y : {1, 3, 5}) {
+        for (int x : {1, 3, 5}) {
+            COLORREF pixel = GetPixel(source, x * size.dx / 6, y * size.dy / 6);
+            if (pixel != CLR_INVALID) {
+                red += GetRValue(pixel);
+                green += GetGValue(pixel);
+                blue += GetBValue(pixel);
+                ++count;
+            }
+        }
+    }
+    SelectObject(source, old);
+    DeleteDC(source);
+    if (!count) {
+        return background;
+    }
+    return RGB((GetRValue(background) + red / count) / 2, (GetGValue(background) + green / count) / 2,
+               (GetBValue(background) + blue / count) / 2);
+}
+
 static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, RenderedBitmap* thumbImg, HPEN borderPen,
                               bool fastDraw = false) {
-    if (!fastDraw) {
-        DrawThumbnailCardShadow(hdc, page, kThumbCornerRadius);
-    }
-
     bool showPlaceholder = !thumbImg;
     if (thumbImg) {
         if (!fs->thumbnailBlankKnown) {
             fs->thumbnailIsBlank = IsThumbnailMostlyBlank(thumbImg);
+            fs->thumbnailTopWhitespace = fs->thumbnailIsBlank ? 0 : ThumbnailTopWhitespace(thumbImg);
             fs->thumbnailBlankKnown = true;
         }
         showPlaceholder = fs->thumbnailIsBlank;
     }
+    Rect imageRect = page;
+    if (!showPlaceholder) {
+        Size size = thumbImg->GetSize();
+        if (HomePageUsesCoverView()) {
+            imageRect = FitThumbnailInRect(size, page);
+            bool nearCardAspect = imageRect.dx * 10 >= page.dx * 9 && imageRect.dy * 10 >= page.dy * 9;
+            if (nearCardAspect) {
+                imageRect = CoverRectInRect(size, page);
+            }
+        } else {
+            imageRect.dy = std::max(1, MulDiv(size.dy, page.dx, size.dx));
+            if (imageRect.dy < page.dy) {
+                imageRect.y += (page.dy - imageRect.dy) / 2;
+            } else if (imageRect.dy > page.dy) {
+                int blank = MulDiv(fs->thumbnailTopWhitespace, imageRect.dy, size.dy);
+                if (blank > page.dy / 4) {
+                    int shift = std::min({blank - page.dy / 6, imageRect.dy - page.dy, page.dy * 2 / 3});
+                    imageRect.y -= shift;
+                }
+            }
+        }
+    }
+    if (!fastDraw) {
+        DrawThumbnailCardShadow(hdc, page, kThumbCornerRadius);
+    }
     if (showPlaceholder) {
         FillRoundedRect(hdc, page, kThumbCornerRadius, ThemeThumbnailBackgroundColor());
+    } else if (imageRect.dx < page.dx || imageRect.dy < page.dy) {
+        FillRoundedRect(hdc, page, kThumbCornerRadius, ThumbnailPaddingColor(hdc, thumbImg));
     }
 
     {
@@ -2342,7 +2452,7 @@ static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, Rendered
         if (showPlaceholder) {
             DrawThumbnailPlaceholder(hdc, fs, page);
         } else {
-            thumbImg->Blit(hdc, page);
+            thumbImg->Blit(hdc, imageRect);
         }
         RestoreDC(hdc, savedDC);
         DeleteObject(clip);
@@ -2362,23 +2472,6 @@ static void DrawHomeThumbSelection(HWND hwnd, HDC hdc, const Rect& page) {
     int radius = kThumbCornerRadius + inflate;
     AutoDeletePen selPen(CreatePen(PS_SOLID, penW, ThemeSelectionFrameColor()));
     DrawRoundedRectBorder(hdc, frame, radius, selPen);
-}
-
-// Scale to fill dest and crop overflow (CSS background-size: cover).
-static Rect CoverRectInRect(Size src, Rect dst) {
-    if (src.dx <= 0 || src.dy <= 0 || dst.dx <= 0 || dst.dy <= 0) {
-        return dst;
-    }
-    double scale = std::max((double)dst.dx / src.dx, (double)dst.dy / src.dy);
-    int dx = (int)(src.dx * scale + 0.999);
-    int dy = (int)(src.dy * scale + 0.999);
-    if (dx < dst.dx) {
-        dx = dst.dx;
-    }
-    if (dy < dst.dy) {
-        dy = dst.dy;
-    }
-    return {dst.x + (dst.dx - dx) / 2, dst.y + (dst.dy - dy) / 2, dx, dy};
 }
 
 bool HomePagePathIsSelected(MainWindow* win, const char* path) {
@@ -2548,7 +2641,10 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     SetTextColor(hdc, color);
 
     bool frequent = gGlobalPrefs && gGlobalPrefs->homePageSortByFrequentlyRead;
-    DrawHomeIconBtn(hdc, l.rcIconView, HomePageUsesListView() ? TbIcon::HomeList : TbIcon::HomeThumbnails);
+    TbIcon viewIcon = HomePageUsesListView()    ? TbIcon::HomeList
+                      : HomePageUsesCoverView() ? TbIcon::HomePortrait
+                                                : TbIcon::HomeLandscape;
+    DrawHomeIconBtn(hdc, l.rcIconView, viewIcon);
     DrawHomeIconBtn(hdc, l.rcIconSort, frequent ? TbIcon::HomeFrequent : TbIcon::HomeHistory);
     Rect openIcon = l.rcIconOpen;
     openIcon.dx = l.rcIconView.dx;

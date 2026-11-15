@@ -436,6 +436,8 @@ struct FileState {
     bool thumbnailBlankKnown;
     // runtime-only: whether thumbnail is mostly blank
     bool thumbnailIsBlank;
+    // runtime-only: blank rows at the top of a thumbnail
+    int thumbnailTopWhitespace;
     // temporary value needed for FileHistory::cmpOpenCount
     size_t index;
     //

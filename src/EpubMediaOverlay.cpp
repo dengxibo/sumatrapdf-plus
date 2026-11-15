@@ -513,6 +513,7 @@ bool EpubParsePackage(EpubPackage* pkg, const char* opfPath, const char* xml, si
 
     Vec<PendingMeta> metas;
     Vec<const char*> itemrefProps;
+    const char* legacyCoverId = nullptr;
     bool sawPackage = false;
     bool inSpine = false;
 
@@ -555,6 +556,10 @@ bool EpubParsePackage(EpubPackage* pkg, const char* opfPath, const char* xml, si
             if (it.path && TokenListContains(it.properties, "nav") && !pkg->navPath) {
                 pkg->navPath = it.path;
             }
+            if (it.path && str::StartsWith(it.mediaType, "image/") && TokenListContains(it.properties, "cover-image") &&
+                !pkg->coverImagePath) {
+                pkg->coverImagePath = it.path;
+            }
             pkg->manifest.Append(it);
             continue;
         }
@@ -573,6 +578,9 @@ bool EpubParsePackage(EpubPackage* pkg, const char* opfPath, const char* xml, si
             continue;
         }
         if (tok->NameIsNS("meta", nullptr)) {
+            if (str::Eq(AttrDup(a, tok, "name"), "cover")) {
+                legacyCoverId = AttrDup(a, tok, "content");
+            }
             const char* property = AttrDup(a, tok, "property");
             if (!property) {
                 continue; // EPUB 2 name/content meta
@@ -588,6 +596,12 @@ bool EpubParsePackage(EpubPackage* pkg, const char* opfPath, const char* xml, si
     if (!sawPackage) {
         pkg->AddDiag("opf: no <package> element");
         return false;
+    }
+    if (!pkg->coverImagePath && legacyCoverId) {
+        int i = pkg->FindManifestById(legacyCoverId);
+        if (i >= 0 && str::StartsWith(pkg->manifest[i].mediaType, "image/")) {
+            pkg->coverImagePath = pkg->manifest[i].path;
+        }
     }
 
     for (PendingMeta& m : metas) {

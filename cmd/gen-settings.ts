@@ -711,6 +711,7 @@ const fileSettings: Field[] = [
   notSaved(mkField("ThumbnailDarkTheme", Bool, false, "runtime-only: whether thumbnail was generated for dark theme")),
   notSaved(mkField("ThumbnailBlankKnown", Bool, false, "runtime-only: cached result of IsThumbnailMostlyBlank")),
   notSaved(mkField("ThumbnailIsBlank", Bool, false, "runtime-only: whether thumbnail is mostly blank")),
+  notSaved(mkField("ThumbnailTopWhitespace", Int, 0, "runtime-only: blank rows at the top of a thumbnail")),
   notSaved(
     mkField("Index", { name: "", ctype: "size_t" }, "0", "temporary value needed for FileHistory::cmpOpenCount"),
   ),

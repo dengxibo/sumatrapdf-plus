@@ -493,6 +493,17 @@ static void makeFakePSName(char szName[MAX_FACENAME], const char* szStyle) {
     remove_spaces(szName);
 }
 
+static void append_regular_style_mapping(fz_context* ctx, const char* family, const char* path, int index) {
+    char regular[MAX_FACENAME];
+    if (!*family || fz_strlcpy(regular, family, sizeof(regular)) >= sizeof(regular)) {
+        return;
+    }
+    remove_spaces(regular);
+    if (fz_strlcat(regular, "Regular", sizeof(regular)) < sizeof(regular)) {
+        append_mapping(ctx, regular, path, index);
+    }
+}
+
 static void parseTTF(fz_context* ctx, fz_stream* file, int offset, int index, const char* path) {
     TT_OFFSET_TABLE ttOffsetTableBE;
     TT_TABLE_DIRECTORY tblDirBE;
@@ -588,6 +599,12 @@ static void parseTTF(fz_context* ctx, fz_stream* file, int offset, int index, co
         if (!font_name_eq(szTTName, szPSName)) {
             append_mapping(ctx, szTTName, path, index);
         }
+    }
+    // Several faces in a family can share the bare family name. The styled
+    // lookup needs an unambiguous regular alias before it tries that name.
+    if (streqi(szStyle, "Regular")) {
+        append_regular_style_mapping(ctx, szTTName, path, index);
+        append_regular_style_mapping(ctx, szCJKName, path, index);
     }
     if (szCJKName[0]) {
         makeFakePSName(szCJKName, szStyle);
@@ -1099,7 +1116,8 @@ static int fontname_has_style_suffix(const char* fontname) {
            str_ends_with(fontname, "BoldItalic");
 }
 
-static fz_font* load_windows_font_by_name_and_style(fz_context* ctx, const char* fontname, int bold, int italic) {
+static fz_font* load_windows_font_by_name_and_style(fz_context* ctx, const char* fontname, int bold, int italic,
+                                                    int redirect_cjk) {
     char styled[MAX_FACENAME * 2];
 
     if (is_css_generic_family(fontname) || fontname_has_style_suffix(fontname)) {
@@ -1117,7 +1135,7 @@ static fz_font* load_windows_font_by_name_and_style(fz_context* ctx, const char*
         fz_strlcat(styled, "Italic", sizeof(styled));
     }
     remove_spaces(styled);
-    return load_windows_font_by_name(ctx, styled);
+    return load_windows_font_by_name_impl(ctx, styled, redirect_cjk);
 }
 
 static int get_exe_dir_w(WCHAR* dir, size_t dircap);
@@ -1557,6 +1575,10 @@ static fz_font* load_reader_cjk_serif(fz_context* ctx, const char* display_name,
 static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bold, int italic,
                                   int needs_exact_metrics) {
     fz_font* font;
+    if (needs_exact_metrics == FZ_SYSTEM_FONT_LOCAL) {
+        font = load_windows_font_by_name_and_style(ctx, fontname, bold, italic, 0);
+        return font ? font : load_windows_font_by_name_impl(ctx, fontname, 0);
+    }
     const char* clean_name = pdf_clean_font_name(fontname);
     int is_base_14 = clean_name != fontname;
 
@@ -1615,7 +1637,7 @@ static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bol
     font = load_literata_font_file(ctx, fontname, bold, italic);
     if (font) return font;
 
-    font = load_windows_font_by_name_and_style(ctx, fontname, bold, italic);
+    font = load_windows_font_by_name_and_style(ctx, fontname, bold, italic, 1);
     if (font) return font;
 
     font = load_windows_font_by_name(ctx, fontname);

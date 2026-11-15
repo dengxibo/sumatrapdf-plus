@@ -422,26 +422,63 @@ static float measure_line(fz_html_flow* node, fz_html_flow* end, float* baseline
     return h;
 }
 
+static int is_cjk_justify_character(const char* text) {
+    int rune;
+    fz_chartorune(&rune, text);
+    int script = ucdn_get_script(rune);
+    return script == UCDN_SCRIPT_HAN || script == UCDN_SCRIPT_HIRAGANA || script == UCDN_SCRIPT_KATAKANA ||
+           script == UCDN_SCRIPT_HANGUL;
+}
+
+static int can_expand_cjk_break(fz_html_flow* left, fz_html_flow* right, fz_html_flow* end) {
+    if (!left || left->type != FLOW_WORD || right == end || right->type != FLOW_WORD || (left->bidi_level & 1) ||
+        (right->bidi_level & 1)) {
+        return 0;
+    }
+    const char* tail = left->content.text + strlen(left->content.text);
+    if (tail == left->content.text) return 0;
+    do {
+        --tail;
+    } while (tail > left->content.text && ((unsigned char)*tail & 0xc0) == 0x80);
+    return is_cjk_justify_character(tail) && is_cjk_justify_character(right->content.text);
+}
+
 static void layout_line(fz_context* ctx, float indent, float page_w, float line_w, int align, fz_html_flow* start,
                         fz_html_flow* end, fz_html_box* box, float baseline, float line_h) {
     float x = box->s.layout.x + indent;
     float y = box->s.layout.b;
     float slop = page_w - line_w;
     float justify = 0;
+    float cjk_justify = 0;
     float va;
     int n, i;
+    int has_text = 0;
     fz_html_flow* node;
+    fz_html_flow* prev = NULL;
     fz_html_flow** reorder;
     unsigned int min_level, max_level;
 
-    /* Count the number of nodes on the line */
-    for (i = 0, n = 0, node = start; node != end; node = node->next) {
+    /* Count word spaces and legal breaks between CJK characters. */
+    int cjk_breaks = 0;
+    for (i = 0, n = 0, node = start; node != end; prev = node, node = node->next) {
         n++;
         if (node->type == FLOW_SPACE && node->expand && !node->breaks_line) i++;
+        if (node->type == FLOW_SBREAK) {
+            node->expand = align == TA_JUSTIFY && !node->breaks_line && can_expand_cjk_break(prev, node->next, end);
+            cjk_breaks += node->expand;
+        }
+        if (node->type == FLOW_WORD || (node->type == FLOW_SHYPHEN && node->breaks_line)) has_text = 1;
     }
 
     if (align == TA_JUSTIFY) {
-        justify = slop / (i ? i : 1);
+        if (cjk_breaks && slop > 0) {
+            /* Keep Latin word spaces natural when a CJK line has only a few. */
+            float em = box->s.layout.em;
+            justify = fz_min(slop / (i + cjk_breaks), em * 0.1f);
+            cjk_justify = fz_min((slop - i * justify) / cjk_breaks, em * 0.25f);
+        } else {
+            justify = slop / (i ? i : 1);
+        }
     } else if (align == TA_RIGHT)
         x += slop;
     else if (align == TA_CENTER)
@@ -497,6 +534,8 @@ static void layout_line(fz_context* ctx, float indent, float page_w, float line_
             w = 0;
         else if (node->type == FLOW_SPACE && !node->breaks_line)
             w += node->expand ? justify : 0;
+        else if (node->type == FLOW_SBREAK)
+            w = node->expand ? cjk_justify : 0;
         else if (node->type == FLOW_SHYPHEN && !node->breaks_line)
             w = 0;
         else if (node->type == FLOW_SHYPHEN && node->breaks_line)
@@ -541,6 +580,10 @@ static void layout_line(fz_context* ctx, float indent, float page_w, float line_
                                   fz_from_css_number_scale(node->box->style->line_height, node->box->s.layout.em), 0);
                     break;
             }
+            /* An image-only line has no text baseline to align to. Keep the
+             * image within the line height reserved by measure_line so it
+             * cannot overlap the next paragraph or spill across the page. */
+            if (!has_text) node->y = fz_clamp(node->y, y, y + line_h - node->h);
         } else {
             switch (node->box->style->vertical_align) {
                 default:
@@ -870,6 +913,32 @@ static void break_word_for_overflow_wrap(fz_context* ctx, fz_html_flow* node, la
     if (w <= max_w) node->atomic = 1;
 }
 
+typedef struct {
+    fz_html_flow *start, *end;
+    float width, indent;
+    int align;
+} paragraph_first_line;
+
+static void flush_paragraph_start(fz_context* ctx, layout_data* ld, fz_html_box* box, paragraph_first_line first,
+                                  fz_html_flow* next, fz_html_flow* end) {
+    float page_h = ld->page[B] - ld->page[T];
+    /* A trailing line break alone does not make this a multi-line paragraph. */
+    fz_html_flow* text = next;
+    while (text != end && text->type != FLOW_WORD) text = text->next;
+    if (text != end && page_h > 0) {
+        float baseline;
+        float first_h = measure_line(first.start, first.end, &baseline);
+        float pair_h = first_h + measure_line(next, end, &baseline);
+        float remaining = layout_page_remainder(ld, box->s.layout.b);
+        if (first_h <= remaining && pair_h > remaining && pair_h <= page_h) {
+            box->s.layout.b += remaining;
+            box->s.layout.y = ld->bounds[T] = box->s.layout.b;
+            layout_extend_bounds_to_page_bottom(ld);
+        }
+    }
+    flush_line(ctx, box, ld, first.width, first.align, first.indent, first.start, first.end, NULL);
+}
+
 /*
         Layout a BOX_FLOW.
 
@@ -885,6 +954,10 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
     int justify_align;
     int align;
     fz_html_restarter* restart = ld->restart;
+    paragraph_first_line first = {0};
+    /* Apply the two-line minimum only to the start of a paginated text paragraph. */
+    int protect_start = !restart && !ld->measure_only && box->is_first_flow && !strcmp(top->tag, "p") &&
+                        !top->style->allow_single_orphan;
 
     float em = box->s.layout.em;
     indent = box->is_first_flow ? fz_from_css_number(top->style->text_indent, em, ld->bounds[R] - ld->bounds[L], 0) : 0;
@@ -960,6 +1033,7 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
         node->breaks_line = 0; /* reset line breaks from previous layout */
 
         if (node->type == FLOW_IMAGE) {
+            protect_start = 0;
             float page_h = ld->page[B] - ld->page[T];
             float available_w = ld->bounds[R] - ld->bounds[L];
             float aspect, scale = 1;
@@ -1092,7 +1166,16 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
             /* text-indent on right side is already baked into break_w */
             if (box->markup_dir == FZ_BIDI_RTL) indent = 0;
 
-            if (flush_line(ctx, box, ld, break_w, line_align, indent, line, break_at, restart)) return;
+            if (protect_start && break_at) {
+                first = (paragraph_first_line){line, break_at, break_w, indent, line_align};
+                protect_start = 0;
+            } else {
+                if (first.start) {
+                    flush_paragraph_start(ctx, ld, box, first, line, break_at);
+                    first.start = NULL;
+                }
+                if (flush_line(ctx, box, ld, break_w, line_align, indent, line, break_at, restart)) return;
+            }
 
             line = break_at;
             node = break_at;
@@ -1118,6 +1201,7 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
 
     if (line) {
         int line_align = (align == TA_JUSTIFY) ? justify_align : align;
+        if (first.start) flush_paragraph_start(ctx, ld, box, first, line, NULL);
         flush_line(ctx, box, ld, line_w, line_align, indent, line, NULL, restart);
     }
 
