@@ -1358,7 +1358,7 @@ static void CreateThumbnailFromFileThread(CreateThumbnailFromFileData* d) {
         return;
     }
     RectF pageRect = engine->PageMediabox(1);
-    Size size = epub ? Size{320, 480} : Size{kThumbnailDx, kThumbnailDy};
+    Size size = epub ? Size{320, 480} : Size{kPageThumbnailDx, kPageThumbnailDy};
     float zoom = GetThumbnailZoom(engine, 1, pageRect, size);
     if (zoom <= 0.f) {
         engine->Release();

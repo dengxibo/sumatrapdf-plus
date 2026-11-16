@@ -116,7 +116,16 @@ RenderedBitmap* LoadThumbnail(FileState* fs) {
 
 bool HasThumbnail(FileState* fs) {
     TempStr bmpPath = GetThumbnailPathTemp(fs->filePath);
-    if (!bmpPath || !file::Exists(bmpPath) || !LoadThumbnail(fs)) {
+    if (!bmpPath || !file::Exists(bmpPath)) {
+        return false;
+    }
+    auto* bmp = LoadThumbnail(fs);
+    if (!bmp) {
+        return false;
+    }
+    Size size = bmp->GetSize();
+    // Keep the old preview visible while reopening the document regenerates it.
+    if (!str::EndsWithI(fs->filePath, ".epub") && size.dx <= kThumbnailDx + 1 && size.dy <= kThumbnailDy + 1) {
         return false;
     }
     if (IsThumbnailStale(fs->filePath, bmpPath)) {
