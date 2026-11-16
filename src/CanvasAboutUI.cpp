@@ -296,8 +296,9 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
             int delta = GET_WHEEL_DELTA_WPARAM(wp);
             if ((GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) && !str::EqI(gGlobalPrefs->homePageViewMode, "list")) {
                 int dx = gGlobalPrefs->homePageThumbnailDx;
-                dx = dx > 0 ? std::clamp(dx, 160, 280) : kThumbnailDx;
-                int resized = std::clamp(dx + MulDiv(delta, 24, WHEEL_DELTA), 160, 280);
+                dx = dx > 0 ? std::clamp(dx, kHomePageMinPreferredThumbDx, kHomePageMaxPreferredThumbDx) : kThumbnailDx;
+                int resized = std::clamp(dx + MulDiv(delta, 24, WHEEL_DELTA), kHomePageMinPreferredThumbDx,
+                                         kHomePageMaxPreferredThumbDx);
                 if (resized != dx) {
                     gGlobalPrefs->homePageThumbnailDx = resized;
                     ResetHomePageScroll(win);

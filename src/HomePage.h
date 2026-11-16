@@ -25,6 +25,8 @@ constexpr const char* kLinkHomePageToggleSort = "<View,HomePageToggleSort>";
 constexpr const char* kLinkHomePageRemoveFile = "<View,HomePageRemove>";
 constexpr const char* kLinkHomePagePinFile = "<View,HomePagePin>";
 constexpr const char* kLinkNextTip = "<NextTip>";
+constexpr int kHomePageMinPreferredThumbDx = 160;
+constexpr int kHomePageMaxPreferredThumbDx = 280;
 
 void SetPromoString(const char*);
 

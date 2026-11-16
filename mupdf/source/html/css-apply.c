@@ -2096,6 +2096,8 @@ void fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *st
 	style->background_color = color_from_property(match, PRO_BACKGROUND_COLOR, transparent);
 
 	style->border_spacing = number_from_property(match, PRO_BORDER_SPACING, 0, N_LENGTH);
+        fz_css_value* radius = value_from_property(match, PRO_BORDER_RADIUS);
+        if (radius && !radius->next) style->border_radius = number_from_value(radius, 0, N_LENGTH);
 
 	style->border_style_0 = border_style_from_property(match, PRO_BORDER_TOP_STYLE);
 	style->border_style_1 = border_style_from_property(match, PRO_BORDER_RIGHT_STYLE);

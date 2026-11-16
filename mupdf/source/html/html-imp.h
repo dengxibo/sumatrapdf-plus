@@ -198,6 +198,7 @@ enum
 	PRO_WIDOWS,
 	PRO_WIDTH,
 	PRO_WORD_SPACING,
+        PRO_BORDER_RADIUS,
 
 	/* Number of real properties. */
 	NUM_PROPERTIES,
@@ -290,6 +291,7 @@ struct fz_css_style_s
 	fz_css_number margin[4];
 	fz_css_number padding[4];
 	fz_css_number border_width[4];
+        fz_css_number border_radius;
 	fz_css_number inset[4];
 	fz_css_number border_spacing;
 	fz_css_number text_indent;

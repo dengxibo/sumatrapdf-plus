@@ -1006,8 +1006,8 @@ svg_parse_preserve_aspect_ratio(const char *att, int *x, int *y)
 static void
 svg_parse_viewbox(fz_context *ctx, svg_document *doc, fz_xml *node, svg_state *state)
 {
-	char *viewbox_att = fz_xml_att(node, "viewBox");
-	char *preserve_att = fz_xml_att(node, "preserveAspectRatio");
+	char *viewbox_att = fz_xml_att_alt(node, "viewBox", "viewbox");
+	char *preserve_att = fz_xml_att_alt(node, "preserveAspectRatio", "preserveaspectratio");
 	if (viewbox_att)
 	{
 		/* scale and translate to fit [minx miny minx+w miny+h] to [0 0 viewport.w viewport.h] */
@@ -1268,7 +1268,7 @@ svg_run_svg(fz_context *ctx, fz_device *dev, svg_document *doc, fz_xml *root, co
 
 	char *w_att = fz_xml_att(root, "width");
 	char *h_att = fz_xml_att(root, "height");
-	char *viewbox_att = fz_xml_att(root, "viewBox");
+	char *viewbox_att = fz_xml_att_alt(root, "viewBox", "viewbox");
 
 	svg_begin_state(ctx, &local_state, inherit_state);
 	fz_try(ctx)
@@ -1750,6 +1750,25 @@ svg_run_element(fz_context *ctx, fz_device *dev, svg_document *doc, fz_xml *root
 	}
 }
 
+/* A scalable root SVG (such as an EPUB cover) has no enclosing viewport
+ * here. Use its viewBox as the reference for percentage dimensions. */
+static void svg_document_size_reference(fz_xml* root, float* w, float* h) {
+    const char* width = fz_xml_att(root, "width");
+    const char* height = fz_xml_att(root, "height");
+    const char* viewbox = fz_xml_att_alt(root, "viewBox", "viewbox");
+    float x, y, box_w, box_h;
+
+    *w = DEF_WIDTH;
+    *h = DEF_HEIGHT;
+    if (viewbox && (!width || strchr(width, '%')) && (!height || strchr(height, '%'))) {
+        svg_lex_viewbox(viewbox, &x, &y, &box_w, &box_h);
+        if (box_w > 0 && box_h > 0) {
+            *w = box_w;
+            *h = box_h;
+        }
+    }
+}
+
 void
 svg_parse_document_bounds(fz_context *ctx, svg_document *doc, fz_xml *root)
 {
@@ -1765,7 +1784,7 @@ svg_parse_document_bounds(fz_context *ctx, svg_document *doc, fz_xml *root)
 	version_att = fz_xml_att(root, "version");
 	w_att = fz_xml_att(root, "width");
 	h_att = fz_xml_att(root, "height");
-	viewbox_att = fz_xml_att(root, "viewBox");
+	viewbox_att = fz_xml_att_alt(root, "viewBox", "viewbox");
 
 	version = 10;
 	if (version_att)
@@ -1784,11 +1803,10 @@ svg_parse_document_bounds(fz_context *ctx, svg_document *doc, fz_xml *root)
 	}
 	else
 	{
-		doc->width = DEF_WIDTH;
+		svg_document_size_reference(root, &doc->width, &doc->height);
 		if (w_att)
 			doc->width = svg_parse_length(w_att, doc->width, DEF_FONTSIZE);
 
-		doc->height = DEF_HEIGHT;
 		if (h_att)
 			doc->height = svg_parse_length(h_att, doc->height, DEF_FONTSIZE);
 	}
@@ -1809,9 +1827,8 @@ svg_run_document(fz_context *ctx, svg_document *doc, fz_xml *root, fz_device *de
 	state.viewport_w = DEF_WIDTH;
 	state.viewport_h = DEF_HEIGHT;
 
-	state.viewbox_w = DEF_WIDTH;
-	state.viewbox_h = DEF_HEIGHT;
-	state.viewbox_size = sqrtf(DEF_WIDTH*DEF_WIDTH + DEF_HEIGHT*DEF_HEIGHT) / sqrtf(2);
+	svg_document_size_reference(root, &state.viewbox_w, &state.viewbox_h);
+	state.viewbox_size = sqrtf(state.viewbox_w * state.viewbox_w + state.viewbox_h * state.viewbox_h) / sqrtf(2);
 
 	state.fontsize = 12;
 

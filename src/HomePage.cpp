@@ -1078,23 +1078,24 @@ static int HomePagePreferredThumbDx() {
     if (gGlobalPrefs && gGlobalPrefs->homePageThumbnailDx > 0) {
         dx = gGlobalPrefs->homePageThumbnailDx;
     }
-    if (dx < 160) {
-        dx = 160;
-    }
-    if (dx > 280) {
-        dx = 280;
-    }
-    return dx;
+    return std::clamp(dx, kHomePageMinPreferredThumbDx, kHomePageMaxPreferredThumbDx);
 }
 
 // Grow/shrink thumbnail size around the preferred width so the grid fills the
-// canvas. Cap at ~±12–20% so the 212px cache does not look too blurry.
+// canvas. Limit how far the grid can stretch thumbnails beyond the preferred width.
 static void ComputeHomeThumbGrid(HWND dpiHwnd, int canvasDx, int& colsOut, int& thumbDxOut, int& thumbDyOut,
                                  int& startXOut, int& gapXOut, bool covers = false) {
     int preferred = HomePagePreferredThumbDx();
     int minCardDx = covers ? 96 : 120;
     if (covers) {
+        constexpr int defaultCoverDx = kThumbnailDx * 2 / 3;
+        int zoomIn = preferred - kThumbnailDx;
         preferred = preferred * 2 / 3;
+        if (zoomIn > 0) {
+            // Keep the default cover width and reach the landscape width at maximum zoom.
+            preferred = defaultCoverDx + MulDiv(zoomIn, kHomePageMaxPreferredThumbDx - defaultCoverDx,
+                                                kHomePageMaxPreferredThumbDx - kThumbnailDx);
+        }
     }
     int gapX = kThumbsSpaceBetweenX;
     int marginL = kThumbsMarginLeft;

@@ -4117,6 +4117,72 @@ static void draw_list_mark(fz_context* ctx, fz_html_box* box, float page_top, fl
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
+static void append_rounded_box(fz_context* ctx, fz_path* path, fz_rect r, float rx, float ry) {
+    if (rx <= 0 || ry <= 0) {
+        fz_rectto(ctx, path, r.x0, r.y0, r.x1, r.y1);
+        return;
+    }
+    /* Cubic approximation of a quarter ellipse. */
+    float dx = rx * 0.44771525f;
+    float dy = ry * 0.44771525f;
+    fz_moveto(ctx, path, r.x0 + rx, r.y0);
+    fz_lineto(ctx, path, r.x1 - rx, r.y0);
+    fz_curveto(ctx, path, r.x1 - dx, r.y0, r.x1, r.y0 + dy, r.x1, r.y0 + ry);
+    fz_lineto(ctx, path, r.x1, r.y1 - ry);
+    fz_curveto(ctx, path, r.x1, r.y1 - dy, r.x1 - dx, r.y1, r.x1 - rx, r.y1);
+    fz_lineto(ctx, path, r.x0 + rx, r.y1);
+    fz_curveto(ctx, path, r.x0 + dx, r.y1, r.x0, r.y1 - dy, r.x0, r.y1 - ry);
+    fz_lineto(ctx, path, r.x0, r.y0 + ry);
+    fz_curveto(ctx, path, r.x0, r.y0 + dy, r.x0 + dx, r.y0, r.x0 + rx, r.y0);
+    fz_closepath(ctx, path);
+}
+
+static int draw_rounded_block(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html_box* box, fz_rect inner) {
+    const fz_css_style* style = box->style;
+    if (box->type != BOX_BLOCK || !(style->border_radius.value > 0) || fz_is_empty_rect(inner)) return 0;
+
+    const float* border = box->u.block.border;
+    float width = border[T];
+    if (width != border[R] || width != border[B] || width != border[L]) return 0;
+
+    fz_css_color edge = style->border_color[T];
+    if (width > 0 &&
+        (style->border_style_0 != BS_SOLID || style->border_style_1 != BS_SOLID || style->border_style_2 != BS_SOLID ||
+         style->border_style_3 != BS_SOLID || memcmp(&edge, &style->border_color[R], sizeof(edge)) ||
+         memcmp(&edge, &style->border_color[B], sizeof(edge)) || memcmp(&edge, &style->border_color[L], sizeof(edge))))
+        return 0;
+
+    fz_rect outer = fz_expand_rect(inner, width);
+    float w = outer.x1 - outer.x0;
+    float h = outer.y1 - outer.y0;
+    float em = box->s.layout.em;
+    float rx = fz_from_css_number(style->border_radius, em, w, 0);
+    float ry = fz_from_css_number(style->border_radius, em, h, 0);
+    if (!(rx > 0 && ry > 0)) return 0;
+    float scale = fz_min(1, 0.5f * fz_min(w / rx, h / ry));
+    rx *= scale;
+    ry *= scale;
+
+    fz_css_color bg = style->background_color;
+    if (bg.a == 0 && (width <= 0 || edge.a == 0)) return 1;
+    fz_path* path = fz_new_path(ctx);
+    fz_try(ctx) {
+        append_rounded_box(ctx, path, outer, rx, ry);
+        if (bg.a) {
+            float rgb[] = {bg.r / 255.f, bg.g / 255.f, bg.b / 255.f};
+            fz_fill_path(ctx, dev, path, 0, ctm, fz_device_rgb(ctx), rgb, bg.a / 255.f, fz_default_color_params);
+        }
+        if (width > 0 && edge.a) {
+            float rgb[] = {edge.r / 255.f, edge.g / 255.f, edge.b / 255.f};
+            append_rounded_box(ctx, path, inner, rx - width, ry - width);
+            fz_fill_path(ctx, dev, path, 1, ctm, fz_device_rgb(ctx), rgb, edge.a / 255.f, fz_default_color_params);
+        }
+    }
+    fz_always(ctx) fz_drop_path(ctx, path);
+    fz_catch(ctx) fz_rethrow(ctx);
+    return 1;
+}
+
 static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, float page_bot, fz_device* dev,
                           fz_matrix ctm, hb_buffer_t* hb_buf, fz_html_restarter* restart);
 static int draw_table_row(fz_context* ctx, fz_html_box* box, float page_top, float page_bot, fz_device* dev,
@@ -4973,12 +5039,13 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
 
     /* Only draw the content if it's visible */
     if (box->style->visibility == V_VISIBLE) {
-        int suppress;
+        int rounded =
+            !restart && draw_rounded_block(ctx, dev, ctm, box, fz_make_rect(x0, y0 - page_top, x1, y1 - page_top));
 
         /* We draw the background rectangle regardless if we are skipping or not, because
          * we might find the end-of-skip point inside this box. If there is no content
          * then the box height will be 0, so nothing will be drawn. */
-        if (y1 > y0) {
+        if (!rounded && y1 > y0) {
             float bg_x0 = x0 - cell_adjust_left;
             float bg_y0 = y0 - cell_padding_top;
             float bg_x1 = x1 + cell_adjust_right;
@@ -5019,8 +5086,7 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
         if (!skipping) {
             /* Draw a selection of borders. */
             /* If we are restarting, don't do the bottom one yet. */
-            suppress = restart ? (1 << B) : 0;
-            do_borders(ctx, dev, ctm, page_top, page_bot, box, suppress);
+            if (!rounded) do_borders(ctx, dev, ctm, page_top, page_bot, box, restart ? (1 << B) : 0);
 
             if (box->list_item) draw_list_mark(ctx, box, page_top, page_bot, dev, ctm, box->list_item);
         }
