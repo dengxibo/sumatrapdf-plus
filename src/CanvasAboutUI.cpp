@@ -294,7 +294,7 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
 
         case WM_MOUSEWHEEL: {
             int delta = GET_WHEEL_DELTA_WPARAM(wp);
-            if ((GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) && str::EqI(gGlobalPrefs->homePageViewMode, "covers")) {
+            if ((GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) && !str::EqI(gGlobalPrefs->homePageViewMode, "list")) {
                 int dx = gGlobalPrefs->homePageThumbnailDx;
                 dx = dx > 0 ? std::clamp(dx, 160, 280) : kThumbnailDx;
                 int resized = std::clamp(dx + MulDiv(delta, 24, WHEEL_DELTA), 160, 280);

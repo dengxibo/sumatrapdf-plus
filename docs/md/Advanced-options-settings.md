@@ -79,7 +79,7 @@ HomePageSortByFrequentlyRead = false
 HomePageViewMode = thumbnails
 
 ; preferred home page thumbnail width in pixels; layout grows or shrinks
-; slightly so the grid fills the window. In cover view, use Ctrl+mouse wheel
+; slightly so the grid fills the window. In either grid view, use Ctrl+mouse wheel
 ; to change this value. Valid range: 160-280 (introduced in version 3.7)
 HomePageThumbnailDx = 212
 
