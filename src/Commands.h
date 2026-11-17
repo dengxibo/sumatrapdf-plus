@@ -303,7 +303,8 @@ enum {
     CmdExportPageImages = 492,
     CmdCapturePageRegion = 493,
     CmdTocLocateCurrentChapter = 494,
-    CmdNone = 495,
+    CmdViewImage = 495,
+    CmdNone = 496,
 
     /* range for file history */
     CmdFileHistoryFirst,

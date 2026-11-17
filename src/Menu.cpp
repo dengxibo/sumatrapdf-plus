@@ -781,6 +781,10 @@ static MenuDef menuDefCreateAnnotUnderCursor[] = {
 //[ ACCESSKEY_GROUP Context Menu (Image)
 static MenuDef menuDefContextImage[] = {
     {
+        _TRN("View Image"),
+        CmdViewImage,
+    },
+    {
         _TRN("C&opy To Clipboard"),
         CmdCopyImage,
     },
@@ -2146,6 +2150,7 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
             MenuRemove(popup, CmdCopyImage);
         }
         if (!onImage) {
+            MenuRemove(popup, CmdViewImage);
             MenuRemove(popup, CmdSaveImage);
         }
         if (!isImageEngine && !onImage) {
@@ -2369,6 +2374,9 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
             return;
         }
 
+        case CmdViewImage:
+            ShowPageImagePreview(win, pageEl, pageNoUnderCursor);
+            return;
         case CmdCopyImage: {
             if (pageEl) {
                 RenderedBitmap* bmp = dm->GetEngine()->GetImageForPageElement(pageEl);

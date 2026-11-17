@@ -3322,8 +3322,8 @@ DoubleBuffer::DoubleBuffer(HWND hwnd, Rect rect) : hTarget(hwnd), hdcCanvas(::Ge
 }
 
 DoubleBuffer::~DoubleBuffer() {
-    DeleteObject(doubleBuffer);
     DeleteDC(hdcBuffer);
+    DeleteObject(doubleBuffer);
     ReleaseDC(hTarget, hdcCanvas);
 }
 

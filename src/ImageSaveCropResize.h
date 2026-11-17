@@ -3,6 +3,11 @@
 
 struct MainWindow;
 struct RenderedBitmap;
+struct IPageElement;
+
+bool ShowPageImagePreview(MainWindow* win, IPageElement* element, int pageNo);
+void ClosePageImagePreview(HWND canvas);
+void ResizePageImagePreview(HWND canvas);
 
 namespace Gdiplus {
 class Bitmap;

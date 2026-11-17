@@ -782,6 +782,7 @@ static int word_looks_like_official_doc_title(const char* plain, const char* ali
 static int word_looks_like_roster_line(const char* plain) {
     const char* p = word_skip_leading_space(plain);
     if (!p || !strstr(p, "  ")) return 0;
+    if (!strncmp(p, "出席人员：", strlen("出席人员：")) || !strncmp(p, "请假人员：", strlen("请假人员："))) return 1;
     return strstr(p, "处长") || strstr(p, "主任") || strstr(p, "书记") || strstr(p, "委员") || strstr(p, "调研员") ||
            strstr(p, "局长");
 }
@@ -792,6 +793,8 @@ static int word_looks_like_fake_center_indent(const char* plain, float indent_em
     int large = (indent_em >= 2.5f) || (indent_pt >= 48.0f) || (left_pt >= 48.0f);
 
     if (!large || !p || !p[0]) return 0;
+    /* Attendee continuations use a real first-line indent. */
+    if (strstr(p, "排名不分先后")) return 0;
     if (word_looks_like_roster_line(p)) return 0;
     /* 2. / 4. / 附件 是真左缩进的条目，不是文号那种假居中。 */
     if (word_infer_text_heading_level(p) > 0) return 0;
@@ -1901,8 +1904,8 @@ static int is_user_word_bookmark_name(const char* name) {
     if (!name || !name[0]) return 0;
     if (name[0] == '_') return 0; /* _Toc*, _Hlk*, _GoBack, … */
     if (is_generated_word_bookmark_name(name)) return 0;
-    /* Content is a navigation anchor; preserve its ID without a visible title. */
-    if (!strcmp(name, "Content")) return 0;
+    /* Template anchors are link targets, not visible titles. */
+    if (!strcmp(name, "Content") || !strcmp(name, "文号")) return 0;
     /* Word/WPS heading anchors are navigation targets, not visible titles.
      * Keep their IDs, but do not synthesize a heading containing the ID. */
     if (!ascii_strncasecmp(name, "heading_", 8)) {
@@ -2064,7 +2067,7 @@ static void emit_printed_toc_nav(fz_context* ctx, doc_info* info) {
     fz_write_string(ctx, info->out, "</nav>\n");
 }
 
-static void doc_escape_ex(fz_context* ctx, fz_output* output, const char* str_, int preserve_space) {
+static void doc_escape_ex(fz_context* ctx, fz_output* output, const char* str_, int preserve_space, int roster_space) {
     const unsigned char* str = (const unsigned char*)str_;
     int c;
 
@@ -2077,6 +2080,10 @@ static void doc_escape_ex(fz_context* ctx, fz_output* output, const char* str_, 
             fz_write_string(ctx, output, "&lt;");
         } else if (c == '>') {
             fz_write_string(ctx, output, "&gt;");
+        } else if (roster_space && c == ' ') {
+            /* Two source spaces fill one Han character slot in a roster.
+             * An en space keeps that width even across separately styled runs. */
+            fz_write_string(ctx, output, "&#8194;");
         } else if (preserve_space && c == ' ') {
             /* Word xml:space="preserve" pads 发文机关/日期 to the right with spaces;
              * HTML otherwise collapses them and the block looks left-aligned. */
@@ -2084,14 +2091,14 @@ static void doc_escape_ex(fz_context* ctx, fz_output* output, const char* str_, 
         } else if (preserve_space && c == '\t') {
             fz_write_string(ctx, output, "&nbsp;&nbsp;&nbsp;&nbsp;");
         } else {
-			/* We get utf-8 in, just parrot it out again. */
-			fz_write_byte(ctx, output, c);
-		}
-	}
+            /* We get utf-8 in, just parrot it out again. */
+            fz_write_byte(ctx, output, c);
+        }
+    }
 }
 
 static void doc_escape(fz_context* ctx, fz_output* output, const char* str_) {
-    doc_escape_ex(ctx, output, str_, 0);
+    doc_escape_ex(ctx, output, str_, 0, 0);
 }
 
 /* Emit UTF-8 text one glyph per line (Word table textDirection vertical). */
@@ -2135,7 +2142,7 @@ static void doc_escape_vertical(fz_context* ctx, fz_output* output, const char* 
         if (n >= (int)sizeof glyph) n = 1;
         memcpy(glyph, s, (size_t)n);
         glyph[n] = 0;
-        doc_escape_ex(ctx, output, glyph, 0);
+        doc_escape_ex(ctx, output, glyph, 0, 0);
         s += n;
     }
 }
@@ -2193,7 +2200,7 @@ static void show_text(fz_context* ctx, fz_xml* top, doc_info* info) {
         if (text && info && info->emit_vertical_breaks)
             doc_escape_vertical(ctx, info->out, text);
         else
-            doc_escape_ex(ctx, info->out, text, preserve);
+            doc_escape_ex(ctx, info->out, text, preserve, info && info->preserve_roster_spaces);
         if (text && info && info->para_leader) {
             float pt = info->para_font_pt > 0.5f ? info->para_font_pt : 12.0f;
             info->para_advance_pt += word_text_width_pt(text, pt);
@@ -2809,6 +2816,50 @@ static int word_emit_vml_vector(fz_context* ctx, fz_xml* pict, doc_info* info) {
         fz_write_string(ctx, info->out, "</text></svg>");
         return 1;
     }
+    if (shape) {
+        fz_xml* box = fz_xml_find_dfs_top(fz_xml_down(shape), "txbxContent", NULL, NULL, shape);
+        fz_xml* p = box ? fz_xml_down(box) : NULL;
+        fz_xml* ppr = p ? fz_xml_find_down(p, "pPr") : NULL;
+        fz_xml* jc = ppr ? fz_xml_find_down(ppr, "jc") : NULL;
+        const char* align = jc ? fz_xml_att_alt(jc, "w:val", "val") : NULL;
+        fz_xml* r = p ? fz_xml_find_down(p, "r") : NULL;
+        fz_xml* rpr = r ? fz_xml_find_down(r, "rPr") : NULL;
+        fz_xml* color_node = rpr ? fz_xml_find_down(rpr, "color") : NULL;
+        const char* color = color_node ? fz_xml_att_alt(color_node, "w:val", "val") : NULL;
+        const char *east, *latin;
+        const char* style = fz_xml_att(shape, "style");
+        float width, height;
+        char plain[512];
+        int glyphs;
+        if (!fz_xml_is_tag(p, "p") || fz_xml_next(p) || !align || strcmp(align, "distribute")) return 0;
+        word_paragraph_plain_text(p, plain, sizeof plain);
+        if (word_plain_is_blank(plain)) return 0;
+        glyphs = word_plain_glyph_count(plain);
+        if (!word_vml_style_property(style, "width", value, sizeof value)) return 0;
+        width = word_vml_points(value);
+        if (!word_vml_style_property(style, "height", value, sizeof value)) return 0;
+        height = word_vml_points(value);
+        if (!(width > 0 && width < 4096 && height > 0 && height < 4096) || glyphs <= 0) return 0;
+        if (info->page_content_pt > 0) width = fz_min(width, info->page_content_pt);
+        word_rpr_font_names(info, rpr, &east, &latin);
+        fz_write_printf(ctx, info->out,
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%gpt\" height=\"%gpt\" "
+                        "viewBox=\"0 0 %g %g\"><text y=\"88\" font-size=\"100\" transform=\"scale(%g %g)\" "
+                        "font-family=\"",
+                        width, height, width, height, width / (100 * glyphs), height / 100);
+        word_vml_attribute(ctx, info->out, east ? east : latin ? latin : "SimSun");
+        fz_write_string(ctx, info->out, "\" fill=\"");
+        if (color && strlen(color) == 6 && strspn(color, "0123456789abcdefABCDEF") == 6) {
+            fz_write_byte(ctx, info->out, '#');
+            fz_write_string(ctx, info->out, color);
+        } else {
+            fz_write_string(ctx, info->out, "black");
+        }
+        fz_write_string(ctx, info->out, "\">");
+        doc_escape(ctx, info->out, plain);
+        fz_write_string(ctx, info->out, "</text></svg>");
+        return 1;
+    }
     {
         fz_xml* line = fz_xml_find_dfs(pict, "line", NULL, NULL);
         const char *from, *to, *comma1, *comma2, *color, *weight;
@@ -2850,13 +2901,12 @@ static void emit_pict(fz_context* ctx, fz_xml* pict, doc_info* info) {
     char* path = NULL;
 
     imagedata = fz_xml_find_dfs(pict, "imagedata", NULL, NULL);
-    if (!imagedata) {
+    embed = imagedata ? fz_xml_att_alt(imagedata, "r:id", "id") : NULL;
+    if (!embed && imagedata) embed = fz_xml_att_alt(imagedata, "r:embed", "embed");
+    if (!embed) {
         word_emit_vml_vector(ctx, pict, info);
         return;
     }
-
-    embed = fz_xml_att_alt(imagedata, "r:id", "id");
-    if (!embed) embed = fz_xml_att_alt(imagedata, "r:embed", "embed");
     if (!embed || !info->doc_rels || !info->doc_file) return;
 
     target = lookup_rel(ctx, info->doc_rels, embed);
@@ -2870,6 +2920,53 @@ static void emit_pict(fz_context* ctx, fz_xml* pict, doc_info* info) {
     }
     fz_always(ctx) fz_free(ctx, path);
     fz_catch(ctx) fz_rethrow(ctx);
+}
+
+static fz_xml* word_alternate_pict(fz_xml* alternate) {
+    fz_xml* fallback = fz_xml_find_down(alternate, "Fallback");
+    return fallback ? fz_xml_find_down(fallback, "pict") : NULL;
+}
+
+/* Paragraph-width floating rules can be represented by a paragraph border
+ * without giving the drawing its own line in the reflow. */
+static int word_vml_paragraph_rule(doc_info* info, fz_xml* pict, float* offset) {
+    fz_xml* line = pict ? fz_xml_find_down(pict, "line") : NULL;
+    const char* style = line ? fz_xml_att(line, "style") : NULL;
+    char value[64];
+    if (!style || !info || info->page_content_pt <= 0 ||
+        !word_vml_style_property(style, "width", value, sizeof value) ||
+        word_vml_points(value) < info->page_content_pt * 0.9f ||
+        word_vml_points(value) > info->page_content_pt * 1.15f ||
+        !word_vml_style_property(style, "margin-top", value, sizeof value))
+        return 0;
+    *offset = word_vml_points(value);
+    return word_vml_style_property(style, "height", value, sizeof value) && fz_abs(word_vml_points(value)) <= 2;
+}
+
+static int word_rule_css(doc_info* info, fz_xml* paragraph, char* css, int cap) {
+    fz_xml* rules[2] = {NULL, NULL};
+    int n = 0;
+    if (!info || cap <= 0) return 0;
+    for (fz_xml* r = fz_xml_down(paragraph); r; r = fz_xml_next(r)) {
+        fz_xml* alternate = fz_xml_is_tag(r, "r") ? fz_xml_find_down(r, "AlternateContent") : NULL;
+        fz_xml* pict = alternate ? word_alternate_pict(alternate) : NULL;
+        float offset;
+        if (word_vml_paragraph_rule(info, pict, &offset)) rules[offset > 2] = fz_xml_find_down(pict, "line");
+    }
+    for (int i = 0; i < 2; i++) {
+        if (!rules[i]) continue;
+        fz_xml* stroke = fz_xml_find_down(rules[i], "stroke");
+        const char* color = stroke ? fz_xml_att(stroke, "color") : NULL;
+        const char* weight = stroke ? fz_xml_att(stroke, "weight") : NULL;
+        const char* linestyle = stroke ? fz_xml_att(stroke, "linestyle") : NULL;
+        float width = weight ? word_vml_points(weight) : 0.75f;
+        if (!color || strlen(color) != 7 || color[0] != '#' || strspn(color + 1, "0123456789abcdefABCDEF") != 6)
+            color = "#000000";
+        n += fz_snprintf(css + n, cap - n, "%sborder-%s:%.2fpt %s %s", n ? ";" : "", i ? "bottom" : "top",
+                         fz_clamp(width, 0.25f, 12.0f),
+                         linestyle && !strcmp(linestyle, "thickThin") ? "double" : "solid", color);
+    }
+    return n;
 }
 
 static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info);
@@ -3247,10 +3344,14 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
 			emit_drawing(ctx, n, info);
         else if (fz_xml_is_tag(n, "pict") || fz_xml_is_tag(n, "object"))
             emit_pict(ctx, n, info);
-		else if (fz_xml_is_tag(n, "footnoteReference"))
-			show_footnote(ctx, n, info);
-		else if (fz_xml_is_tag(n, "lastRenderedPageBreak"))
-			emit_page_break(ctx, info);
+        else if (fz_xml_is_tag(n, "AlternateContent")) {
+            fz_xml* pict = word_alternate_pict(n);
+            float offset;
+            if (pict && !word_vml_paragraph_rule(info, pict, &offset)) emit_pict(ctx, pict, info);
+        } else if (fz_xml_is_tag(n, "footnoteReference"))
+            show_footnote(ctx, n, info);
+        else if (fz_xml_is_tag(n, "lastRenderedPageBreak"))
+            emit_page_break(ctx, info);
 	}
 
     if (strike) fz_write_string(ctx, info->out, "</s>");
@@ -3619,6 +3720,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     int heading_level = 0;
     int outline_inferred = 0;
     int signoff = 0;
+    float roster_em = 0;
     float indent_em = 0;
     float indent_pt = 0;
     float left_pt = 0;
@@ -3634,7 +3736,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     char marker[96];
     int have_marker = 0;
     char tag_buf[4];
-    char style_css[480];
+    char style_css[640];
     int style_n = 0;
 
     /* A paragraph that only holds sectPr is the section break: omitted w:type
@@ -3694,7 +3796,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
             if (!right && ind) right = fz_xml_att_alt(ind, "w:end", "end");
             rw = right ? word_measure_twips(right) : 0;
             /* Huge right indent forces "1. 2. 3. 4." onto one marker per line. */
-            if (rw > 0) right_pt = (float)rw / 20.0f;
+            right_pt = (float)rw / 20.0f;
         }
         word_ppr_spacing(ppr, &space_before_pt, &space_after_pt, &line_mult, &line_pt);
         numpr = fz_xml_find_down(ppr, "numPr");
@@ -3784,6 +3886,13 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         char plain[512];
         word_paragraph_plain_text(p, plain, (int)sizeof plain);
         if (info) info->preserve_roster_spaces = word_looks_like_roster_line(plain);
+        /* A manually split roster can wrap one name onto its own line when
+         * the replacement font is slightly wider than Word's. */
+        if (!strncmp(plain, "出席人员", strlen("出席人员")) && fz_xml_is_tag(fz_xml_next(p), "p")) {
+            char next[512];
+            word_paragraph_plain_text(fz_xml_next(p), next, sizeof next);
+            if (strstr(next, "排名不分先后")) roster_em = word_plain_visual_em(plain);
+        }
         if (heading_level == 0 && info && info->in_table == 0) {
             int style_toc = 0;
             if (style_val) word_style_fact(ctx, info, style_val, &style_toc, NULL, NULL);
@@ -4083,9 +4192,19 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     if (info) {
         float upt = word_paragraph_uniform_run_pt(p);
         if (upt > 0.5f) info->run_default_font_pt = upt;
+        if (roster_em > 0) {
+            float size = info->run_default_font_pt > 0.5f ? info->run_default_font_pt : info->doc_body_font_pt;
+            float fit = (info->page_content_pt - left_pt - right_pt) * 0.985f / roster_em;
+            if (fit > 12.0f && fit >= size * 0.90f && fit < size) {
+                info->run_default_font_pt = fit;
+                info->force_run_font_pt = fit;
+            }
+        }
     }
 
     style_css[0] = 0;
+    style_n = word_rule_css(info, p, style_css, sizeof style_css);
+    if (style_n && align && !strcmp(align, "right")) left_pt = 0;
     {
         int wrote_size = 0;
         if (info && info->run_default_font_pt > 0.5f) {
@@ -4112,7 +4231,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     if (left_pt > 0.01f)
         style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "%smargin-left:%.1fpt",
                                style_n ? ";" : "", left_pt);
-    if (right_pt > 0.01f)
+    if (fz_abs(right_pt) > 0.01f)
         style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "%smargin-right:%.1fpt",
                                style_n ? ";" : "", right_pt);
     if (hanging_pt > 0.01f)

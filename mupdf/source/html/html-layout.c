@@ -24,6 +24,8 @@
 #include "mupdf/ucdn.h"
 #include "html-imp.h"
 
+#include <float.h>
+
 /* Sumatra: dark-theme EPUB images. NULL keeps the original image.
    A returned image is owned by the caller. */
 typedef fz_image* (*fz_html_recolor_image_fn)(fz_context* ctx, fz_image* image);
@@ -947,9 +949,70 @@ static void flush_paragraph_start(fz_context* ctx, layout_data* ld, fz_html_box*
         box: The BOX_FLOW to layout.
         top: The enclosing box.
 */
+static int caption_ends_sentence(const char* text) {
+    const char* end = text + strlen(text);
+    if (end == text) return 0;
+    do {
+        --end;
+    } while (end > text && ((unsigned char)*end & 0xc0) == 0x80);
+    return !strcmp(end, "。") || !strcmp(end, "！") || !strcmp(end, "？") || !strcmp(end, "!") || !strcmp(end, "?");
+}
+
+/* Use the same legal breakpoints and measured advances as paragraph layout.
+ * A short caption keeps the publisher's original alignment and width. */
+static float fit_caption(fz_html_flow* head, float available, fz_html_flow** split) {
+    float total = 0, widest_word = 0;
+    float prefix = 0, best_score = FLT_MAX, best_width = 0;
+    int sentence_end = 0;
+    for (fz_html_flow* node = head; node; node = node->next) {
+        switch (node->type) {
+            case FLOW_WORD:
+                widest_word = fz_max(widest_word, node->w);
+                /* Fall through. */
+            case FLOW_SPACE:
+                total += node->w;
+                break;
+            case FLOW_SBREAK:
+            case FLOW_SHYPHEN:
+            case FLOW_ANCHOR:
+                break;
+            case FLOW_BREAK:
+                if (node->next) return available;
+                break;
+            default:
+                return available;
+        }
+    }
+    if (total <= available) return available;
+    for (fz_html_flow* node = head; node; node = node->next) {
+        if (node->type == FLOW_WORD) {
+            prefix += node->w;
+            sentence_end = caption_ends_sentence(node->content.text);
+        } else if (node->type == FLOW_SPACE || node->type == FLOW_SBREAK) {
+            float suffix = total - prefix - (node->type == FLOW_SPACE ? node->w : 0);
+            float width = fz_max(prefix, suffix);
+            if (prefix > 0 && suffix > 0 && width < available) {
+                float score = fz_abs(prefix - suffix);
+                if (sentence_end && fz_min(prefix, suffix) >= total * 0.36f) score -= total * 0.18f;
+                if (score < best_score) {
+                    best_score = score;
+                    best_width = width;
+                    *split = node;
+                }
+            }
+            if (node->type == FLOW_SPACE) prefix += node->w;
+            sentence_end = 0;
+        }
+    }
+    /* Allow a small rounding margin when re-adding the measured advances. */
+    if (*split) return fz_min(available, best_width + 0.01f);
+    return fz_min(available, fz_max(widest_word, available * 0.85f));
+}
+
 static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_html_box* top) {
     fz_html_flow *node, *line, *candidate, *desperate;
     fz_html_flow* start_flow = NULL;
+    fz_html_flow* caption_split = NULL;
     float line_w, candidate_w, desperate_w, indent, bounds_w;
     int justify_align;
     int align;
@@ -1100,6 +1163,22 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
     desperate = NULL;
     desperate_w = 0;
     bounds_w = ld->bounds[R] - ld->bounds[L];
+    if (top->auto_align_caption && getenv("SUMATRA_DEBUG_CAPTION_LAYOUT")) {
+        fz_warn(ctx, "caption: alignment=%d first=%d restart=%d width=%g indent=%g", align, box->is_first_flow,
+                restart != NULL, bounds_w, indent);
+    }
+    if (top->auto_align_caption && align == TA_CENTER && !restart && box->markup_dir != FZ_BIDI_RTL &&
+        box->is_first_flow) {
+        float fitted = fit_caption(node, bounds_w, &caption_split);
+        if (getenv("SUMATRA_DEBUG_CAPTION_LAYOUT"))
+            fz_warn(ctx, "caption: fitted=%g split=%d", fitted, caption_split != NULL);
+        if (caption_split || fitted < bounds_w) {
+            box->s.layout.x += (bounds_w - fitted) / 2;
+            box->s.layout.w = bounds_w = fitted;
+            indent = line_w = 0;
+            align = TA_LEFT;
+        }
+    }
 
     /* Now collate the measured nodes into a line. */
     while (node) {
@@ -1148,7 +1227,7 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
         /* If we see a hard break...
          * or the line doesn't fit, and we have a candidate breakpoint...
          * then we can flush the line so far. */
-        if (node->type == FLOW_BREAK || (line_w > bounds_w && (candidate || desperate))) {
+        if (node == caption_split || node->type == FLOW_BREAK || (line_w > bounds_w && (candidate || desperate))) {
             int line_align = align;
             fz_html_flow* break_at;
             float break_w;

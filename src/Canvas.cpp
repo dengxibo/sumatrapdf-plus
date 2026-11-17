@@ -3342,6 +3342,10 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
             return;
         }
 
+        if (isLeft && !isOverText && !win->presentation && !IsCtrlPressed() && !IsShiftPressed() && !IsAltPressed() &&
+            ShowPageImagePreview(win, pageEl, elementPageNo)) {
+            return;
+        }
         DeleteOldSelectionInfo(win, true);
         win->CurrentTab()->selectionOnPage = SelectionOnPage::FromRectangle(dm, rc);
         win->showSelection = win->CurrentTab()->selectionOnPage != nullptr;
@@ -5839,6 +5843,7 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case WM_SIZE:
+            ResizePageImagePreview(hwnd);
             if (!IsIconic(win->hwndFrame)) {
                 CloseWordLookup();
                 if (gRedrawLog) {

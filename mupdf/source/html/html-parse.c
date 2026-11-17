@@ -1563,6 +1563,12 @@ static void gen2_break(fz_context *ctx, struct genstate *g, fz_html_box *root_bo
 
 static int html_has_class_token(const char* class_att, const char* token);
 
+static int is_illustration_caption(fz_xml* node) {
+    const char* cls = fz_xml_att(node, "class");
+    return fz_xml_is_tag(node, "figcaption") || html_has_class_token(cls, "kindle-cn-picture-txt-withmanycharactors") ||
+           html_has_class_token(cls, "kindle-cn-picture-txt-withfewcharactors");
+}
+
 /* Only group a single illustration and its explicit caption, never a general
  * paragraph, sidebar, table, or a figure containing several images. */
 static int is_image_caption_container(fz_xml* node) {
@@ -1582,9 +1588,7 @@ static int is_image_caption_container(fz_xml* node) {
         }
         if (!strcmp(ctag, "img"))
             images++;
-        else if (!strcmp(ctag, "figcaption") ||
-                 html_has_class_token(fz_xml_att(child, "class"), "kindle-cn-picture-txt-withmanycharactors") ||
-                 html_has_class_token(fz_xml_att(child, "class"), "kindle-cn-picture-txt-withfewcharactors"))
+        else if (is_illustration_caption(child))
             captions++;
         else
             return 0;
@@ -1598,6 +1602,7 @@ static fz_html_box* gen2_block(fz_context* ctx, struct genstate* g, fz_html_box*
     root_box = find_block_context(ctx, root_box);
     this_box = new_box(ctx, g, node, BOX_BLOCK, style);
     this_box->keep_image_caption = is_image_caption_container(node);
+    this_box->auto_align_caption = is_illustration_caption(node);
     append_box(ctx, root_box, this_box);
     return this_box;
 }

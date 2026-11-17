@@ -47881,3 +47881,62 @@ tw:目錄仍在載入，請稍後重試。
 :No table of contents entry matches the current position.
 cn:当前位置没有对应目录项。
 tw:目前位置沒有對應目錄項目。
+:View Image
+ar:عرض الصورة
+br:Exibir imagem
+cn:查看大图
+co:Vede a fiura
+cz:Zobrazit obrázek
+de:Bild anzeigen
+el:Προβολή εικόνας
+es:Ver imagen
+fr:Afficher l’image
+he:הצגת תמונה
+it:Visualizza immagine
+ja:画像を拡大表示
+kr:이미지 크게 보기
+nl:Afbeelding weergeven
+pl:Wyświetl obraz
+pt:Ver imagem
+ru:Просмотреть изображение
+sk:Zobraziť obrázok
+tr:Görüntüyü göster
+tw:查看大圖
+uk:Переглянути зображення
+vn:Xem ảnh
+:Previous Image
+ar:الصورة السابقة
+br:Imagem anterior
+cn:上一张图片
+de:Vorheriges Bild
+es:Imagen anterior
+fr:Image précédente
+it:Immagine precedente
+ja:前の画像
+kr:이전 이미지
+nl:Vorige afbeelding
+pl:Poprzedni obraz
+pt:Imagem anterior
+ru:Предыдущее изображение
+tr:Önceki görüntü
+tw:上一張圖片
+uk:Попереднє зображення
+vn:Ảnh trước
+:Next Image
+ar:الصورة التالية
+br:Próxima imagem
+cn:下一张图片
+de:Nächstes Bild
+es:Imagen siguiente
+fr:Image suivante
+it:Immagine successiva
+ja:次の画像
+kr:다음 이미지
+nl:Volgende afbeelding
+pl:Następny obraz
+pt:Imagem seguinte
+ru:Следующее изображение
+tr:Sonraki görüntü
+tw:下一張圖片
+uk:Наступне зображення
+vn:Ảnh tiếp theo

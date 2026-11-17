@@ -298,6 +298,7 @@ export const commands = [
     "CmdExportPageImages", "Export pages as images...",
     "CmdCapturePageRegion", "Capture Page Region",
     "CmdTocLocateCurrentChapter", "Locate Current Chapter",
+    "CmdViewImage", "View Image",
     "CmdNone", "Do nothing",
 ];
 

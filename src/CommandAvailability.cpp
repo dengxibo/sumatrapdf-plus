@@ -691,6 +691,9 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     if (!ctx.cursorOnComment && cmdId == CmdCopyComment) {
         return CommandVisibility::Hide;
     }
+    if (!ctx.cursorOnImage && cmdId == CmdViewImage) {
+        return CommandVisibility::Hide;
+    }
     if (!ctx.cursorOnImage && ctx.engineKind != kindEngineImage) {
         if (cmdId == CmdCopyImage || cmdId == CmdSaveImage || cmdId == CmdCropImage || cmdId == CmdResizeImage ||
             cmdId == CmdConvertImageToPdf) {

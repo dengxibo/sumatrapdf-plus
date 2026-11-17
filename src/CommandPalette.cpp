@@ -129,6 +129,7 @@ static i32 gDocumentNotOpenWhitelist[] = {
     CmdScreenshot,
     CmdTabGroupRestore,
     CmdSetScreenshotHotkey,
+    CmdViewImage, // Requires the image captured by the canvas context menu.
     0,
 };
 

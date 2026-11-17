@@ -308,6 +308,7 @@ static SeqStrings gCommandNames =
     "CmdExportPageImages\0"
     "CmdCapturePageRegion\0"
     "CmdTocLocateCurrentChapter\0"
+    "CmdViewImage\0"
     "CmdNone\0"
     "\0";
 
@@ -606,6 +607,7 @@ static i32 gCommandIds[] = {
     CmdExportPageImages,
     CmdCapturePageRegion,
     CmdTocLocateCurrentChapter,
+    CmdViewImage,
     CmdNone,
 };
 
@@ -904,6 +906,7 @@ SeqStrings gCommandDescriptions =
     "Export pages as images...\0"
     "Capture Page Region\0"
     "Locate Current Chapter\0"
+    "View Image\0"
     "Do nothing\0"
     "\0";
 // clang-format on

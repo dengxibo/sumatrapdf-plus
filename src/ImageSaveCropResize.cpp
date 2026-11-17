@@ -48,6 +48,428 @@ using Gdiplus::Ok;
 using Gdiplus::Status;
 
 constexpr const WCHAR* kImageEditWinClassName = L"SUMATRA_PDF_IMAGE_EDIT";
+constexpr const WCHAR* kImagePreviewClassName = L"SUMATRA_PDF_IMAGE_PREVIEW";
+enum ImagePreviewButton {
+    PreviewPrevious = 1,
+    PreviewNext
+};
+constexpr UINT_PTR kImagePreviewBrowseTimer = 1;
+constexpr UINT_PTR kImagePreviewMotionTimer = 2;
+
+void ClosePageImagePreview(HWND canvas) {
+    if (!canvas) return;
+    HWND hwnd = FindWindowExW(canvas, nullptr, kImagePreviewClassName, nullptr);
+    if (!hwnd) return;
+    HWND focus = GetFocus();
+    bool restoreFocus = focus == hwnd || IsChild(hwnd, focus);
+    DestroyWindow(hwnd);
+    if (restoreFocus && IsWindow(canvas)) SetFocus(canvas);
+    InvalidateRect(canvas, nullptr, FALSE);
+}
+
+void ResizePageImagePreview(HWND canvas) {
+    HWND hwnd = FindWindowExW(canvas, nullptr, kImagePreviewClassName, nullptr);
+    if (!hwnd) return;
+    Rect size = ClientRect(canvas);
+    SetWindowPos(hwnd, nullptr, 0, 0, size.dx, size.dy, SWP_NOACTIVATE | SWP_NOZORDER);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_NOERASE);
+}
+
+struct PageImagePreview {
+    MainWindow* win = nullptr;
+    EngineBase* engine = nullptr;
+    RenderedBitmap* bitmap = nullptr;
+    DoubleBuffer* frame = nullptr;
+    HWND buttons[PreviewNext]{};
+    RectF imagePosition;
+    int imageId = -1;
+    int pageNo = 0;
+    int scanPage = 0;
+    int direction = 0;
+    RenderedBitmap* cachedImage = nullptr;
+    RectF cachedPosition;
+    int cachedId = -1;
+    int cachedPage = 0;
+    int cachedDirection = 0;
+    float zoom = 1.f;
+    float targetZoom = 1.f;
+    Point zoomAnchor;
+    float panX = 0;
+    float panY = 0;
+    Point drag;
+    bool dragging = false;
+    bool keyboardButtonFocus = false;
+    HWND hoveredButton = nullptr;
+
+    ~PageImagePreview() {
+        delete frame;
+        delete bitmap;
+        delete cachedImage;
+    }
+
+    void Fit(HWND hwnd) {
+        zoom = targetZoom = 1.f;
+        KillTimer(hwnd, kImagePreviewMotionTimer);
+        panX = panY = 0;
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
+
+    void Browse(HWND hwnd, int delta) {
+        KillTimer(hwnd, kImagePreviewBrowseTimer);
+        if (cachedImage && delta == cachedDirection) {
+            std::swap(bitmap, cachedImage);
+            std::swap(imagePosition, cachedPosition);
+            std::swap(imageId, cachedId);
+            std::swap(pageNo, cachedPage);
+            cachedDirection = -delta;
+            Fit(hwnd);
+            return;
+        }
+        direction = delta;
+        scanPage = pageNo;
+        SetTimer(hwnd, kImagePreviewBrowseTimer, 15, nullptr);
+    }
+
+    bool BrowseOnePage(HWND hwnd);
+
+    void TickZoom(HWND hwnd) {
+        Rect before = ImageRect(hwnd);
+        float distance = targetZoom - zoom;
+        zoom = fabsf(distance) < 0.005f * targetZoom ? targetZoom : zoom + distance * 0.42f;
+        Rect after = ImageRect(hwnd);
+        panX += zoomAnchor.x - after.x - (zoomAnchor.x - before.x) * (float)after.dx / before.dx;
+        panY += zoomAnchor.y - after.y - (zoomAnchor.y - before.y) * (float)after.dy / before.dy;
+        if (zoom == targetZoom) KillTimer(hwnd, kImagePreviewMotionTimer);
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
+
+    void Paint(HWND hwnd, HDC dc, RECT* dirty) {
+        Rect client = ClientRect(hwnd);
+        if (client.IsEmpty()) return;
+        if (!frame || frame->rect.dx != client.dx || frame->rect.dy != client.dy) {
+            delete frame;
+            frame = new DoubleBuffer(hwnd, client);
+        }
+        if (!frame->HasBitmap()) return;
+
+        HDC source = CreateCompatibleDC(dc);
+        if (!source) return;
+        HGDIOBJ original = SelectObject(source, bitmap->GetBitmap());
+        if (original && original != HGDI_ERROR) {
+            HDC back = frame->GetDC();
+            RECT area{0, 0, client.dx, client.dy};
+            SetDCBrushColor(back, ThemeWindowBackgroundColor());
+            FillRect(back, &area, (HBRUSH)GetStockObject(DC_BRUSH));
+            Rect dest = ImageRect(hwnd);
+            Size src = bitmap->GetSize();
+            SetStretchBltMode(back, dragging || zoom != targetZoom ? COLORONCOLOR : HALFTONE);
+            SetBrushOrgEx(back, 0, 0, nullptr);
+            if (StretchBlt(back, dest.x, dest.y, dest.dx, dest.dy, source, 0, 0, src.dx, src.dy, SRCCOPY)) {
+                frame->Flush(dc, dirty);
+            }
+            SelectObject(source, original);
+        }
+        DeleteDC(source);
+    }
+
+    Rect ImageRect(HWND hwnd) {
+        RECT client{};
+        GetClientRect(hwnd, &client);
+        int width = client.right;
+        int height = client.bottom;
+        int sidePadding = DpiScale(hwnd, width < 260 ? 12 : 56);
+        int verticalPadding = DpiScale(hwnd, 16);
+        Size src = bitmap->GetSize();
+        float fit = std::min((float)std::max(1, width - 2 * sidePadding) / src.dx,
+                             (float)std::max(1, height - 2 * verticalPadding) / src.dy);
+        int dx = std::max(1, (int)roundf(src.dx * fit * zoom));
+        int dy = std::max(1, (int)roundf(src.dy * fit * zoom));
+        float limitX = std::max(0, dx - width) * 0.5f;
+        float limitY = std::max(0, dy - height) * 0.5f;
+        panX = std::max(-limitX, std::min(limitX, panX));
+        panY = std::max(-limitY, std::min(limitY, panY));
+        return {(width - dx) / 2 + (int)panX, (height - dy) / 2 + (int)panY, dx, dy};
+    }
+};
+
+static int ComparePreviewImages(RectF a, int aId, RectF b, int bId) {
+    if (a.y != b.y) return a.y < b.y ? -1 : 1;
+    if (a.x != b.x) return a.x < b.x ? -1 : 1;
+    return (aId > bId) - (aId < bId);
+}
+
+bool PageImagePreview::BrowseOnePage(HWND hwnd) {
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || dm->GetEngine() != engine) {
+        ClosePageImagePreview(GetParent(hwnd));
+        return false;
+    }
+    int lastPage = EngineIsProgressiveEbookLoading(engine) ? EngineGetProgressivePageCount(engine) : dm->PageCount();
+    if (!dm->ValidPageNo(scanPage) || scanPage > lastPage) {
+        KillTimer(hwnd, kImagePreviewBrowseTimer);
+        return false;
+    }
+    if (engine->kind == kindEngineMupdf && !EngineIsProgressiveEbookLoading(engine)) {
+        EngineMupdfEnsurePageImagesForHitTest(engine, scanPage);
+    }
+    PageElementImage* best = nullptr;
+    auto elements = engine->GetElements(scanPage);
+    for (auto* element : elements) {
+        if (!element->Is(kindPageElementImage) || element->rect.IsEmpty()) continue;
+        auto* image = (PageElementImage*)element;
+        if (scanPage == pageNo &&
+            ComparePreviewImages(image->rect, image->imageID, imagePosition, imageId) * direction <= 0)
+            continue;
+        if (!best || ComparePreviewImages(image->rect, image->imageID, best->rect, best->imageID) * direction < 0)
+            best = image;
+    }
+    if (best) {
+        RectF position = best->rect;
+        int id = best->imageID;
+        RenderedBitmap* next = engine->GetImageForPageElement(best);
+        if (next && next->GetBitmap() && !next->GetSize().IsEmpty()) {
+            delete cachedImage;
+            cachedImage = bitmap;
+            cachedPosition = imagePosition;
+            cachedId = imageId;
+            cachedPage = pageNo;
+            cachedDirection = -direction;
+            bitmap = next;
+            imagePosition = position;
+            imageId = id;
+            pageNo = scanPage;
+            Fit(hwnd);
+            KillTimer(hwnd, kImagePreviewBrowseTimer);
+            return false;
+        }
+        delete next;
+    }
+    scanPage += direction;
+    return true;
+}
+
+static void PaintPageImageButton(const DRAWITEMSTRUCT& item, const PageImagePreview& preview) {
+    RECT area = item.rcItem;
+    HDC dc = item.hDC;
+    int saved = SaveDC(dc);
+    SetDCBrushColor(dc, ThemeWindowBackgroundColor());
+    FillRect(dc, &area, (HBRUSH)GetStockObject(DC_BRUSH));
+    SelectObject(dc, GetStockObject(DC_BRUSH));
+    SelectObject(dc, GetStockObject(DC_PEN));
+    bool focused = preview.keyboardButtonFocus && (item.itemState & ODS_FOCUS);
+    bool hovered = item.hwndItem == preview.hoveredButton;
+    bool pressed = (item.itemState & ODS_SELECTED) != 0;
+    if (!ThemeUsesDarkChrome() || hovered || pressed || focused) {
+        COLORREF bg = pressed   ? ThemeInspectorSelectedBackgroundColor()
+                      : hovered ? ThemeInspectorHoverBackgroundColor()
+                                : ThemeWindowControlBackgroundColor();
+        SetDCBrushColor(dc, bg);
+        SetDCPenColor(dc, focused ? ThemeWindowLinkColor() : ThemeInspectorSeparatorColor());
+        int inset = DpiScale(item.hwndItem, 2);
+        int corner = DpiScale(item.hwndItem, 14);
+        RoundRect(dc, area.left + inset, area.top + inset, area.right - inset, area.bottom - inset, corner, corner);
+    }
+    RestoreDC(dc, saved);
+    COLORREF text = ThemeWindowTextColor();
+    float scale = DpiScale(item.hwndItem, 96) / 96.f;
+    float x = (area.left + area.right) * 0.5f;
+    float y = (area.top + area.bottom) * 0.5f;
+    float dx = (item.CtlID == PreviewPrevious ? 2.5f : -2.5f) * scale;
+    float dy = 5.f * scale;
+    Gdiplus::PointF points[] = {{x + dx, y - dy}, {x - dx, y}, {x + dx, y + dy}};
+    Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen arrow(Color(GetRValue(text), GetGValue(text), GetBValue(text)), 1.6f * scale);
+    arrow.SetLineJoin(Gdiplus::LineJoinRound);
+    arrow.SetStartCap(Gdiplus::LineCapRound);
+    arrow.SetEndCap(Gdiplus::LineCapRound);
+    graphics.DrawLines(&arrow, points, dimof(points));
+}
+
+static LRESULT CALLBACK PageImageButtonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    auto* preview = (PageImagePreview*)GetWindowLongPtrW(GetParent(hwnd), GWLP_USERDATA);
+    if (preview) {
+        if (msg == WM_MOUSEMOVE && preview->hoveredButton != hwnd) {
+            HWND previous = preview->hoveredButton;
+            preview->hoveredButton = hwnd;
+            TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tracking);
+            if (previous) InvalidateRect(previous, nullptr, FALSE);
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (msg == WM_MOUSELEAVE && preview->hoveredButton == hwnd) {
+            preview->hoveredButton = nullptr;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (msg == WM_LBUTTONDOWN) {
+            preview->keyboardButtonFocus = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK WndProcPageImagePreview(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    auto* preview = (PageImagePreview*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (!preview) return DefWindowProcW(hwnd, msg, wp, lp);
+    switch (msg) {
+        case WM_NCDESTROY:
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            delete preview;
+            break;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(hwnd, &ps);
+            preview->Paint(hwnd, dc, &ps.rcPaint);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_SIZE: {
+            int edge = DpiScale(hwnd, 12);
+            int size = DpiScale(hwnd, 32);
+            Rect client = ClientRect(hwnd);
+            int x = std::max(0, client.dx - edge - size);
+            int middle = std::max(0, (client.dy - size) / 2);
+            for (int id = PreviewPrevious; id <= PreviewNext; ++id) {
+                HWND button = preview->buttons[id - 1];
+                if (!button) continue;
+                MoveWindow(button, id == PreviewPrevious ? edge : x, middle, size, size, TRUE);
+            }
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        case WM_DRAWITEM:
+            if (wp < PreviewPrevious || wp > PreviewNext) break;
+            PaintPageImageButton(*(DRAWITEMSTRUCT*)lp, *preview);
+            return TRUE;
+        case WM_COMMAND: {
+            int id = LOWORD(wp);
+            if (HIWORD(wp) != BN_CLICKED || id < PreviewPrevious || id > PreviewNext) break;
+            preview->Browse(hwnd, id == PreviewPrevious ? -1 : 1);
+            return 0;
+        }
+        case WM_TIMER: {
+            if (wp == kImagePreviewMotionTimer) {
+                preview->TickZoom(hwnd);
+                return 0;
+            }
+            if (wp != kImagePreviewBrowseTimer) break;
+            ULONGLONG start = GetTickCount64();
+            for (int i = 0; i < 4; ++i) {
+                if (!preview->BrowseOnePage(hwnd) || GetTickCount64() - start >= 8) break;
+            }
+            return 0;
+        }
+        case WM_KEYDOWN:
+            if (wp == VK_ESCAPE) {
+                ClosePageImagePreview(GetParent(hwnd));
+            } else if (wp == VK_LEFT || wp == VK_RIGHT) {
+                preview->Browse(hwnd, wp == VK_LEFT ? -1 : 1);
+            } else if (wp == VK_TAB) {
+                preview->keyboardButtonFocus = true;
+                int id = GetDlgCtrlID(GetFocus());
+                int next = id >= PreviewPrevious && id <= PreviewNext ? id : 0;
+                next = (next + (IsShiftPressed() ? PreviewNext : 1)) % (PreviewNext + 1);
+                HWND button = next ? preview->buttons[next - 1] : nullptr;
+                SetFocus(button ? button : hwnd);
+            }
+            return 0;
+        case WM_MOUSEWHEEL: {
+            float zoom = preview->targetZoom * powf(1.2f, GET_WHEEL_DELTA_WPARAM(wp) / (float)WHEEL_DELTA);
+            zoom = std::max(1.f, std::min(16.f, zoom));
+            if (zoom == preview->targetZoom) return 0;
+            preview->targetZoom = zoom;
+            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            ScreenToClient(hwnd, &pt);
+            preview->zoomAnchor = {pt.x, pt.y};
+            preview->TickZoom(hwnd);
+            if (preview->zoom != preview->targetZoom && !SetTimer(hwnd, kImagePreviewMotionTimer, 15, nullptr)) {
+                preview->zoom = preview->targetZoom;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            return 0;
+        }
+        case WM_LBUTTONDOWN:
+            preview->keyboardButtonFocus = false;
+            SetFocus(hwnd);
+            preview->targetZoom = preview->zoom;
+            KillTimer(hwnd, kImagePreviewMotionTimer);
+            preview->drag = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            preview->dragging = true;
+            SetCapture(hwnd);
+            return 0;
+        case WM_MOUSEMOVE:
+            if (preview->dragging) {
+                Rect before = preview->ImageRect(hwnd);
+                Point pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                preview->panX += pt.x - preview->drag.x;
+                preview->panY += pt.y - preview->drag.y;
+                preview->drag = pt;
+                Rect after = preview->ImageRect(hwnd);
+                if (after.x != before.x || after.y != before.y) InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            return 0;
+        case WM_LBUTTONUP:
+            if (GetCapture() == hwnd) ReleaseCapture();
+            return 0;
+        case WM_CAPTURECHANGED:
+            preview->dragging = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        case WM_LBUTTONDBLCLK:
+            ClosePageImagePreview(GetParent(hwnd));
+            return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+bool ShowPageImagePreview(MainWindow* win, IPageElement* element, int pageNo) {
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    if (!dm || !element || !element->Is(kindPageElementImage)) return false;
+    auto* preview = new PageImagePreview();
+    preview->win = win;
+    preview->engine = dm->GetEngine();
+    preview->pageNo = pageNo;
+    preview->imagePosition = element->rect;
+    preview->imageId = ((PageElementImage*)element)->imageID;
+    preview->bitmap = preview->engine->GetImageForPageElement(element);
+    if (!preview->bitmap || !preview->bitmap->GetBitmap() || preview->bitmap->GetSize().IsEmpty()) {
+        delete preview;
+        return false;
+    }
+
+    WNDCLASSEXW wc{};
+    FillWndClassEx(wc, kImagePreviewClassName, WndProcPageImagePreview);
+    wc.style |= CS_DBLCLKS;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        delete preview;
+        return false;
+    }
+    HWND canvas = win->hwndCanvas;
+    Rect area = ClientRect(canvas);
+    ClosePageImagePreview(canvas);
+    HWND hwnd = CreateWindowExW(0, kImagePreviewClassName, _TRW("View Image"), WS_CHILD | WS_CLIPCHILDREN, 0, 0,
+                                area.dx, area.dy, canvas, nullptr, wc.hInstance, nullptr);
+    if (!hwnd) {
+        delete preview;
+        return false;
+    }
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)preview);
+    const char* names[] = {_TRN("Previous Image"), _TRN("Next Image")};
+    for (int id = PreviewPrevious; id <= PreviewNext; ++id) {
+        preview->buttons[id - 1] =
+            CreateWindowExW(0, WC_BUTTONW, _TRW(names[id - 1]), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0,
+                            0, 0, hwnd, (HMENU)(INT_PTR)id, wc.hInstance, nullptr);
+    }
+    for (HWND button : preview->buttons) {
+        if (button) SetWindowSubclass(button, PageImageButtonProc, 1, 0);
+    }
+    ShowWindow(hwnd, SW_SHOW);
+    SendMessageW(hwnd, WM_SIZE, 0, 0);
+    SetFocus(hwnd);
+    return true;
+}
 
 constexpr int kMinWindowWidth = 640;
 constexpr int kImagePadding = 16;
@@ -3150,6 +3572,34 @@ bool TestImageEditWindow() {
 }
 
 bool ImageEditWindowPreTranslate(MSG& msg) {
+    if (msg.message >= WM_KEYFIRST && msg.message <= WM_KEYLAST) {
+        WCHAR className[64]{};
+        HWND preview = msg.hwnd;
+        GetClassNameW(preview, className, dimof(className));
+        if (str::EqI(className, WC_BUTTONW)) {
+            preview = GetParent(preview);
+            GetClassNameW(preview, className, dimof(className));
+        }
+        if (str::Eq(className, kImagePreviewClassName)) {
+            if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
+                ClosePageImagePreview(GetParent(preview));
+                return true;
+            }
+            if (msg.message == WM_KEYDOWN && msg.hwnd != preview) {
+                if (msg.wParam == VK_TAB || msg.wParam == VK_LEFT || msg.wParam == VK_RIGHT) {
+                    SendMessageW(preview, WM_KEYDOWN, msg.wParam, msg.lParam);
+                    return true;
+                }
+                if (msg.wParam == VK_RETURN) {
+                    SendMessageW(msg.hwnd, BM_CLICK, 0, 0);
+                    return true;
+                }
+            }
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+            return true;
+        }
+    }
     for (ImageEditWindow* ew : gImageEditWindows) {
         if (msg.hwnd != ew->hwnd && !IsChild(ew->hwnd, msg.hwnd)) continue;
         if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {

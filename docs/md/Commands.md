@@ -73,6 +73,7 @@ CmdFindPrevSel,Shift + Ctrl + F3,Find Previous Selection,
 Command IDs,Keyboard shortcuts,Command Palette,Notes
 CmdBookView,Ctrl + 8,Book View,
 CmdFacingView,Ctrl + 7,Facing View,
+CmdViewImage,,,"First item in the Image context submenu. Double-click an illustration to preview it in the reading area and double-click again to close it."
 CmdInvertColors,Shift + I,Invert Colors,was `i` before 3.6
 CmdDisplayFilter,,Enhance Display,"toolbar toggle; per-document Auto mild/strong display enhancement"
 CmdTogglePreservePdfImages,,Toggle Preserve PDF Image Colors in Dark Mode,toggles `PreservePdfImagesInDarkMode` advanced setting

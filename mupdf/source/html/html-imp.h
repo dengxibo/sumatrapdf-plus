@@ -511,6 +511,7 @@ struct fz_html_box_s
 	unsigned int suppress_border: 4;
 	unsigned int collapsed_cell : 1;
 	unsigned int keep_image_caption : 1;
+        unsigned int auto_align_caption : 1;
 
         fz_html_box *up, *down, *next;
 

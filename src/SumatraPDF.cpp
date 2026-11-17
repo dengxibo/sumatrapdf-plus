@@ -4212,6 +4212,7 @@ void UpdateAfterThemeChange() {
     RerenderEverything();
 
     for (auto win : gWindows) {
+        ResizePageImagePreview(win->hwndCanvas);
         DeleteObject(win->brControlBgColor);
         win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
 
@@ -5616,6 +5617,7 @@ void LoadModelIntoTab(WindowTab* tab) {
     }
 
     MainWindow* win = tab->win;
+    ClosePageImagePreview(win->hwndCanvas);
     WindowTab* prevTab = win->CurrentTab();
     const bool switchingTab = (tab != prevTab);
     if (switchingTab && win->mouseAction == MouseAction::ImageRegion) CancelDrag(win);
@@ -6376,6 +6378,7 @@ static void OnMenuExit() {
 // into the tab right afterwards and ReplaceDocumentInCurrentTab would revert
 // the UI disabling afterwards anyway)
 static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool deleteModel) {
+    ClosePageImagePreview(win->hwndCanvas);
     HideSelectionToolbar(win);
     EndFreeTextInPlaceEditForTab(win->CurrentTab(), true);
     if (win->ctrl && !WinCtrlIsOwnedByAnyTab(win, win->ctrl)) {
