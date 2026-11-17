@@ -1901,6 +1901,8 @@ static int is_user_word_bookmark_name(const char* name) {
     if (!name || !name[0]) return 0;
     if (name[0] == '_') return 0; /* _Toc*, _Hlk*, _GoBack, … */
     if (is_generated_word_bookmark_name(name)) return 0;
+    /* Content is a navigation anchor; preserve its ID without a visible title. */
+    if (!strcmp(name, "Content")) return 0;
     /* Word/WPS heading anchors are navigation targets, not visible titles.
      * Keep their IDs, but do not synthesize a heading containing the ID. */
     if (!ascii_strncasecmp(name, "heading_", 8)) {
@@ -2431,6 +2433,11 @@ static void word_rpr_font_names(doc_info* info, fz_xml* rpr, const char** east_o
             east = info ? info->theme_minor_ea : NULL;
     }
     if (word_font_is_lang_placeholder(latin)) latin = NULL;
+    if (!east && latin && word_font_win_alias(latin) && !fz_xml_att_alt(rfonts, "w:eastAsiaTheme", "eastAsiaTheme")) {
+        const char* cs = fz_xml_att_alt(rfonts, "w:cs", "cs");
+        /* Some runs omit eastAsia but use the same CJK face in the other slots. */
+        if (cs && !strcmp(cs, latin)) east = latin;
+    }
     if (east_out) *east_out = east;
     if (latin_out) *latin_out = latin;
 }
