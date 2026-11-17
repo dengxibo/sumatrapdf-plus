@@ -80,6 +80,8 @@ struct PageImagePreview {
     EngineBase* engine = nullptr;
     RenderedBitmap* bitmap = nullptr;
     DoubleBuffer* frame = nullptr;
+    Rect frameImage;
+    bool frameReady = false;
     HWND buttons[PreviewNext]{};
     RectF imagePosition;
     int imageId = -1;
@@ -143,17 +145,19 @@ struct PageImagePreview {
         InvalidateRect(hwnd, nullptr, FALSE);
     }
 
-    void Paint(HWND hwnd, HDC dc, RECT* dirty) {
+    bool Paint(HWND hwnd, HDC dc, RECT* dirty) {
         Rect client = ClientRect(hwnd);
-        if (client.IsEmpty()) return;
+        if (client.IsEmpty()) return false;
         if (!frame || frame->rect.dx != client.dx || frame->rect.dy != client.dy) {
             delete frame;
             frame = new DoubleBuffer(hwnd, client);
+            frameReady = false;
         }
-        if (!frame->HasBitmap()) return;
+        if (!frame->HasBitmap()) return false;
 
         HDC source = CreateCompatibleDC(dc);
-        if (!source) return;
+        if (!source) return false;
+        bool painted = false;
         HGDIOBJ original = SelectObject(source, bitmap->GetBitmap());
         if (original && original != HGDI_ERROR) {
             HDC back = frame->GetDC();
@@ -161,15 +165,20 @@ struct PageImagePreview {
             SetDCBrushColor(back, ThemeWindowBackgroundColor());
             FillRect(back, &area, (HBRUSH)GetStockObject(DC_BRUSH));
             Rect dest = ImageRect(hwnd);
+            frameReady = false;
             Size src = bitmap->GetSize();
             SetStretchBltMode(back, dragging || zoom != targetZoom ? COLORONCOLOR : HALFTONE);
             SetBrushOrgEx(back, 0, 0, nullptr);
             if (StretchBlt(back, dest.x, dest.y, dest.dx, dest.dy, source, 0, 0, src.dx, src.dy, SRCCOPY)) {
+                frameImage = dest;
+                frameReady = true;
                 frame->Flush(dc, dirty);
+                painted = true;
             }
             SelectObject(source, original);
         }
         DeleteDC(source);
+        return painted;
     }
 
     Rect ImageRect(HWND hwnd) {
@@ -252,14 +261,21 @@ static void PaintPageImageButton(const DRAWITEMSTRUCT& item, const PageImagePrev
     RECT area = item.rcItem;
     HDC dc = item.hDC;
     int saved = SaveDC(dc);
-    SetDCBrushColor(dc, ThemeWindowBackgroundColor());
-    FillRect(dc, &area, (HBRUSH)GetStockObject(DC_BRUSH));
+    POINT origin{area.left, area.top};
+    MapWindowPoints(item.hwndItem, GetParent(item.hwndItem), &origin, 1);
+    Rect patch{origin.x, origin.y, area.right - area.left, area.bottom - area.top};
+    bool onImage = preview.frameReady && !preview.frameImage.Intersect(patch).IsEmpty();
+    if (!onImage ||
+        !BitBlt(dc, area.left, area.top, patch.dx, patch.dy, preview.frame->GetDC(), patch.x, patch.y, SRCCOPY)) {
+        SetDCBrushColor(dc, ThemeWindowBackgroundColor());
+        FillRect(dc, &area, (HBRUSH)GetStockObject(DC_BRUSH));
+    }
     SelectObject(dc, GetStockObject(DC_BRUSH));
     SelectObject(dc, GetStockObject(DC_PEN));
     bool focused = preview.keyboardButtonFocus && (item.itemState & ODS_FOCUS);
     bool hovered = item.hwndItem == preview.hoveredButton;
     bool pressed = (item.itemState & ODS_SELECTED) != 0;
-    if (!ThemeUsesDarkChrome() || hovered || pressed || focused) {
+    if (!ThemeUsesDarkChrome() || onImage || hovered || pressed || focused) {
         COLORREF bg = pressed   ? ThemeInspectorSelectedBackgroundColor()
                       : hovered ? ThemeInspectorHoverBackgroundColor()
                                 : ThemeWindowControlBackgroundColor();
@@ -320,8 +336,13 @@ static LRESULT CALLBACK WndProcPageImagePreview(HWND hwnd, UINT msg, WPARAM wp, 
         case WM_PAINT: {
             PAINTSTRUCT ps;
             HDC dc = BeginPaint(hwnd, &ps);
-            preview->Paint(hwnd, dc, &ps.rcPaint);
+            bool painted = preview->Paint(hwnd, dc, &ps.rcPaint);
             EndPaint(hwnd, &ps);
+            if (painted) {
+                for (HWND button : preview->buttons) {
+                    if (button) RedrawWindow(button, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+                }
+            }
             return 0;
         }
         case WM_SIZE: {
