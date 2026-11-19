@@ -1,4 +1,5 @@
 #include "utils/BaseUtil.h"
+#include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
 #include <mmsystem.h>
@@ -21,6 +22,10 @@
 #include "utils/FileUtil.h"
 #include "TtsPronunciation.h"
 #include "AppTools.h"
+#include "EdgeSpeechResponse.h"
+#include "EdgeSpeechTransport.h"
+#include "LookupAudio.h"
+#include "OfflineSpeech.h"
 
 #pragma comment(lib, "sapi.lib")
 #pragma comment(lib, "winmm.lib")
@@ -412,6 +417,261 @@ struct WinTtsCue {
 };
 static Vec<WinTtsCue> gWinCues;
 
+struct GeneratedAudioBlock {
+    WAVEHDR header{};
+    char* data = nullptr;
+};
+
+struct SpeechSynthesisJob {
+    CRITICAL_SECTION lock;
+    Vec<GeneratedAudioBlock*> blocks;
+    WAVEFORMATEX format{};
+    int submitted = 0;
+    DWORD earlyPcmBytes = 0;
+    int nextMp3Probe = 6000;
+    SpeechSynthesisJob() { InitializeCriticalSection(&lock); }
+    ~SpeechSynthesisJob() {
+        for (auto* block : blocks) {
+            free(block->data);
+            delete block;
+        }
+        DeleteCriticalSection(&lock);
+    }
+    LONG refs = 1;
+    LONG done = 0;
+    LONG audioMessagePosted = 0;
+    LONG streamFailed = 0;
+    HANDLE cancel = nullptr;
+    HANDLE firstAudio = nullptr;
+    HANDLE predecessorAudio = nullptr;
+    HWND hwnd = nullptr;
+    UINT msg = 0;
+    char* text = nullptr;
+    float rate = 1.0f;
+    const OfflineVoice* offline = nullptr;
+    const EdgeReadAloudVoice* edge = nullptr;
+    ULONGLONG started = 0;
+    ULONGLONG playRequested = 0;
+    char* wav = nullptr;
+    DWORD wavSize = 0;
+    Vec<WinTtsCue> cues;
+};
+
+static SpeechSynthesisJob* gSynthesisJob = nullptr;
+static SpeechSynthesisJob* gNextSynthesisJob = nullptr;
+static SpeechSynthesisJob* gGeneratedPlayback = nullptr;
+static bool gSynthesisFailure = false;
+static void WinTtsStopPlayback();
+
+static void ReleaseSynthesisJob(SpeechSynthesisJob* job) {
+    if (InterlockedDecrement(&job->refs) == 0) {
+        if (job->cancel) {
+            CloseHandle(job->cancel);
+        }
+        if (job->firstAudio) {
+            CloseHandle(job->firstAudio);
+        }
+        if (job->predecessorAudio) {
+            CloseHandle(job->predecessorAudio);
+        }
+        free(job->wav);
+        str::Free(job->text);
+        delete job;
+    }
+}
+
+static void CancelSynthesisJob(SpeechSynthesisJob*& job) {
+    if (job) {
+        SetEvent(job->cancel);
+        ReleaseSynthesisJob(job);
+        job = nullptr;
+    }
+}
+
+static void CancelSynthesisJobs() {
+    // Playback buffers are owned by the active job.
+    if (gGeneratedPlayback) {
+        WinTtsStopPlayback();
+    }
+    CancelSynthesisJob(gSynthesisJob);
+    CancelSynthesisJob(gNextSynthesisJob);
+}
+
+static bool WinTtsParseWav(const char*, size_t, WAVEFORMATEX*, const char**, DWORD*);
+
+static void NotifyGeneratedAudio(SpeechSynthesisJob* job) {
+    if (job->hwnd && WaitForSingleObject(job->cancel, 0) != WAIT_OBJECT_0 &&
+        InterlockedExchange(&job->audioMessagePosted, 1) == 0) {
+        PostMessageW(job->hwnd, job->msg, 0, 0);
+    }
+}
+
+static void AppendGeneratedPcm(void* context, const char* data, DWORD size) {
+    auto* job = (SpeechSynthesisJob*)context;
+    if (!size || WaitForSingleObject(job->cancel, 0) == WAIT_OBJECT_0) {
+        return;
+    }
+    auto* block = new GeneratedAudioBlock();
+    block->data = (char*)malloc(size);
+    if (!block->data) {
+        delete block;
+        InterlockedExchange(&job->streamFailed, 1);
+        NotifyGeneratedAudio(job);
+        return;
+    }
+    memcpy(block->data, data, size);
+    block->header.lpData = block->data;
+    block->header.dwBufferLength = size;
+    {
+        ScopedCritSec guard(&job->lock);
+        job->blocks.Append(block);
+    }
+    NotifyGeneratedAudio(job);
+}
+
+static void AppendGeneratedWord(void* context, int pos, int ms) {
+    auto* job = (SpeechSynthesisJob*)context;
+    ScopedCritSec guard(&job->lock);
+    job->cues.Append({pos, ms});
+}
+
+static void PublishEdgeWords(SpeechSynthesisJob* job, const EdgeSpeechResponse& response) {
+    ScopedCritSec guard(&job->lock);
+    job->cues.Reset();
+    for (const auto& word : response.words) {
+        int pos =
+            word.start ? MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, job->text, word.start, nullptr, 0) : 0;
+        if (word.offset100ns / 10000 <= INT_MAX) {
+            job->cues.Append({pos, (int)(word.offset100ns / 10000)});
+        }
+    }
+}
+
+static void PublishEdgePrefix(void* context, EdgeSpeechResponse& response) {
+    auto* job = (SpeechSynthesisJob*)context;
+    if (job->earlyPcmBytes || response.mp3.Size() < job->nextMp3Probe) {
+        return;
+    }
+    job->nextMp3Probe += 6000;
+    DWORD size = 0;
+    char* wav = DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), job->cancel, &size);
+    defer {
+        free(wav);
+    };
+    WAVEFORMATEX format{};
+    const char* pcm = nullptr;
+    DWORD pcmSize = 0;
+    if (!wav || !WinTtsParseWav(wav, size, &format, &pcm, &pcmSize) || !format.nBlockAlign) {
+        return;
+    }
+    // Leave the last MP3 frame for the final decode, including decoder end padding.
+    DWORD guardBytes = 1152 * format.nBlockAlign;
+    if (pcmSize <= guardBytes + format.nAvgBytesPerSec / 4) {
+        return;
+    }
+    job->earlyPcmBytes = (pcmSize - guardBytes) / format.nBlockAlign * format.nBlockAlign;
+    {
+        ScopedCritSec guard(&job->lock);
+        job->format = format;
+    }
+    PublishEdgeWords(job, response);
+    AppendGeneratedPcm(job, pcm, job->earlyPcmBytes);
+}
+
+static DWORD WINAPI RunSynthesisJob(void* arg) {
+    auto* job = (SpeechSynthesisJob*)arg;
+    if (job->offline) {
+        Vec<OfflineSpeechCue> cues;
+        HANDLE events[] = {job->cancel, job->predecessorAudio};
+        // Let the current offline model load and produce PCM before starting a second helper.
+        if (!job->predecessorAudio ||
+            WaitForMultipleObjects(dimof(events), events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
+            OfflineSpeechStream stream{job, AppendGeneratedPcm, AppendGeneratedWord};
+            job->wav = OfflineSpeechSynthesize(*job->offline, job->text, job->rate, job->cancel, &job->wavSize, cues,
+                                               job->firstAudio, &stream);
+        }
+        logf("Offline speech: %lu WAV bytes, %d word cues\n", job->wavSize, job->cues.Size());
+    } else {
+        HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        EdgeSpeechResponse response(job->text);
+        if (SUCCEEDED(com)) {
+            response.audioContext = job;
+            response.audioReceived = PublishEdgePrefix;
+        }
+        auto result = EdgeSpeechSynthesizeOnline(job->text, job->edge->shortName, job->rate, job->cancel, response);
+        if (result.error == ERROR_SUCCESS && SUCCEEDED(com) && WaitForSingleObject(job->cancel, 0) != WAIT_OBJECT_0) {
+            job->wav =
+                DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), job->cancel, &job->wavSize);
+            logf("Edge speech: HTTP %lu, %d MP3 bytes, %d word boundaries, %lu WAV bytes\n", result.httpStatus,
+                 response.mp3.Size(), response.words.Size(), job->wavSize);
+            PublishEdgeWords(job, response);
+            WAVEFORMATEX format{};
+            const char* pcm = nullptr;
+            DWORD pcmSize = 0;
+            if (job->wav && WinTtsParseWav(job->wav, job->wavSize, &format, &pcm, &pcmSize) &&
+                pcmSize >= job->earlyPcmBytes) {
+                {
+                    ScopedCritSec guard(&job->lock);
+                    job->format = format;
+                }
+                AppendGeneratedPcm(job, pcm + job->earlyPcmBytes, pcmSize - job->earlyPcmBytes);
+            }
+        } else if (result.error != ERROR_CANCELLED) {
+            logf("Edge speech: HTTP %lu, error %lu\n", result.httpStatus, result.error);
+        }
+        if (SUCCEEDED(com)) {
+            CoUninitialize();
+        }
+    }
+    DestroyTempAllocator();
+    InterlockedExchange(&job->done, 1);
+    if (job->hwnd && WaitForSingleObject(job->cancel, 0) != WAIT_OBJECT_0) {
+        PostMessageW(job->hwnd, job->msg, 0, 0);
+    }
+    ReleaseSynthesisJob(job);
+    return 0;
+}
+
+static SpeechSynthesisJob* NewSynthesisJob(const char* text, const OfflineVoice* offline,
+                                           const EdgeReadAloudVoice* edge) {
+    auto* job = new SpeechSynthesisJob();
+    job->cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (offline) {
+        job->firstAudio = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    }
+    job->text = str::Dup(text);
+    job->rate = gTtsSpeakingRate;
+    job->offline = offline;
+    if (offline) {
+        job->format.wFormatTag = WAVE_FORMAT_PCM;
+        job->format.nChannels = 1;
+        job->format.nSamplesPerSec = 24000;
+        job->format.wBitsPerSample = 16;
+        job->format.nBlockAlign = 2;
+        job->format.nAvgBytesPerSec = 48000;
+    }
+    job->edge = edge;
+    job->hwnd = gTtsNotifyHwnd;
+    job->msg = gTtsNotifyMsg;
+    if (!job->cancel || !job->text || (offline && !job->firstAudio)) {
+        ReleaseSynthesisJob(job);
+        return nullptr;
+    }
+    return job;
+}
+
+static bool StartSynthesisJob(SpeechSynthesisJob* job) {
+    job->started = GetTickCount64();
+    InterlockedIncrement(&job->refs);
+    HANDLE thread = CreateThread(nullptr, 0, RunSynthesisJob, job, 0, nullptr);
+    if (!thread) {
+        ReleaseSynthesisJob(job);
+        return false;
+    }
+    CloseHandle(thread);
+    return true;
+}
+
 static char* HStringToUtf8Dup(HSTRING hs) {
     UINT32 len = 0;
     PCWSTR s = pWindowsGetStringRawBuffer(hs, &len);
@@ -474,12 +734,21 @@ static void WinTtsCancelSynth() {
 static void WinTtsStopPlayback() {
     if (gWinWaveOut) {
         waveOutReset(gWinWaveOut);
+        if (gGeneratedPlayback) {
+            ScopedCritSec guard(&gGeneratedPlayback->lock);
+            for (auto* block : gGeneratedPlayback->blocks) {
+                if (block->header.dwFlags & WHDR_PREPARED) {
+                    waveOutUnprepareHeader(gWinWaveOut, &block->header, sizeof(block->header));
+                }
+            }
+        }
         if (gWinWaveHdr.dwFlags & WHDR_PREPARED) {
             waveOutUnprepareHeader(gWinWaveOut, &gWinWaveHdr, sizeof(gWinWaveHdr));
         }
         waveOutClose(gWinWaveOut);
         gWinWaveOut = nullptr;
     }
+    gGeneratedPlayback = nullptr;
 
     gWinWaveHdr = {};
     free(gWinWavData);
@@ -1003,6 +1272,66 @@ static bool WinTtsStartPlayback() {
 }
 
 static void WinTtsProcessEvents() {
+    if (gSynthesisJob) {
+        auto* job = gSynthesisJob;
+        InterlockedExchange(&job->audioMessagePosted, 0);
+        bool failed = InterlockedCompareExchange(&job->streamFailed, 0, 0) != 0;
+        bool finished = false;
+        {
+            ScopedCritSec guard(&job->lock);
+            bool done = InterlockedCompareExchange(&job->done, 0, 0) != 0;
+            if (!gWinWaveOut && !job->blocks.IsEmpty()) {
+                MMRESULT result = waveOutOpen(&gWinWaveOut, WAVE_MAPPER, &job->format, (DWORD_PTR)WinTtsWaveOutCb, 0,
+                                              CALLBACK_FUNCTION);
+                failed = result != MMSYSERR_NOERROR;
+                if (!failed) {
+                    gGeneratedPlayback = job;
+                    gWinAvgBytesPerSec = job->format.nAvgBytesPerSec;
+                    gWinSamplesPerSec = job->format.nSamplesPerSec;
+                    logf("%s speech: first audio submitted after %llu ms, %d text bytes\n",
+                         job->edge ? "Edge" : "Offline", GetTickCount64() - job->playRequested, str::Leni(job->text));
+                }
+            }
+            gWinCues.Reset();
+            for (const auto& cue : job->cues) {
+                gWinCues.Append(cue);
+            }
+            if (gWinWaveOut && !failed) {
+                for (; job->submitted < job->blocks.Size(); job->submitted++) {
+                    auto* block = job->blocks[job->submitted];
+                    if (waveOutPrepareHeader(gWinWaveOut, &block->header, sizeof(block->header)) != MMSYSERR_NOERROR ||
+                        waveOutWrite(gWinWaveOut, &block->header, sizeof(block->header)) != MMSYSERR_NOERROR) {
+                        failed = true;
+                        break;
+                    }
+                }
+            }
+            finished = done;
+            if (finished) {
+                for (auto* block : job->blocks) {
+                    if (!(block->header.dwFlags & WHDR_DONE)) {
+                        finished = false;
+                        break;
+                    }
+                }
+                failed = failed || job->blocks.IsEmpty() || !job->wav;
+            }
+        }
+        if (failed || finished) {
+            WinTtsStopPlayback();
+            gSynthesisJob = nullptr;
+            if (failed) {
+                SetEvent(job->cancel);
+                CancelSynthesisJob(gNextSynthesisJob);
+                gSynthesisFailure = true;
+            } else {
+                gTtsChunkFinished = true;
+            }
+            gTtsActive = false;
+            ReleaseSynthesisJob(job);
+        }
+        return;
+    }
     // a pending synthesis finished: start playing the result
     if (gWinSynthOp) {
         IAsyncInfo* info = nullptr;
@@ -1097,6 +1426,7 @@ static int WinTtsLastWordPosWide() {
 }
 
 static void WinTtsStop() {
+    CancelSynthesisJobs();
     WinTtsCancelSynth();
     WinTtsStopPlayback();
 }
@@ -1434,6 +1764,7 @@ bool TtsSpeakUtf8(const char* text) {
     if (str::IsEmpty(text)) {
         return false;
     }
+    CancelSynthesisJobs();
 
     TtsPronunciationEnsureLoaded();
     gTtsSpeakSourceMap.Reset();
@@ -1508,7 +1839,7 @@ bool TtsIsSpeaking() {
     }
 
     if (gTtsActiveBackend == TtsBackend::WinRt) {
-        if (gWinSynthOp || gWinWaveOut) {
+        if (gWinSynthOp || gWinWaveOut || gSynthesisJob) {
             return true;
         }
         gTtsActive = false;
@@ -1523,6 +1854,65 @@ bool TtsIsSpeaking() {
 
     gTtsActive = false;
     return false;
+}
+
+bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const EdgeReadAloudVoice* edge) {
+    if (str::IsEmpty(text) || (!offline && !edge)) {
+        return false;
+    }
+    SpeechSynthesisJob* job = nullptr;
+    // The queued block can finish while its predecessor is synthesizing or playing.
+    if (gNextSynthesisJob && !gSynthesisJob && !gWinWaveOut && gNextSynthesisJob->rate == gTtsSpeakingRate &&
+        gNextSynthesisJob->offline == offline && gNextSynthesisJob->edge == edge &&
+        str::Eq(text, gNextSynthesisJob->text)) {
+        bool ready = InterlockedCompareExchange(&gNextSynthesisJob->done, 0, 0) != 0;
+        if (!ready || gNextSynthesisJob->wav) {
+            job = gNextSynthesisJob;
+            gNextSynthesisJob = nullptr;
+            logf("%s speech: adopted next block, ready=%d\n", offline ? "Offline" : "Edge", (int)ready);
+        }
+    }
+    TtsStop();
+    if (!job) {
+        job = NewSynthesisJob(text, offline, edge);
+        if (!job) {
+            return false;
+        }
+        if (!StartSynthesisJob(job)) {
+            ReleaseSynthesisJob(job);
+            return false;
+        }
+    }
+    job->playRequested = GetTickCount64();
+    gSynthesisJob = job;
+    gWinCues.Reset();
+    str::Free(gTtsSpokenText);
+    gTtsSpokenText = ToWStr(text);
+    gTtsActiveBackend = TtsBackend::WinRt;
+    gTtsActive = true;
+    // A prefetched block may already have posted its completion while the previous block played.
+    TtsPostNotifyMsg();
+    return true;
+}
+
+void TtsQueueNextGeneratedUtf8(const char* text) {
+    if (gSynthesisJob && !gNextSynthesisJob && !str::IsEmpty(text)) {
+        gNextSynthesisJob = NewSynthesisJob(text, gSynthesisJob->offline, gSynthesisJob->edge);
+        if (gNextSynthesisJob && gSynthesisJob->firstAudio) {
+            HANDLE process = GetCurrentProcess();
+            DuplicateHandle(process, gSynthesisJob->firstAudio, process, &gNextSynthesisJob->predecessorAudio, 0, FALSE,
+                            DUPLICATE_SAME_ACCESS);
+        }
+        if (gNextSynthesisJob && !StartSynthesisJob(gNextSynthesisJob)) {
+            CancelSynthesisJob(gNextSynthesisJob);
+        }
+    }
+}
+
+bool TtsConsumeSynthesisFailure() {
+    bool failed = gSynthesisFailure;
+    gSynthesisFailure = false;
+    return failed;
 }
 
 static int TtsWidePosToUtf8Offset(int wpos) {
@@ -1605,6 +1995,7 @@ void TtsStop() {
     SapiStop();
     gTtsActive = false;
     gTtsChunkFinished = false;
+    gSynthesisFailure = false;
     gTtsActiveBackend = TtsBackend::Unknown;
     gTtsSpeakSourceMap.Reset();
 }

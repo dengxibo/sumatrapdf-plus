@@ -309,6 +309,9 @@ static SeqStrings gCommandNames =
     "CmdCapturePageRegion\0"
     "CmdTocLocateCurrentChapter\0"
     "CmdViewImage\0"
+    "CmdReadAloudSystemVoice\0"
+    "CmdReadAloudOfflineVoice\0"
+    "CmdReadAloudEdgeVoice\0"
     "CmdNone\0"
     "\0";
 
@@ -608,6 +611,9 @@ static i32 gCommandIds[] = {
     CmdCapturePageRegion,
     CmdTocLocateCurrentChapter,
     CmdViewImage,
+    CmdReadAloudSystemVoice,
+    CmdReadAloudOfflineVoice,
+    CmdReadAloudEdgeVoice,
     CmdNone,
 };
 
@@ -907,6 +913,9 @@ SeqStrings gCommandDescriptions =
     "Capture Page Region\0"
     "Locate Current Chapter\0"
     "View Image\0"
+    "System speech\0"
+    "Offline speech\0"
+    "Online speech\0"
     "Do nothing\0"
     "\0";
 // clang-format on

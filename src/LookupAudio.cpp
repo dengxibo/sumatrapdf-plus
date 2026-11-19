@@ -37,7 +37,6 @@ struct LookupAudioPlayCtx {
 
 static CRITICAL_SECTION gLookupAudioCs;
 static volatile LONG gLookupAudioCsReady = 0;
-static volatile LONG gLookupAudioMfStarted = 0;
 static HANDLE gLookupAudioThread = nullptr;
 static IAudioClient* gLookupAudioClient = nullptr;
 static volatile LONG gLookupAudioPlaying = 0;
@@ -57,14 +56,11 @@ static CRITICAL_SECTION* LookupAudioCs() {
 }
 
 static bool EnsureLookupAudioMf() {
-    if (InterlockedCompareExchange(&gLookupAudioMfStarted, 1, 0) == 0) {
-        HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
-        if (FAILED(hr)) {
-            logfa("LookupAudio: MFStartup failed: 0x%x\n", (unsigned)hr);
-            return false;
-        }
+    static const HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
+    if (FAILED(hr)) {
+        logfa("LookupAudio: MFStartup failed: 0x%x\n", (unsigned)hr);
     }
-    return true;
+    return SUCCEEDED(hr);
 }
 
 static bool LookupPcmAppend(LookupPcm* pcm, const u8* src, size_t n) {
@@ -126,7 +122,7 @@ static bool LookupGetDefaultMixFormat(WAVEFORMATEX** fmtOut) {
 }
 
 static bool LookupDecodeAudioToPcm(const u8* data, size_t size, const char* ext, LookupPcm* pcm,
-                                   const WAVEFORMATEX* targetFmt) {
+                                   const WAVEFORMATEX* targetFmt, HANDLE cancel = nullptr) {
     if (!data || size == 0 || !pcm) {
         return false;
     }
@@ -269,7 +265,9 @@ static bool LookupDecodeAudioToPcm(const u8* data, size_t size, const char* ext,
     CoTaskMemFree(fmt);
 
     for (;;) {
-        if (InterlockedCompareExchange(&gLookupAudioStop, 0, 0) != 0) {
+        bool stopped = cancel ? WaitForSingleObject(cancel, 0) == WAIT_OBJECT_0
+                              : InterlockedCompareExchange(&gLookupAudioStop, 0, 0) != 0;
+        if (stopped) {
             reader->Release();
             return false;
         }
@@ -325,6 +323,44 @@ static bool LookupDecodeAudioToPcm(const u8* data, size_t size, const char* ext,
         return false;
     }
     return true;
+}
+
+char* DecodeSpeechMp3ToWave(const u8* data, size_t size, HANDLE cancel, DWORD* waveSize) {
+    LookupPcm pcm;
+    defer {
+        LookupFreePcm(&pcm);
+    };
+    if (!LookupDecodeAudioToPcm(data, size, "mp3", &pcm, nullptr, cancel) || pcm.dataSize > 32 * 1024 * 1024) {
+        return nullptr;
+    }
+    if (pcm.format->wFormatTag == WAVE_FORMAT_EXTENSIBLE && pcm.formatSize >= sizeof(WAVEFORMATEXTENSIBLE) &&
+        IsEqualGUID(((WAVEFORMATEXTENSIBLE*)pcm.format)->SubFormat, MFAudioFormat_PCM) && pcm.format->nChannels <= 2) {
+        pcm.format->wFormatTag = WAVE_FORMAT_PCM;
+    }
+    if (pcm.format->wFormatTag != WAVE_FORMAT_PCM) {
+        return nullptr;
+    }
+    struct WaveHeader {
+        char riff[4] = {'R', 'I', 'F', 'F'};
+        DWORD riffSize = 0;
+        char waveFmt[8] = {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '};
+        DWORD fmtSize = 16;
+        char format[16]{};
+        char data[4] = {'d', 'a', 't', 'a'};
+        DWORD dataSize = 0;
+    };
+    static_assert(sizeof(WaveHeader) == 44);
+    WaveHeader header;
+    memcpy(&header.format, pcm.format, 16);
+    header.dataSize = (DWORD)pcm.dataSize;
+    header.riffSize = header.dataSize + sizeof(header) - 8;
+    *waveSize = header.riffSize + 8;
+    char* wav = (char*)malloc(*waveSize);
+    if (wav) {
+        memcpy(wav, &header, sizeof(header));
+        memcpy(wav + sizeof(header), pcm.data, pcm.dataSize);
+    }
+    return wav;
 }
 
 static bool LookupPlayPcmWasapi(const LookupPcm& pcm) {

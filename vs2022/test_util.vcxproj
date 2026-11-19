@@ -982,6 +982,10 @@
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\OcrTextMerge_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\LookupTtsVoice_ut.cpp" />
+    <ClCompile Include="..\src\EdgeSpeechResponse.cpp" />
+    <ClCompile Include="..\src\EdgeSpeechTransport.cpp" />
+    <ClCompile Include="..\src\LookupAudio.cpp" />
+    <ClCompile Include="..\src\utils\tests\EdgeSpeechResponse_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\EbookImagePaper_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\FlattenedCutout_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PrintedTocModel_ut.cpp" />

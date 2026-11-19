@@ -46251,7 +46251,7 @@ bs:When off, narrated books are read with the voice above.
 by:When off, narrated books are read with the voice above.
 ca:When off, narrated books are read with the voice above.
 ca-xv:When off, narrated books are read with the voice above.
-cn:关闭后，有声书改用上面的系统语音朗读。
+cn:关闭后，使用上面选择的音色朗读。
 co:When off, narrated books are read with the voice above.
 cy:When off, narrated books are read with the voice above.
 cz:When off, narrated books are read with the voice above.
@@ -46307,7 +46307,7 @@ ta:When off, narrated books are read with the voice above.
 th:When off, narrated books are read with the voice above.
 tl:When off, narrated books are read with the voice above.
 tr:Kapalıyken anlatımlı kitaplar yukarıdaki sesle okunur.
-tw:關閉後，有聲書改用上面的系統語音朗讀。
+tw:關閉後，使用上方選擇的音色朗讀。
 uk:Якщо вимкнено, озвучені книги читаються голосом вище.
 uz:When off, narrated books are read with the voice above.
 vn:Khi tắt, sách có tường thuật được đọc bằng giọng phía trên.
@@ -47940,3 +47940,82 @@ tr:Sonraki görüntü
 tw:下一張圖片
 uk:Наступне зображення
 vn:Ảnh tiếp theo
+
+:Offline &voices...
+cn:管理离线语音(&O)…
+tw:管理離線語音(&O)…
+:Offline (%s)
+cn:离线 · %s
+tw:離線 · %s
+:Edge online (Emma Multilingual)
+cn:Edge 在线 · Emma 多语种
+tw:Edge 線上 · Emma 多語種
+:Offline voices
+cn:离线语音
+tw:離線語音
+:&Import MSIX...
+cn:导入 MSIX(&I)…
+tw:匯入 MSIX(&I)…
+:No download is configured for this voice.
+cn:这个音色尚未接入下载。
+tw:這個音色尚未接入下載。
+:Not installed • %d MB
+cn:未安装 · %d MB
+tw:未安裝 · %d MB
+:&Download
+cn:下载(&D)
+tw:下載(&D)
+:Installed
+cn:已安装
+tw:已安裝
+:Downloading… %d%%
+cn:正在下载… %d%%
+tw:正在下載… %d%%
+:Verifying and unpacking the voice…
+cn:正在校验并解包语音…
+tw:正在驗證並解壓縮語音…
+:Verifying the voice package…
+cn:正在校验语音包…
+tw:正在驗證語音套件…
+:Cancelling…
+cn:正在取消…
+tw:正在取消…
+:Could not start voice installation.
+cn:无法开始安装语音。
+tw:無法開始安裝語音。
+:Installation failed. Check the source and package version.
+cn:语音安装失败，请重试或检查导入的语音包版本。
+tw:語音安裝失敗，請重試或檢查匯入的語音套件版本。
+:Voice &source:
+cn:语音来源(&S)：
+tw:語音來源(&S)：
+:Multilingual
+cn:多语种
+tw:多語種
+:System speech
+cn:系统语音
+tw:系統語音
+:Offline speech
+cn:离线语音
+tw:離線語音
+:Online speech
+cn:在线语音
+tw:線上語音
+:No offline voices installed
+cn:尚未安装离线语音
+tw:尚未安裝離線語音
+:Remove %s? You can download it again later.
+cn:要删除 %s 吗？以后可以重新下载。
+tw:要刪除 %s 嗎？之後可以重新下載。
+:De&lete
+cn:删除(&L)
+tw:刪除(&L)
+:Could not remove the offline voice. Try again.
+cn:未能删除离线语音，请重试。
+tw:無法刪除離線語音，請重試。
+:Online speech is unavailable
+cn:在线语音不可用
+tw:線上語音無法使用
+:Download an offline voice before choosing this source.
+cn:请先下载一个离线音色，再使用此语音来源。
+tw:請先下載一個離線音色，再使用此語音來源。

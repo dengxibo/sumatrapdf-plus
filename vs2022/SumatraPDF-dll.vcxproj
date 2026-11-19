@@ -1308,6 +1308,14 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\Installer.cpp" />
     <ClCompile Include="..\src\InstallerCommon.cpp" />
     <ClCompile Include="..\src\LookupAudio.cpp" />
+    <ClCompile Include="..\src\EdgeSpeechResponse.cpp" />
+    <ClCompile Include="..\src\EdgeSpeechTransport.cpp" />
+    <ClCompile Include="..\src\OfflineSpeech.cpp" />
+    <ClCompile Include="..\ext\tts-hd\InProcessSpeech.cpp">
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ForcedIncludeFiles />
+    </ClCompile>
+    <ClCompile Include="..\src\OfflineSpeechInstall.cpp" />
     <ClCompile Include="..\src\MainWindow.cpp" />
     <ClCompile Include="..\src\Md4cHtml.c" />
     <ClCompile Include="..\src\MdConvert.cpp" />
@@ -1852,6 +1860,9 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     </ProjectReference>
   </ItemGroup>
   <Import Project="Mermaid.props" />
+  <ItemDefinitionGroup>
+    <Link><DelayLoadDLLs>api-ms-win-core-winrt-error-l1-1-1.dll;%(DelayLoadDLLs)</DelayLoadDLLs></Link>
+  </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

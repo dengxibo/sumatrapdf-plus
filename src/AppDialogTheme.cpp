@@ -1445,6 +1445,26 @@ int AppMessageBoxW(HWND owner, const WCHAR* text, const WCHAR* caption, UINT fla
     }
     TASKDIALOGCONFIG tdc{};
     AppMessageBoxFillTaskDialog(&tdc, owner, text, caption, flags);
+    // Common TaskDialog buttons can be DirectUI elements with no child HWND.
+    // Supply translated labels when constructing the dialog.
+    TASKDIALOG_BUTTON buttons[6]{};
+    struct CommonButton {
+        DWORD flag;
+        int id;
+        const WCHAR* label;
+    };
+    CommonButton labels[] = {
+        {TDCBF_OK_BUTTON, IDOK, _TRW("OK")},           {TDCBF_YES_BUTTON, IDYES, _TRW("Yes")},
+        {TDCBF_NO_BUTTON, IDNO, _TRW("No")},           {TDCBF_CANCEL_BUTTON, IDCANCEL, _TRW("Cancel")},
+        {TDCBF_RETRY_BUTTON, IDRETRY, _TRW("&Retry")}, {TDCBF_CLOSE_BUTTON, IDCLOSE, _TRW("Close")},
+    };
+    for (const auto& label : labels) {
+        if (tdc.dwCommonButtons & label.flag) {
+            buttons[tdc.cButtons++] = {label.id, label.label};
+        }
+    }
+    tdc.pButtons = buttons;
+    tdc.dwCommonButtons = 0;
     tdc.pfCallback = AppMessageBoxTaskDialogExtra;
     tdc.lpCallbackData = (LONG_PTR)flags;
     int button = 0;

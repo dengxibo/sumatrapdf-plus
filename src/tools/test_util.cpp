@@ -1,6 +1,11 @@
 #include "utils/BaseUtil.h"
 #include "utils/WinDynCalls.h"
 #include "utils/FileUtil.h"
+#include "utils/WinUtil.h"
+#include "EdgeSpeechResponse.h"
+#include "EdgeSpeechTransport.h"
+#include "LookupAudio.h"
+#include "../../ext/edge-gec/EdgeGec.h"
 #include "PrintedTocPageDetector.h"
 #include "EpubMediaOverlay.h"
 #include "utils/Bm25.h"
@@ -27,6 +32,7 @@ extern void HtmlPullParser_UnitTests();
 extern void JsonTest();
 extern void OcrTextMerge_UnitTests();
 extern void LookupTtsVoice_UnitTests();
+extern void EdgeSpeechResponse_UnitTests();
 extern void EbookImagePaper_UnitTests();
 extern void FlattenedCutout_UnitTests();
 extern void SettingsUtilTest();
@@ -174,7 +180,115 @@ static void SearchTextTests() {
     utassert(!SearchTextIsWhitespace(0x20000));
 }
 
+struct EdgePrefixProbe {
+    ULONGLONG started = 0;
+    char* wav = nullptr;
+    DWORD size = 0;
+    HANDLE cancel = nullptr;
+};
+
+static void ProbeEdgePrefix(void* context, EdgeSpeechResponse& response) {
+    auto* probe = (EdgePrefixProbe*)context;
+    if (probe->wav || response.mp3.Size() < 6000) {
+        return;
+    }
+    probe->wav = DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), probe->cancel, &probe->size);
+    if (probe->wav) {
+        printf("Edge first decoded audio after %llu ms, %lu WAV bytes\n", GetTickCount64() - probe->started,
+               probe->size);
+    }
+}
+
+static int ProbeEdgeSpeech(const char* output, const EdgeReadAloudVoice& edgeVoice) {
+    const char* voice = edgeVoice.shortName;
+    const char* text = "这是一段中英混读测试。The same voice reads both languages.";
+    if (edgeVoice.language == EdgeVoiceLanguage::Chinese) {
+        text = "这是一段中文语音试听。";
+    } else if (edgeVoice.language == EdgeVoiceLanguage::English) {
+        text = "This is how the selected English voice sounds.";
+    }
+    if (const char* sample = GetEnvVariableTemp("SUMATRA_EDGE_PROBE_TEXT"); !str::IsEmpty(sample)) {
+        text = sample;
+    }
+    const char* resource = GetEnvVariableTemp("SUMATRA_EDGE_PROBE_RESOURCE");
+    const char* headers = GetEnvVariableTemp("SUMATRA_EDGE_PROBE_HEADERS");
+    WStrBuilder requestTarget;
+    if (!str::IsEmpty(resource)) {
+        requestTarget.Append(ToWStrTemp(resource));
+    }
+    if (!str::IsEmpty(resource) && str::Contains(resource, "{Sec-MS-GEC}")) {
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        ULARGE_INTEGER ticks;
+        ticks.LowPart = now.dwLowDateTime;
+        ticks.HighPart = now.dwHighDateTime;
+        char validation[82];
+        EdgeGec::Generate(ticks.QuadPart, validation);
+        str::Replace(requestTarget, L"{Sec-MS-GEC}", ToWStrTemp(validation));
+    }
+    EdgeSpeechResponse response(text);
+    ULONGLONG start = GetTickCount64();
+    HRESULT prefixCom = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    EdgePrefixProbe prefix{start, nullptr, 0, CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    defer {
+        free(prefix.wav);
+        if (prefix.cancel) CloseHandle(prefix.cancel);
+        if (SUCCEEDED(prefixCom)) CoUninitialize();
+    };
+    if (SUCCEEDED(prefixCom) && prefix.cancel) {
+        response.audioContext = &prefix;
+        response.audioReceived = ProbeEdgePrefix;
+    }
+    auto result = str::IsEmpty(resource) ? EdgeSpeechSynthesizeOnline(text, voice, 1.0f, nullptr, response)
+                                         : EdgeSpeechSynthesize(requestTarget.Get(), ToWStrTemp(headers), text, voice,
+                                                                1.0f, nullptr, response);
+    printf("Edge HTTP %lu, WinHTTP error %lu, elapsed %llu ms, audio %d bytes, word boundaries %d\n", result.httpStatus,
+           result.error, GetTickCount64() - start, response.mp3.Size(), response.words.Size());
+    if (result.error != ERROR_SUCCESS) {
+        return 1;
+    }
+    if (str::EndsWithI(output, ".wav")) {
+        HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        if (FAILED(com)) {
+            return 2;
+        }
+        defer {
+            CoUninitialize();
+        };
+        HANDLE cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!cancel) {
+            return 2;
+        }
+        defer {
+            CloseHandle(cancel);
+        };
+        DWORD size = 0;
+        char* wav = DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), cancel, &size);
+        defer {
+            free(wav);
+        };
+        if (prefix.wav && wav && prefix.size > 44 + 2304 && size >= prefix.size) {
+            DWORD bytes = prefix.size - 44 - 2304;
+            if (memcmp(prefix.wav + 44, wav + 44, bytes) != 0) {
+                fprintf(stderr, "Edge prefix differs from full decode\n");
+                return 3;
+            }
+            printf("Edge streaming splice verified for %lu PCM bytes\n", bytes);
+        }
+        return wav && file::WriteFile(output, ByteSlice((const u8*)wav, size)) ? 0 : 2;
+    }
+    return file::WriteFile(output, response.mp3.AsByteSlice()) ? 0 : 2;
+}
+
 int main(int argc, char** argv) {
+    if ((argc == 3 || argc == 4) && str::Eq(argv[1], "--edge-speech-probe")) {
+        const auto* voice = argc == 4 ? FindEdgeReadAloudVoice(argv[3]) : &gEdgeReadAloudVoices[0];
+        if (!voice) {
+            fprintf(stderr, "Unknown Edge voice: %s\n", argv[3]);
+            return 1;
+        }
+        return ProbeEdgeSpeech(argv[2], *voice);
+    }
     if (argc == 2 && str::Eq(argv[1], "--search-text-test")) {
         SearchTextTests();
         printf("Search text tests passed\n");
@@ -226,6 +340,7 @@ int main(int argc, char** argv) {
     JsonTest();
     OcrTextMerge_UnitTests();
     LookupTtsVoice_UnitTests();
+    EdgeSpeechResponse_UnitTests();
     EbookImagePaper_UnitTests();
     FlattenedCutout_UnitTests();
     SettingsUtilTest();

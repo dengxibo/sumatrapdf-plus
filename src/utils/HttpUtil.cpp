@@ -108,8 +108,8 @@ Error:
 constexpr const int kBufSize = 256 * 1024;
 
 // Download content of a url to a file
-bool HttpGetToFile(const char* urlA, const char* destFilePath, const Func1<HttpProgress*>& cbProgress) {
-    logf("HttpGetToFile: url: '%s', file: '%s'\n", urlA, destFilePath);
+bool HttpGetToFile(const char* urlA, const char* destFilePath, const Func1<HttpProgress*>& cbProgress, bool direct) {
+    logf("HttpGetToFile: file: '%s'\n", destFilePath);
     bool ok = false;
     HINTERNET hReq = nullptr, hInet = nullptr;
     DWORD dwRead = 0;
@@ -134,12 +134,13 @@ bool HttpGetToFile(const char* urlA, const char* destFilePath, const Func1<HttpP
         goto Exit;
     }
 
-    hInet = InternetOpenW(kUserAgent, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+    hInet = InternetOpenW(kUserAgent, direct ? INTERNET_OPEN_TYPE_DIRECT : INTERNET_OPEN_TYPE_PRECONFIG, nullptr,
+                          nullptr, 0);
     if (!hInet) {
         goto Exit;
     }
 
-    hReq = InternetOpenUrlW(hInet, url, nullptr, 0, 0, 0);
+    hReq = InternetOpenUrlW(hInet, url, nullptr, 0, direct ? INTERNET_FLAG_NO_AUTO_REDIRECT : 0, 0);
     if (!hReq) {
         goto Exit;
     }
@@ -177,7 +178,7 @@ bool HttpGetToFile(const char* urlA, const char* destFilePath, const Func1<HttpP
         progress.nDownloaded += (i64)dwRead;
         cbProgress.Call(&progress);
 
-        if (size != dwRead) {
+        if (progress.cancel || size != dwRead) {
             goto Exit;
         }
     }

@@ -750,6 +750,12 @@ struct GlobalPrefs {
     Vec<Theme*>* themes;
     // saved groups of tabs
     Vec<TabGroup*>* tabGroups;
+    // remembered Windows voice for Read Aloud
+    char* readAloudSystemVoiceId;
+    // remembered downloaded voice for Read Aloud
+    char* readAloudOfflineVoiceId;
+    // remembered Edge online voice for Read Aloud
+    char* readAloudEdgeVoiceId;
     // voice id for Read Aloud text-to-speech; empty or unset means system
     // default. Voice ids match those used internally by the Read Aloud
     // Voice menu (WinRT voice id or SAPI token id)
@@ -1282,6 +1288,9 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, tabGroups), SettingType::Array, (intptr_t)&gTabGroupInfo, "标签分组"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, readAloudSystemVoiceId), SettingType::String, 0, nullptr},
+    {offsetof(GlobalPrefs, readAloudOfflineVoiceId), SettingType::String, 0, nullptr},
+    {offsetof(GlobalPrefs, readAloudEdgeVoiceId), SettingType::String, 0, nullptr},
     {offsetof(GlobalPrefs, readAloudVoiceId), SettingType::String, 0, "朗读语音 ID"},
     {offsetof(GlobalPrefs, readAloudSpeakingRate), SettingType::Float, (intptr_t)"1", "朗读语速（旧）"},
     {offsetof(GlobalPrefs, readAloudSpeakingRateZh), SettingType::Float, (intptr_t)"1", "中文朗读语速"},
@@ -1318,7 +1327,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 146, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 149, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
@@ -1333,12 +1342,13 @@ static const StructInfo gGlobalPrefsInfo = {
     "ntSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0Z"
     "oomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0ImageOpenAfterSave\0PageImagesOpenFo"
     "lderAfterExport\0ImageSaveFolder\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0"
-    "\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0"
-    "ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnli"
-    "neVoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0"
-    "NarrationUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionTo"
-    "Skip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeO"
-    "fUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudSystemVoiceId\0ReadAloudOfflineV"
+    "oiceId\0ReadAloudEdgeVoiceId\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingR"
+    "ateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0Rea"
+    "dAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0NarrationUseBookAudio\0NarrationUseBookHigh"
+    "lightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindo"
+    "wPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinP"
+    "os\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

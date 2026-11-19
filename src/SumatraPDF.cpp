@@ -124,6 +124,9 @@
 #include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
 #include "TextToSpeech.h"
+#include "EdgeSpeechTransport.h"
+#include "OfflineSpeech.h"
+#include "OfflineSpeechInstall.h"
 #include "ReadAloudHighlight.h"
 #include "ReadAloudFollow.h"
 #include "ReadAloudBar.h"
@@ -14680,6 +14683,14 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 HWND gLastActiveFrameHwnd = nullptr;
 
 static constexpr UINT WM_TTS_EVENT = WM_APP + 0x421;
+
+static const EdgeReadAloudVoice* ReadAloudUsesEdge() {
+    return gGlobalPrefs ? FindEdgeReadAloudVoice(gGlobalPrefs->readAloudVoiceId) : nullptr;
+}
+
+static const OfflineVoice* ReadAloudUsesOfflineVoice() {
+    return gGlobalPrefs ? FindOfflineVoice(gGlobalPrefs->readAloudVoiceId) : nullptr;
+}
 static constexpr UINT WM_MAIN_WINDOW_DPI_SETTLED = WM_APP + 0x422;
 
 static WindowTab* gReadAloudSourceTab = nullptr;
@@ -14756,11 +14767,6 @@ static bool IsSmartBilingualVoicePref() {
     return gGlobalPrefs && TryGetSmartBilingualKind(gGlobalPrefs->readAloudVoiceId, nullptr);
 }
 
-static bool IsSmartBilingualKindActive(SmartBilingualKind kind) {
-    SmartBilingualKind active;
-    return gGlobalPrefs && TryGetSmartBilingualKind(gGlobalPrefs->readAloudVoiceId, &active) && active == kind;
-}
-
 static char** SmartBilingualZhPref(SmartBilingualKind kind) {
     if (!gGlobalPrefs) {
         return nullptr;
@@ -14816,24 +14822,6 @@ static bool ResolveSmartBilingualVoices(SmartBilingualKind kind) {
     return gSmartBilingualZhVoiceId || gSmartBilingualEnVoiceId;
 }
 
-static bool TtsSmartBilingualAvailable(SmartBilingualKind kind) {
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    bool haveZh = false;
-    bool haveEn = false;
-    for (TtsVoiceInfo& voice : voices) {
-        if (!IsSmartBilingualVoiceMatch(voice, kind)) {
-            continue;
-        }
-        if (VoiceLangStartsWith(voice, "zh")) {
-            haveZh = true;
-        } else if (VoiceLangStartsWith(voice, "en")) {
-            haveEn = true;
-        }
-    }
-    TtsFreeVoices(voices);
-    return haveZh || haveEn;
-}
-
 static bool IsMultilingualTtsVoice(const TtsVoiceInfo& voice) {
     return GetTtsVoiceGroup(voice.name) == TtsVoiceGroup::OnlineMultilingual;
 }
@@ -14846,27 +14834,6 @@ static bool IsMultilingualVoiceId(const char* voiceId) {
     bool found = false;
     for (TtsVoiceInfo& voice : voices) {
         if (str::Eq(voice.id, voiceId) && IsMultilingualTtsVoice(voice)) {
-            found = true;
-            break;
-        }
-    }
-    TtsFreeVoices(voices);
-    return found;
-}
-
-static bool IsMultilingualModeSelected() {
-    if (!gGlobalPrefs) {
-        return false;
-    }
-    const char* id = gGlobalPrefs->readAloudVoiceId;
-    return str::Eq(id, kTtsMultilingualVoiceId) || IsMultilingualVoiceId(id);
-}
-
-static bool TtsMultilingualAvailable() {
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    bool found = false;
-    for (TtsVoiceInfo& voice : voices) {
-        if (IsMultilingualTtsVoice(voice)) {
             found = true;
             break;
         }
@@ -14910,33 +14877,6 @@ static void AutoFillMultilingualVoicePrefIfEmpty() {
     TtsFreeVoices(voices);
 }
 
-static void ReadAloudApplyMultilingualVoice(const char* voiceId) {
-    if (!gGlobalPrefs || str::IsEmpty(voiceId)) {
-        return;
-    }
-    bool active = IsMultilingualModeSelected();
-    bool samePref = str::Eq(gGlobalPrefs->readAloudMultilingualVoice, voiceId);
-    bool modeIsPseudo = str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsMultilingualVoiceId);
-    if (samePref && (!active || modeIsPseudo)) {
-        return;
-    }
-
-    str::ReplaceWithCopy(&gGlobalPrefs->readAloudMultilingualVoice, voiceId);
-    if (!active) {
-        return;
-    }
-    if (!modeIsPseudo) {
-        str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, kTtsMultilingualVoiceId);
-    }
-    // Save the old playback position before changing the synthesizer. SAPI
-    // invalidates the old generation when voice/rate settings change.
-    if (TtsIsSpeaking()) {
-        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
-    } else {
-        TtsSetVoiceById(voiceId);
-    }
-}
-
 // fills empty zh/en prefs with the first matching voice for each language
 static void AutoFillSmartBilingualVoicePrefsIfEmpty(SmartBilingualKind kind) {
     char** zhPref = SmartBilingualZhPref(kind);
@@ -14968,23 +14908,6 @@ static void AutoFillSmartBilingualVoicePrefsIfEmpty(SmartBilingualKind kind) {
         }
     }
     TtsFreeVoices(voices);
-}
-
-static void ReadAloudApplySmartBilingualVoice(SmartBilingualKind kind, bool isZh, const char* voiceId) {
-    char** pref = isZh ? SmartBilingualZhPref(kind) : SmartBilingualEnPref(kind);
-    if (!pref || str::IsEmpty(voiceId)) {
-        return;
-    }
-
-    if (str::Eq(*pref, voiceId)) {
-        return;
-    }
-
-    str::ReplaceWithCopy(pref, voiceId);
-    InvalidateSmartBilingualVoiceCache();
-    if (IsSmartBilingualKindActive(kind)) {
-        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
-    }
 }
 
 static constexpr float kReadAloudSpeedPresets[] = {0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
@@ -15262,6 +15185,9 @@ static void ReadAloudApplyVoiceFromSettings() {
         return;
     }
     const char* voiceId = gGlobalPrefs->readAloudVoiceId;
+    if (FindEdgeReadAloudVoice(voiceId) || FindOfflineVoice(voiceId)) {
+        return;
+    }
     if (TryGetSmartBilingualKind(voiceId, nullptr)) {
         return;
     }
@@ -15309,6 +15235,57 @@ static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab) {
     ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"));
 }
 
+enum class ReadAloudVoiceSource {
+    System,
+    Offline,
+    Edge
+};
+
+static constexpr const char* kReadAloudSystemDefault = "windows:default";
+
+static ReadAloudVoiceSource ReadAloudSourceForVoice(const char* id) {
+    if (FindEdgeReadAloudVoice(id)) {
+        return ReadAloudVoiceSource::Edge;
+    }
+    return FindOfflineVoice(id) ? ReadAloudVoiceSource::Offline : ReadAloudVoiceSource::System;
+}
+
+static const char* ReadAloudSourceName(ReadAloudVoiceSource source) {
+    switch (source) {
+        case ReadAloudVoiceSource::Offline:
+            return _TRA("Offline speech");
+        case ReadAloudVoiceSource::Edge:
+            return _TRA("Online speech");
+        default:
+            return _TRA("System speech");
+    }
+}
+
+static char*& ReadAloudRememberedVoice(ReadAloudVoiceSource source) {
+    switch (source) {
+        case ReadAloudVoiceSource::Offline:
+            return gGlobalPrefs->readAloudOfflineVoiceId;
+        case ReadAloudVoiceSource::Edge:
+            return gGlobalPrefs->readAloudEdgeVoiceId;
+        default:
+            return gGlobalPrefs->readAloudSystemVoiceId;
+    }
+}
+
+static const char* ReadAloudVoiceChoice(const char* id) {
+    return str::IsEmpty(id) ? kReadAloudSystemDefault : id;
+}
+
+static const char* ReadAloudEngineVoice(const char* choice) {
+    return str::Eq(choice, kReadAloudSystemDefault) ? "" : choice;
+}
+
+static bool ReadAloudConfirmEdgeVoice(HWND owner) {
+    return HasPermission(Perm::InternetAccess) &&
+           AppMessageBoxW(owner, ToWStrTemp(_TRA("Edge online reading sends the text being read to Microsoft.")),
+                          ToWStrTemp(_TRA("Read Aloud")), MB_OKCANCEL | MB_ICONINFORMATION) == IDOK;
+}
+
 static void ReadAloudSaveVoicePref(const char* voiceId) {
     if (!gGlobalPrefs) {
         return;
@@ -15317,7 +15294,16 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
     const char* newVoiceId = voiceId ? voiceId : "";
     const char* curPref = gGlobalPrefs->readAloudVoiceId ? gGlobalPrefs->readAloudVoiceId : "";
     if (str::Eq(curPref, newVoiceId)) {
+        str::ReplaceWithCopy(&ReadAloudRememberedVoice(ReadAloudSourceForVoice(curPref)),
+                             ReadAloudVoiceChoice(curPref));
         return;
+    }
+    if (FindEdgeReadAloudVoice(newVoiceId)) {
+        if (!HasPermission(Perm::InternetAccess) ||
+            (!FindEdgeReadAloudVoice(gGlobalPrefs->readAloudEdgeVoiceId) && !FindEdgeReadAloudVoice(curPref) &&
+             !ReadAloudConfirmEdgeVoice(GetActiveWindow()))) {
+            return;
+        }
     }
 
     SmartBilingualKind smartKind;
@@ -15334,14 +15320,31 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
         }
     }
 
+    auto currentSource = ReadAloudSourceForVoice(curPref);
+    auto newSource = ReadAloudSourceForVoice(newVoiceId);
+    if (currentSource != newSource && str::IsEmpty(ReadAloudRememberedVoice(currentSource))) {
+        str::ReplaceWithCopy(&ReadAloudRememberedVoice(currentSource), ReadAloudVoiceChoice(curPref));
+    }
     str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, newVoiceId);
+    if (const auto* offline = FindOfflineVoice(gGlobalPrefs->readAloudVoiceId)) {
+        OfflineSpeechPrepare(*offline);
+    } else if (FindEdgeReadAloudVoice(gGlobalPrefs->readAloudVoiceId) && HasPermission(Perm::InternetAccess)) {
+        EdgeSpeechPrepare();
+    }
+    str::ReplaceWithCopy(&ReadAloudRememberedVoice(newSource), ReadAloudVoiceChoice(gGlobalPrefs->readAloudVoiceId));
     SaveSettings();
 
-    ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    if (ReadAloudUsesEdge()) {
+        ReadAloudStopRememberPos();
+    } else {
+        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    }
 }
 
 // WinRT speech synthesis is too slow for whole-document requests; speak in chunks.
 static constexpr int kReadAloudMaxChunkLen = 1024;
+static constexpr int kGeneratedReadAloudFirstChunkLen = 96;
+static constexpr int kGeneratedReadAloudMaxChunkLen = 216;
 
 static int ReadAloudFindChunkEnd(const char* text, int start, int maxLen) {
     int textLen = str::Leni(text);
@@ -15364,6 +15367,32 @@ static int ReadAloudFindChunkEnd(const char* text, int start, int maxLen) {
         }
     }
     return end;
+}
+
+static int ReadAloudFindGeneratedChunkEnd(const char* text, int start, int maxLen) {
+    const char* p = text + start;
+    int end = start;
+    int sentence = start;
+    int word = start;
+    while (*p) {
+        char32_t cp = 0;
+        if (!ReadAloudDecodeUtf8One(p, &cp) || p - text - start > maxLen) {
+            break;
+        }
+        end = (int)(p - text);
+        if (ReadAloudIsSentenceEndCp(cp) || cp == '\n') {
+            sentence = end;
+        } else if (cp == ' ') {
+            word = end;
+        }
+    }
+    if (end == start || !text[end]) {
+        return end;
+    }
+    if (sentence - start >= maxLen / 3) {
+        return sentence;
+    }
+    return word - start >= maxLen / 2 ? word : end;
 }
 
 static bool ReadAloudHasMoreDocumentPages(WindowTab* tab) {
@@ -15439,14 +15468,24 @@ static bool ReadAloudEnsureDocumentTextExtended(WindowTab* tab) {
     return true;
 }
 
-static int ReadAloudInitialBuildEndPage(WindowTab* tab, DisplayModel* dm, int startPage) {
-    int pageCount = dm->PageCount();
+static bool ReadAloudBuildInitialText(WindowTab* tab, DisplayModel* dm, int startPage, int startGlyph, int& endPage,
+                                      ReadAloudHighlightMap& map, StrBuilder& cleaned) {
+    endPage = startPage;
     if (tab->autoOcrOn) {
         // Leave later pages for incremental asynchronous OCR extension.
-        return startPage;
+        return ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned);
     }
-    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
-    return std::min(endPage, pageCount);
+    if (ReadAloudUsesEdge() || ReadAloudUsesOfflineVoice()) {
+        if (ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned) &&
+            !cleaned.IsEmpty()) {
+            return true;
+        }
+        // A blank page or an end-of-page cursor can still have text on the following page.
+        ReadAloudHighlightFree(&map);
+        cleaned.Reset();
+    }
+    endPage = std::min(startPage + kReadAloudBuildPagesPerBatch - 1, dm->PageCount());
+    return ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned);
 }
 
 static bool ReadAloudHasMoreChunks(WindowTab* tab) {
@@ -15573,7 +15612,13 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
         return false;
     }
 
-    ReadAloudEnsureDocumentTextExtended(tab);
+    const auto* edge = ReadAloudUsesEdge();
+    const OfflineVoice* offline = ReadAloudUsesOfflineVoice();
+    bool generated = edge || offline;
+    bool firstGenerated = generated && tab->readAloudChunkStart == tab->readAloudChunkEnd;
+    if (!generated) {
+        ReadAloudEnsureDocumentTextExtended(tab);
+    }
 
     if (str::IsEmpty(tab->readAloudText)) {
         if (!ReadAloudEnsureDocumentTextExtended(tab) || str::IsEmpty(tab->readAloudText)) {
@@ -15594,9 +15639,17 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
 
     int end;
     ReadAloudLang rateLang = ReadAloudLang::Unknown;
+    if (offline && !OfflineSpeechAvailable(*offline)) {
+        ReadAloudShowNotif(tab, _TRA("The offline voice package is missing from the tts folder."));
+        return false;
+    }
+    if (edge && !HasPermission(Perm::InternetAccess)) {
+        ReadAloudShowNotif(tab, _TRA("Internet access is required for Edge online reading."));
+        return false;
+    }
     // Dictionary lookup may have pointed the synthesizer at another voice.
     // Put the configured voice back before this chunk, including the system default.
-    if (!IsSmartBilingualVoicePref() && !ReadAloudSynthesizerMatchesSettings()) {
+    if (!edge && !offline && !IsSmartBilingualVoicePref() && !ReadAloudSynthesizerMatchesSettings()) {
         ReadAloudApplyVoiceFromSettings();
     }
     if (IsSmartBilingualVoicePref() && ResolveActiveSmartBilingualVoices()) {
@@ -15612,8 +15665,10 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
         }
         rateLang = lang;
     } else {
-        end = ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
-        rateLang = ReadAloudLangFromVoiceId(TtsGetVoiceId());
+        int maxLen = firstGenerated ? kGeneratedReadAloudFirstChunkLen : kGeneratedReadAloudMaxChunkLen;
+        end = generated ? ReadAloudFindGeneratedChunkEnd(tab->readAloudText, start, maxLen)
+                        : ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
+        rateLang = edge || offline ? ReadAloudLang::Unknown : ReadAloudLangFromVoiceId(TtsGetVoiceId());
     }
     ReadAloudApplyRateForLang(rateLang);
     gReadAloudChunkLang = rateLang;
@@ -15627,7 +15682,7 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     // one voice at a time: text-to-speech replaces EPUB narration and page audio
     MediaOverlayStop();
     PdfPageAudioStop();
-    if (!TtsSpeakUtf8(chunk)) {
+    if (!(generated ? TtsSpeakGeneratedUtf8(chunk, offline, edge) : TtsSpeakUtf8(chunk))) {
         ReadAloudShowNotif(tab, errMsg);
         return false;
     }
@@ -15636,9 +15691,15 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     tab->readAloudChunkEnd = end;
     // Bilingual mode can change voice/rate at the next boundary.
     if (!IsSmartBilingualVoicePref() && end < textLen) {
-        int nextEnd = ReadAloudFindChunkEnd(tab->readAloudText, end, kReadAloudMaxChunkLen);
+        int nextEnd = generated
+                          ? ReadAloudFindGeneratedChunkEnd(tab->readAloudText, end, kGeneratedReadAloudMaxChunkLen)
+                          : ReadAloudFindChunkEnd(tab->readAloudText, end, kReadAloudMaxChunkLen);
         TempStr nextChunk = str::DupTemp(tab->readAloudText + end, (size_t)(nextEnd - end));
-        TtsQueueNextUtf8(nextChunk);
+        if (generated) {
+            TtsQueueNextGeneratedUtf8(nextChunk);
+        } else {
+            TtsQueueNextUtf8(nextChunk);
+        }
     }
     ToolbarUpdateStateForWindow(tab->win, true);
     InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
@@ -15714,9 +15775,9 @@ static constexpr COLORREF kReadAloudDefaultHighlight = RGB(255, 255, 0);
 // Changes are kept here and applied on OK; combo item data points into ownedIds.
 struct ReadAloudSettingsPage {
     Vec<char*> ownedIds;
-    SmartBilingualKind shownKind = SmartBilingualKind::Local;
-    char* pendingZh[2] = {};
-    char* pendingEn[2] = {};
+    char* choices[3]{};
+    ReadAloudVoiceSource source = ReadAloudVoiceSource::System;
+    bool voiceChanged = false;
     COLORREF highlightColor = kReadAloudDefaultHighlight;
     bool previewZh = false;
     bool previewing = false;
@@ -15725,12 +15786,15 @@ struct ReadAloudSettingsPage {
 static ReadAloudSettingsPage* gReadAloudPage = nullptr;
 static COLORREF gReadAloudCustomColors[16] = {};
 static bool gPendingReadAloudSettings = false;
+static int gRequestedReadAloudSource = -1;
 
 static int ReadAloudPageComboAdd(HWND combo, const char* text, const char* id) {
     int idx = (int)SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(text));
     if (idx >= 0) {
-        char* s = str::Dup(id ? id : "");
-        gReadAloudPage->ownedIds.Append(s);
+        char* s = id ? str::Dup(id) : nullptr;
+        if (s) {
+            gReadAloudPage->ownedIds.Append(s);
+        }
         SendMessageW(combo, CB_SETITEMDATA, idx, (LPARAM)s);
     }
     return idx;
@@ -15789,81 +15853,86 @@ static void ReadAloudPageFitDropWidth(HWND combo) {
     }
     ReleaseDC(combo, hdc);
     int dx = maxDx + DpiScale(combo, 24);
-    if (dx > WindowRect(combo).dx) {
-        SendMessageW(combo, CB_SETDROPPEDWIDTH, dx, 0);
+    MONITORINFO monitor{};
+    monitor.cbSize = sizeof(monitor);
+    if (GetMonitorInfoW(MonitorFromWindow(combo, MONITOR_DEFAULTTONEAREST), &monitor)) {
+        dx = std::min(dx, (int)(monitor.rcWork.right - monitor.rcWork.left));
     }
+    SendMessageW(combo, CB_SETDROPPEDWIDTH, std::max(dx, WindowRect(combo).dx), 0);
 }
 
 static TempStr ReadAloudVoiceLabelTemp(const TtsVoiceInfo& voice) {
     return str::FormatTemp("%s - %s", voice.name, TtsLangIdToLocaleNameTemp(voice.lang));
 }
 
-static const char* ReadAloudPageModeId(HWND hDlg) {
-    const char* id = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_MODE));
-    return id ? id : "";
+static void ReadAloudPageClearVoiceIds(ReadAloudSettingsPage* page) {
+    for (char* id : page->ownedIds) {
+        str::Free(id);
+    }
+    page->ownedIds.Reset();
 }
 
-static void ReadAloudPageFillSmartCombos(HWND hDlg) {
+static void ReadAloudPagePopulateVoices(HWND hDlg) {
     ReadAloudSettingsPage* p = gReadAloudPage;
-    int k = (int)p->shownKind;
-    struct {
-        int id;
-        const char* lang;
-        const char* sel;
-    } rows[] = {{IDC_RA_VOICE_ZH, "zh", p->pendingZh[k]}, {IDC_RA_VOICE_EN, "en", p->pendingEn[k]}};
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    for (auto& row : rows) {
-        HWND combo = GetDlgItem(hDlg, row.id);
-        SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-        for (TtsVoiceInfo& voice : voices) {
-            if (IsSmartBilingualVoiceMatch(voice, p->shownKind) && VoiceLangStartsWith(voice, row.lang)) {
+    HWND combo = GetDlgItem(hDlg, IDC_RA_VOICE_PICK);
+    bool visible = IsWindowVisible(combo);
+    if (visible) {
+        SendMessageW(combo, WM_SETREDRAW, FALSE, 0);
+    }
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    ReadAloudPageClearVoiceIds(p);
+    if (p->source == ReadAloudVoiceSource::System) {
+        ReadAloudPageComboAdd(combo, _TRA("System default"), kReadAloudSystemDefault);
+        Vec<TtsVoiceInfo> voices = TtsGetVoices();
+        for (const auto& voice : voices) {
+            if (IsLocalTtsVoice(voice)) {
                 ReadAloudPageComboAdd(combo, ReadAloudVoiceLabelTemp(voice), voice.id);
             }
         }
-        ReadAloudPageComboSelectId(combo, row.sel);
-        ReadAloudPageFitDropWidth(combo);
+        TtsFreeVoices(voices);
+    } else if (p->source == ReadAloudVoiceSource::Offline) {
+        for (const auto& voice : gOfflineVoices) {
+            if (voice.id && OfflineSpeechAvailable(voice)) {
+                ReadAloudPageComboAdd(combo, voice.name, voice.id);
+            }
+        }
+    } else if (HasPermission(Perm::InternetAccess)) {
+        EdgeSpeechPrepare();
+        for (int i = 0; i < gEdgeReadAloudVoiceCount; i++) {
+            const auto& voice = gEdgeReadAloudVoices[i];
+            const char* language = voice.language == EdgeVoiceLanguage::Multilingual ? _TRA("Multilingual")
+                                   : voice.language == EdgeVoiceLanguage::Chinese    ? _TRA("Chinese")
+                                                                                     : _TRA("English");
+            ReadAloudPageComboAdd(combo, str::FormatTemp("%s · %s", language, voice.name), voice.id);
+        }
     }
-    TtsFreeVoices(voices);
+    bool available = ReadAloudPageComboCount(combo) > 0;
+    if (!available) {
+        const char* label = p->source == ReadAloudVoiceSource::Offline ? _TRA("No offline voices installed")
+                                                                       : _TRA("Online speech is unavailable");
+        ReadAloudPageComboAdd(combo, label, nullptr);
+    }
+    ReadAloudPageComboSelectId(combo, p->choices[(int)p->source]);
+    if (p->source == ReadAloudVoiceSource::Offline) {
+        const char* selected = ReadAloudPageComboId(combo);
+        if (const auto* voice = FindOfflineVoice(selected)) {
+            OfflineSpeechPrepare(*voice);
+        }
+    }
+    ReadAloudPageFitDropWidth(combo);
+    EnableWindow(combo, available);
+    EnableWindow(GetDlgItem(hDlg, IDC_RA_PREVIEW), available);
+    if (visible) {
+        SendMessageW(combo, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(combo, nullptr, FALSE);
+    }
 }
 
-static void ReadAloudPageStoreSmartCombos(HWND hDlg) {
+static void ReadAloudPageRememberSelection(HWND hDlg) {
     ReadAloudSettingsPage* p = gReadAloudPage;
-    int k = (int)p->shownKind;
-    if (const char* zh = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_ZH))) {
-        str::ReplaceWithCopy(&p->pendingZh[k], zh);
-    }
-    if (const char* en = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_EN))) {
-        str::ReplaceWithCopy(&p->pendingEn[k], en);
-    }
-}
-
-// only the rows that belong to the chosen voice are enabled
-static void ReadAloudPageUpdateVoiceRows(HWND hDlg, bool refill) {
-    ReadAloudSettingsPage* p = gReadAloudPage;
-    const char* mode = ReadAloudPageModeId(hDlg);
-    SmartBilingualKind kind;
-    bool isSmart = TryGetSmartBilingualKind(mode, &kind);
-    if (isSmart && kind != p->shownKind) {
-        ReadAloudPageStoreSmartCombos(hDlg);
-        p->shownKind = kind;
-        refill = true;
-    }
-    if (refill) {
-        ReadAloudPageFillSmartCombos(hDlg);
-    }
-    bool isMulti = str::Eq(mode, kTtsMultilingualVoiceId);
-    struct {
-        int labelId;
-        int comboId;
-        bool on;
-    } rows[] = {{IDC_RA_VOICE_ZH_LABEL, IDC_RA_VOICE_ZH, isSmart},
-                {IDC_RA_VOICE_EN_LABEL, IDC_RA_VOICE_EN, isSmart},
-                {IDC_RA_VOICE_MULTI_LABEL, IDC_RA_VOICE_MULTI, isMulti}};
-    for (auto& row : rows) {
-        HWND combo = GetDlgItem(hDlg, row.comboId);
-        bool on = row.on && ReadAloudPageComboCount(combo) > 0;
-        EnableWindow(GetDlgItem(hDlg, row.labelId), on);
-        EnableWindow(combo, on);
+    const char* id = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_PICK));
+    if (id) {
+        str::ReplaceWithCopy(&p->choices[(int)p->source], id);
     }
 }
 
@@ -15874,67 +15943,27 @@ void ReadAloudSettingsPageInit(HWND hDlg) {
     }
     gReadAloudPage = new ReadAloudSettingsPage();
     ReadAloudSettingsPage* p = gReadAloudPage;
-
     NormalizeMultilingualVoicePref();
-    const char* cur = gGlobalPrefs->readAloudVoiceId ? gGlobalPrefs->readAloudVoiceId : "";
-    bool haveLocal = TtsSmartBilingualAvailable(SmartBilingualKind::Local);
-    bool haveOnline = TtsSmartBilingualAvailable(SmartBilingualKind::Online);
-    bool haveMulti = TtsMultilingualAvailable();
-
-    HWND mode = GetDlgItem(hDlg, IDC_RA_VOICE_MODE);
-    ReadAloudPageComboAdd(mode, _TRA("System default"), "");
-    if (haveLocal) {
-        ReadAloudPageComboAdd(mode, _TRA("Local smart bilingual (English + Chinese)"), kTtsSmartBilingualVoiceId);
+    const char* activeVoice = gGlobalPrefs->readAloudVoiceId;
+    auto activeSource = ReadAloudSourceForVoice(activeVoice);
+    HWND sourceCombo = GetDlgItem(hDlg, IDC_RA_VOICE_MODE);
+    for (int i = 0; i < (int)dimof(p->choices); i++) {
+        auto source = (ReadAloudVoiceSource)i;
+        SendMessageW(sourceCombo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(ReadAloudSourceName(source)));
+        const char* id = source == activeSource ? ReadAloudVoiceChoice(activeVoice) : ReadAloudRememberedVoice(source);
+        p->choices[i] = id ? str::Dup(id) : nullptr;
     }
-    if (haveOnline) {
-        ReadAloudPageComboAdd(mode, _TRA("Online smart bilingual (English + Chinese)"),
-                              kTtsSmartOnlineBilingualVoiceId);
+    p->source = activeSource;
+    if (gRequestedReadAloudSource >= 0) {
+        p->source = (ReadAloudVoiceSource)gRequestedReadAloudSource;
+        p->voiceChanged = true;
+        gRequestedReadAloudSource = -1;
     }
-    if (haveMulti) {
-        ReadAloudPageComboAdd(mode, _TRA("Online multilingual voices"), kTtsMultilingualVoiceId);
-    }
-
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    SmartBilingualKind curKind;
-    bool curIsSmart = TryGetSmartBilingualKind(cur, &curKind);
-    bool curListed = str::IsEmpty(cur) ||
-                     (curIsSmart && (curKind == SmartBilingualKind::Local ? haveLocal : haveOnline)) ||
-                     (str::Eq(cur, kTtsMultilingualVoiceId) && haveMulti);
-    if (!curListed) {
-        // a single voice picked from the command palette
-        for (TtsVoiceInfo& voice : voices) {
-            if (str::Eq(voice.id, cur)) {
-                ReadAloudPageComboAdd(mode, ReadAloudVoiceLabelTemp(voice), voice.id);
-                break;
-            }
-        }
-    }
-    ReadAloudPageComboSelectId(mode, cur);
-    ReadAloudPageFitDropWidth(mode);
-
-    for (int k = 0; k < 2; k++) {
-        char** zh = SmartBilingualZhPref((SmartBilingualKind)k);
-        char** en = SmartBilingualEnPref((SmartBilingualKind)k);
-        p->pendingZh[k] = str::Dup(zh && *zh ? *zh : "");
-        p->pendingEn[k] = str::Dup(en && *en ? *en : "");
-    }
-    if (curIsSmart) {
-        p->shownKind = curKind;
-    } else {
-        p->shownKind = (haveOnline && !haveLocal) ? SmartBilingualKind::Online : SmartBilingualKind::Local;
-    }
+    SendMessageW(sourceCombo, CB_SETCURSEL, (int)p->source, 0);
+    ReadAloudPageFitDropWidth(sourceCombo);
+    ReadAloudPagePopulateVoices(hDlg);
     const char* uiLang = trans::GetCurrentLangCode();
     p->previewZh = str::Eq(uiLang, "cn") || str::Eq(uiLang, "tw");
-
-    HWND multi = GetDlgItem(hDlg, IDC_RA_VOICE_MULTI);
-    for (TtsVoiceInfo& voice : voices) {
-        if (IsMultilingualTtsVoice(voice)) {
-            ReadAloudPageComboAdd(multi, ReadAloudVoiceLabelTemp(voice), voice.id);
-        }
-    }
-    ReadAloudPageComboSelectId(multi, gGlobalPrefs->readAloudMultilingualVoice);
-    ReadAloudPageFitDropWidth(multi);
-    TtsFreeVoices(voices);
 
     ParsedColor* col = GetPrefsColor(gGlobalPrefs->readAloudHighlightColor);
     p->highlightColor = (col && col->parsedOk) ? col->col : kReadAloudDefaultHighlight;
@@ -15942,8 +15971,6 @@ void ReadAloudSettingsPageInit(HWND hDlg) {
     CheckDlgButton(hDlg, IDC_RA_NARRATION_USE_AUDIO, gGlobalPrefs->narrationUseBookAudio ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hDlg, IDC_RA_NARRATION_USE_COLOR,
                    gGlobalPrefs->narrationUseBookHighlightColor ? BST_CHECKED : BST_UNCHECKED);
-
-    ReadAloudPageUpdateVoiceRows(hDlg, true);
 }
 
 static void ReadAloudPageStopPreview() {
@@ -15958,18 +15985,22 @@ static void ReadAloudPageStopPreview() {
 
 static void ReadAloudPagePreview(HWND hDlg) {
     ReadAloudSettingsPage* p = gReadAloudPage;
-    const char* mode = ReadAloudPageModeId(hDlg);
+    const char* choice = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_PICK));
+    if (!choice) {
+        return;
+    }
+    const char* mode = ReadAloudEngineVoice(choice);
     const char* voiceId = mode;
     bool zh = p->previewZh;
     bool bilingual = TryGetSmartBilingualKind(mode, nullptr);
     if (bilingual) {
-        voiceId = ReadAloudPageComboId(GetDlgItem(hDlg, zh ? IDC_RA_VOICE_ZH : IDC_RA_VOICE_EN));
-        if (!voiceId) {
-            zh = !zh;
-            voiceId = ReadAloudPageComboId(GetDlgItem(hDlg, zh ? IDC_RA_VOICE_ZH : IDC_RA_VOICE_EN));
+        if (ResolveActiveSmartBilingualVoices()) {
+            voiceId = ReadAloudSmartVoiceForLang(zh ? ReadAloudLang::Zh : ReadAloudLang::En);
+        } else {
+            voiceId = "";
         }
     } else if (str::Eq(mode, kTtsMultilingualVoiceId)) {
-        voiceId = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_MULTI));
+        voiceId = gGlobalPrefs->readAloudMultilingualVoice;
     } else if (!str::IsEmpty(mode)) {
         zh = ReadAloudLangFromVoiceId(mode) == ReadAloudLang::Zh;
         bilingual = true;
@@ -15984,6 +16015,22 @@ static void ReadAloudPagePreview(HWND hDlg) {
         TtsStop();
     }
     MediaOverlayPause();
+    if (const auto* voice = FindOfflineVoice(mode)) {
+        const char* sample = str::Eq(voice->locale, "zh-CN") ? "这是本地离线语音。The same voice reads both languages."
+                                                             : "This is how the selected offline voice sounds.";
+        p->previewing = OfflineSpeechAvailable(*voice) && TtsSpeakGeneratedUtf8(sample, voice);
+        return;
+    }
+    if (const auto* edge = FindEdgeReadAloudVoice(mode)) {
+        const char* sample = "这是一段中英混读测试。The same voice reads both languages.";
+        if (edge->language == EdgeVoiceLanguage::Chinese) {
+            sample = "这是一段中文语音试听。";
+        } else if (edge->language == EdgeVoiceLanguage::English) {
+            sample = "This is how the selected English voice sounds.";
+        }
+        p->previewing = HasPermission(Perm::InternetAccess) && TtsSpeakGeneratedUtf8(sample, nullptr, edge);
+        return;
+    }
 
     float rate =
         ReadAloudClampSpeakingRate(zh ? gGlobalPrefs->readAloudSpeakingRateZh : gGlobalPrefs->readAloudSpeakingRateEn);
@@ -16013,6 +16060,256 @@ static void ReadAloudPageChooseColor(HWND hDlg) {
     }
 }
 
+struct OfflineVoiceDialog {
+    const OfflineVoice* voice = nullptr;
+    const OfflineVoice* preferredVoice = nullptr;
+    char* source = nullptr;
+    HANDLE thread = nullptr;
+    HANDLE cancel = nullptr;
+    volatile LONG percent = 0;
+    bool download = false;
+    bool installed = false;
+    bool closing = false;
+    bool activeVoiceRemoved = false;
+};
+
+static DWORD WINAPI InstallOfflineVoiceThread(void* arg) {
+    auto* state = (OfflineVoiceDialog*)arg;
+    state->installed =
+        InstallOfflineVoice(*state->voice, state->source, state->download, state->cancel, &state->percent);
+    DestroyTempAllocator();
+    return 0;
+}
+
+static void UpdateOfflineVoiceDialog(HWND dialog, OfflineVoiceDialog* state) {
+    HWND combo = GetDlgItem(dialog, IDC_OFFLINE_VOICE_PICK);
+    LRESULT current = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    if (current == CB_ERR) {
+        return;
+    }
+    auto* voice = (const OfflineVoice*)SendMessageW(combo, CB_GETITEMDATA, current, 0);
+    state->voice = voice;
+    bool installed = OfflineSpeechInstalled(*voice);
+    bool canInstall = voice->directory && !installed;
+    bool online = canInstall && HasPermission(Perm::InternetAccess);
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_IMPORT), canInstall);
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_DOWNLOAD), online && OfflineVoiceCanDownload(*voice));
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_REMOVE), installed && HasPermission(Perm::DiskAccess));
+    const char* status = _TRA("No download is configured for this voice.");
+    if (installed) {
+        status = _TRA("Installed");
+    } else if (canInstall) {
+        status = str::FormatTemp(_TRA("Not installed • %d MB"), (int)(voice->packageSize / 1000000));
+    }
+    HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_STATUS, status);
+}
+
+static bool ReadAloudSourceVoiceAvailable(ReadAloudVoiceSource source, const char* choice);
+
+static void RemoveOfflineVoiceFromDialog(HWND dialog, OfflineVoiceDialog* state) {
+    const auto* voice = state->voice;
+    if (!voice || !HasPermission(Perm::DiskAccess) || !OfflineSpeechInstalled(*voice)) {
+        return;
+    }
+    TempStr prompt = str::FormatTemp(_TRA("Remove %s? You can download it again later."), voice->name);
+    if (AppMessageBoxW(dialog, ToWStrTemp(prompt), ToWStrTemp(_TRA("Offline voices")),
+                       MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) {
+        return;
+    }
+    bool active = gGlobalPrefs && str::Eq(gGlobalPrefs->readAloudVoiceId, voice->id);
+    if (active) {
+        ReadAloudStopRememberPos();
+    }
+    bool removed = RemoveOfflineSpeech(*voice);
+    if (removed && gGlobalPrefs) {
+        if (active) {
+            auto system = ReadAloudVoiceSource::System;
+            const char* remembered = ReadAloudRememberedVoice(system);
+            ReadAloudSaveVoicePref(ReadAloudSourceVoiceAvailable(system, remembered) ? ReadAloudEngineVoice(remembered)
+                                                                                     : "");
+            state->activeVoiceRemoved = true;
+        }
+        if (str::Eq(gGlobalPrefs->readAloudOfflineVoiceId, voice->id)) {
+            str::FreePtr(&gGlobalPrefs->readAloudOfflineVoiceId);
+            SaveSettings();
+        }
+    }
+    UpdateOfflineVoiceDialog(dialog, state);
+    if (!removed) {
+        HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_STATUS, _TRA("Could not remove the offline voice. Try again."));
+    }
+}
+
+static void StartOfflineVoiceInstall(HWND dialog, OfflineVoiceDialog* state, bool download) {
+    if (!state->voice || state->thread || !state->voice->directory || OfflineSpeechInstalled(*state->voice)) {
+        return;
+    }
+    WCHAR source[4096]{};
+    if (download) {
+        if (!HasPermission(Perm::InternetAccess) || !OfflineVoiceCanDownload(*state->voice)) {
+            return;
+        }
+    } else {
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = dialog;
+        ofn.lpstrFilter = L"Voice package (*.msix)\0*.msix\0\0";
+        ofn.lpstrFile = source;
+        ofn.nMaxFile = dimof(source);
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        if (!GetOpenFileNameW(&ofn)) {
+            return;
+        }
+    }
+    state->source = download ? nullptr : str::Dup(ToUtf8Temp(source));
+    state->download = download;
+    state->installed = false;
+    InterlockedExchange(&state->percent, 0);
+    state->cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (state->cancel && (download || state->source)) {
+        state->thread = CreateThread(nullptr, 0, InstallOfflineVoiceThread, state, 0, nullptr);
+    }
+    if (!state->thread) {
+        if (state->cancel) {
+            CloseHandle(state->cancel);
+            state->cancel = nullptr;
+        }
+        str::FreePtr(&state->source);
+        HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_STATUS, _TRA("Could not start voice installation."));
+        return;
+    }
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_PICK), FALSE);
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_IMPORT), FALSE);
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_DOWNLOAD), FALSE);
+    EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_REMOVE), FALSE);
+    SetTimer(dialog, 1, 150, nullptr);
+}
+
+static INT_PTR CALLBACK OfflineVoiceDialogProc(HWND dialog, UINT msg, WPARAM wp, LPARAM lp) {
+    auto* state = (OfflineVoiceDialog*)GetWindowLongPtrW(dialog, DWLP_USER);
+    if (msg == WM_INITDIALOG) {
+        state = (OfflineVoiceDialog*)lp;
+        SetWindowLongPtrW(dialog, DWLP_USER, (LONG_PTR)state);
+        HwndSetText(dialog, _TRA("Offline voices"));
+        HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_LABEL, _TRA("&Voice:"));
+        HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_DOWNLOAD, _TRA("&Download"));
+        HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_IMPORT, _TRA("&Import MSIX..."));
+        HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_REMOVE, _TRA("De&lete"));
+        HwndSetDlgItemText(dialog, IDCANCEL, _TRA("Close"));
+        HWND combo = GetDlgItem(dialog, IDC_OFFLINE_VOICE_PICK);
+        for (const auto& voice : gOfflineVoices) {
+            WCHAR locale[80];
+            const char* language =
+                GetLocaleInfoEx(ToWStrTemp(voice.locale), LOCALE_SLOCALIZEDDISPLAYNAME, locale, dimof(locale))
+                    ? ToUtf8Temp(locale)
+                    : voice.locale;
+            TempStr label = str::FormatTemp("%s — %s", language, voice.name);
+            LRESULT item = SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(label));
+            if (item >= 0) {
+                SendMessageW(combo, CB_SETITEMDATA, item, (LPARAM)&voice);
+            }
+        }
+        LRESULT firstAvailable = CB_ERR;
+        LRESULT preferred = CB_ERR;
+        LRESULT fallback = 0;
+        LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+        for (LRESULT i = 0; i < count; i++) {
+            auto* voice = (const OfflineVoice*)SendMessageW(combo, CB_GETITEMDATA, i, 0);
+            if (voice == state->preferredVoice) {
+                preferred = i;
+                break;
+            }
+            if (firstAvailable == CB_ERR && OfflineVoiceCanDownload(*voice) && !OfflineSpeechInstalled(*voice)) {
+                firstAvailable = i;
+            }
+            if (voice == &gOfflineVoices[0]) {
+                fallback = i;
+            }
+        }
+        LRESULT selected = firstAvailable == CB_ERR ? fallback : firstAvailable;
+        SendMessageW(combo, CB_SETCURSEL, preferred == CB_ERR ? selected : preferred, 0);
+        UpdateOfflineVoiceDialog(dialog, state);
+        return TRUE;
+    }
+    if (!state) {
+        return FALSE;
+    }
+    if (msg == WM_TIMER && wp == 1 && state->thread) {
+        if (WaitForSingleObject(state->thread, 0) != WAIT_OBJECT_0) {
+            LONG percent = InterlockedCompareExchange(&state->percent, 0, 0);
+            const char* message = state->closing    ? _TRA("Cancelling…")
+                                  : percent >= 95   ? _TRA("Verifying and unpacking the voice…")
+                                  : state->download ? str::FormatTemp(_TRA("Downloading… %d%%"), (int)percent)
+                                                    : _TRA("Verifying the voice package…");
+            HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_STATUS, message);
+            return TRUE;
+        }
+        KillTimer(dialog, 1);
+        CloseHandle(state->thread);
+        state->thread = nullptr;
+        CloseHandle(state->cancel);
+        state->cancel = nullptr;
+        str::FreePtr(&state->source);
+        if (state->closing) {
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+        EnableWindow(GetDlgItem(dialog, IDC_OFFLINE_VOICE_PICK), TRUE);
+        UpdateOfflineVoiceDialog(dialog, state);
+        if (!state->installed) {
+            HwndSetDlgItemText(dialog, IDC_OFFLINE_VOICE_STATUS,
+                               _TRA("Installation failed. Check the source and package version."));
+        }
+        return TRUE;
+    }
+    if (msg == WM_CLOSE || (msg == WM_COMMAND && LOWORD(wp) == IDCANCEL)) {
+        if (state->thread) {
+            state->closing = true;
+            SetEvent(state->cancel);
+        } else {
+            EndDialog(dialog, IDCANCEL);
+        }
+        return TRUE;
+    }
+    if (msg == WM_COMMAND && !state->thread) {
+        int id = LOWORD(wp);
+        if (id == IDC_OFFLINE_VOICE_PICK && HIWORD(wp) == CBN_SELCHANGE) {
+            UpdateOfflineVoiceDialog(dialog, state);
+            return TRUE;
+        }
+        if (id == IDC_OFFLINE_VOICE_DOWNLOAD || id == IDC_OFFLINE_VOICE_IMPORT) {
+            StartOfflineVoiceInstall(dialog, state, id == IDC_OFFLINE_VOICE_DOWNLOAD);
+            return TRUE;
+        }
+        if (id == IDC_OFFLINE_VOICE_REMOVE && HIWORD(wp) == BN_CLICKED) {
+            RemoveOfflineVoiceFromDialog(dialog, state);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static void ShowOfflineVoiceDialog(HWND owner) {
+    ReadAloudPageStopPreview();
+    OfflineVoiceDialog state;
+    const char* selected = ReadAloudPageComboId(GetDlgItem(owner, IDC_RA_VOICE_PICK));
+    state.preferredVoice = FindOfflineVoice(selected);
+    CreateAppDialogBox(IDD_DIALOG_OFFLINE_VOICES, owner, OfflineVoiceDialogProc, (LPARAM)&state);
+    auto* page = gReadAloudPage;
+    char*& offlineChoice = page->choices[(int)ReadAloudVoiceSource::Offline];
+    if (const auto* choice = FindOfflineVoice(offlineChoice); choice && !OfflineSpeechInstalled(*choice)) {
+        str::FreePtr(&offlineChoice);
+    }
+    if (state.activeVoiceRemoved && page->source == ReadAloudVoiceSource::Offline && !page->voiceChanged) {
+        page->source = ReadAloudVoiceSource::System;
+        str::ReplaceWithCopy(&page->choices[(int)page->source], ReadAloudVoiceChoice(gGlobalPrefs->readAloudVoiceId));
+        SendDlgItemMessageW(owner, IDC_RA_VOICE_MODE, CB_SETCURSEL, (int)page->source, 0);
+        ReadAloudPagePopulateVoices(owner);
+    } else if (page->source == ReadAloudVoiceSource::Offline) {
+        ReadAloudPagePopulateVoices(owner);
+    }
+}
+
 void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
     if (!gReadAloudPage) {
         return;
@@ -16020,18 +16317,37 @@ void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
     switch (id) {
         case IDC_RA_VOICE_MODE:
             if (code == CBN_SELCHANGE) {
-                ReadAloudPageUpdateVoiceRows(hDlg, false);
+                LRESULT selection = SendDlgItemMessageW(hDlg, id, CB_GETCURSEL, 0, 0);
+                if (selection == CB_ERR) {
+                    break;
+                }
+                ReadAloudPageStopPreview();
+                if (gReadAloudPage->voiceChanged) {
+                    ReadAloudPageRememberSelection(hDlg);
+                }
+                gReadAloudPage->source = (ReadAloudVoiceSource)selection;
+                gReadAloudPage->voiceChanged = true;
+                ReadAloudPagePopulateVoices(hDlg);
             }
             break;
-        case IDC_RA_VOICE_ZH:
-        case IDC_RA_VOICE_EN:
-            if (code == CBN_SELCHANGE || code == CBN_SETFOCUS) {
-                gReadAloudPage->previewZh = id == IDC_RA_VOICE_ZH;
+        case IDC_RA_VOICE_PICK:
+            if (code == CBN_SELCHANGE) {
+                ReadAloudPageStopPreview();
+                gReadAloudPage->voiceChanged = true;
+                ReadAloudPageRememberSelection(hDlg);
+                if (const auto* voice = FindOfflineVoice(ReadAloudPageComboId(GetDlgItem(hDlg, id)))) {
+                    OfflineSpeechPrepare(*voice);
+                }
             }
             break;
         case IDC_RA_PREVIEW:
             if (code == BN_CLICKED) {
                 ReadAloudPagePreview(hDlg);
+            }
+            break;
+        case IDC_RA_OFFLINE_VOICES:
+            if (code == BN_CLICKED) {
+                ShowOfflineVoiceDialog(hDlg);
             }
             break;
         case IDC_RA_HIGHLIGHT_COLOR:
@@ -16075,8 +16391,9 @@ bool ReadAloudSettingsPageDrawItem(DRAWITEMSTRUCT* dis) {
     return true;
 }
 
-int ReadAloudSettingsPageInvalidControl(HWND) {
-    return 0;
+bool ReadAloudSettingsPageNeedsOfflineVoice(HWND hDlg) {
+    return gReadAloudPage && gReadAloudPage->voiceChanged && gReadAloudPage->source == ReadAloudVoiceSource::Offline &&
+           !ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_PICK));
 }
 
 void ReadAloudSettingsPageApply(HWND hDlg) {
@@ -16086,20 +16403,25 @@ void ReadAloudSettingsPageApply(HWND hDlg) {
     }
     ReadAloudPageStopPreview();
 
-    ReadAloudPageStoreSmartCombos(hDlg);
-    for (int k = 0; k < 2; k++) {
-        if (!str::IsEmpty(p->pendingZh[k])) {
-            ReadAloudApplySmartBilingualVoice((SmartBilingualKind)k, true, p->pendingZh[k]);
+    if (p->voiceChanged) {
+        const char* selected = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_PICK));
+        if (selected) {
+            ReadAloudPageRememberSelection(hDlg);
+            ReadAloudSaveVoicePref(ReadAloudEngineVoice(selected));
         }
-        if (!str::IsEmpty(p->pendingEn[k])) {
-            ReadAloudApplySmartBilingualVoice((SmartBilingualKind)k, false, p->pendingEn[k]);
+        for (int i = 0; i < (int)dimof(p->choices); i++) {
+            auto source = (ReadAloudVoiceSource)i;
+            const char* choice = p->choices[i];
+            if (source == p->source || !choice || str::Eq(choice, ReadAloudRememberedVoice(source))) {
+                continue;
+            }
+            if (source != ReadAloudVoiceSource::Edge ||
+                (FindEdgeReadAloudVoice(choice) &&
+                 (FindEdgeReadAloudVoice(ReadAloudRememberedVoice(source)) || ReadAloudConfirmEdgeVoice(hDlg)))) {
+                str::ReplaceWithCopy(&ReadAloudRememberedVoice(source), choice);
+            }
         }
     }
-    const char* multi = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_MULTI));
-    if (!str::IsEmpty(multi)) {
-        ReadAloudApplyMultilingualVoice(multi);
-    }
-    ReadAloudSaveVoicePref(ReadAloudPageModeId(hDlg));
 
     TempStr col = SerializeColorTemp(p->highlightColor);
     if (!str::EqI(gGlobalPrefs->readAloudHighlightColor, col)) {
@@ -16126,26 +16448,25 @@ void ReadAloudSettingsPageDestroy() {
         return;
     }
     ReadAloudPageStopPreview();
-    for (char* id : p->ownedIds) {
-        str::Free(id);
-    }
-    for (int k = 0; k < 2; k++) {
-        str::Free(p->pendingZh[k]);
-        str::Free(p->pendingEn[k]);
+    ReadAloudPageClearVoiceIds(p);
+    for (char* choice : p->choices) {
+        str::Free(choice);
     }
     delete p;
     gReadAloudPage = nullptr;
 }
 
-static void ShowReadAloudSettings(MainWindow* win) {
-    if (!win) {
+static void ShowReadAloudSettings(MainWindow* win, int requestedSource = -1) {
+    if (!win || !HasPermission(Perm::SavePreferences)) {
         return;
     }
+    gRequestedReadAloudSource = requestedSource;
     if (gCaptionMenuTrackDepth > 0) {
         gPendingReadAloudSettings = true;
         return;
     }
     ShowOptionsDialog(win, kSettingsPageReadAloud);
+    gRequestedReadAloudSource = -1;
 }
 
 static void FlushPendingReadAloudDialogs(MainWindow* win) {
@@ -16154,6 +16475,7 @@ static void FlushPendingReadAloudDialogs(MainWindow* win) {
     }
     gPendingReadAloudSettings = false;
     ShowOptionsDialog(win, kSettingsPageReadAloud);
+    gRequestedReadAloudSource = -1;
 }
 
 // Text cleanup for speech
@@ -16375,7 +16697,8 @@ static void ReadAloudStopRememberPos() {
     WindowTab* tab = gReadAloudSourceTab;
     if (tab && TtsIsSpeaking()) {
         int pos = TtsGetSpokenPosUtf8();
-        if (pos >= 0) {
+        if (pos >= 0 || ReadAloudUsesEdge() || ReadAloudUsesOfflineVoice()) {
+            pos = std::max(pos, 0);
             int absPos = tab->readAloudHighlightBase + tab->readAloudChunkStart + pos;
             int maxPos = tab->readAloudHighlightBase + str::Leni(tab->readAloudText);
             if (absPos > 0 && absPos < maxPos) {
@@ -16516,8 +16839,8 @@ static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg) {
 
     StrBuilder cleaned;
     ReadAloudHighlightMap map{};
-    int endPage = ReadAloudInitialBuildEndPage(tab, dm, startPage);
-    if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
+    int endPage;
+    if (!ReadAloudBuildInitialText(tab, dm, startPage, startGlyph, endPage, map, cleaned)) {
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -16587,9 +16910,8 @@ static void ReadAloudStartFromPageGlyph(WindowTab* tab, int startPage, int start
 
     StrBuilder cleaned;
     ReadAloudHighlightMap map{};
-    int endPage = ReadAloudInitialBuildEndPage(tab, dm, startPage);
-    bool built = ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned);
-    if (!built) {
+    int endPage;
+    if (!ReadAloudBuildInitialText(tab, dm, startPage, startGlyph, endPage, map, cleaned)) {
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -16997,6 +17319,54 @@ static bool ReadAloudResolveReadFromCursorPoint(MainWindow* win, Point* ptOut) {
     return true;
 }
 
+static constexpr int kReadAloudSourceCommands[] = {CmdReadAloudSystemVoice, CmdReadAloudOfflineVoice,
+                                                   CmdReadAloudEdgeVoice};
+
+static bool ReadAloudCanSelectSource(ReadAloudVoiceSource source) {
+    return HasPermission(Perm::SavePreferences) &&
+           (source != ReadAloudVoiceSource::Edge || HasPermission(Perm::InternetAccess));
+}
+
+static bool ReadAloudSourceVoiceAvailable(ReadAloudVoiceSource source, const char* choice) {
+    if (str::IsEmpty(choice)) {
+        return false;
+    }
+    if (source == ReadAloudVoiceSource::Offline) {
+        const auto* voice = FindOfflineVoice(choice);
+        return voice && OfflineSpeechAvailable(*voice);
+    }
+    if (source == ReadAloudVoiceSource::Edge) {
+        return FindEdgeReadAloudVoice(choice) != nullptr;
+    }
+    if (str::Eq(choice, kReadAloudSystemDefault)) {
+        return true;
+    }
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    bool available = false;
+    for (const auto& voice : voices) {
+        if (str::Eq(voice.id, choice) && IsLocalTtsVoice(voice)) {
+            available = true;
+            break;
+        }
+    }
+    TtsFreeVoices(voices);
+    return available;
+}
+
+static void ReadAloudSelectSource(MainWindow* win, ReadAloudVoiceSource source) {
+    if (!gGlobalPrefs || !ReadAloudCanSelectSource(source)) {
+        return;
+    }
+    const char* active = gGlobalPrefs->readAloudVoiceId;
+    bool current = ReadAloudSourceForVoice(active) == source;
+    const char* choice = current ? ReadAloudVoiceChoice(active) : ReadAloudRememberedVoice(source);
+    if (!ReadAloudSourceVoiceAvailable(source, choice)) {
+        ShowReadAloudSettings(win, (int)source);
+    } else if (!current) {
+        ReadAloudSaveVoicePref(ReadAloudEngineVoice(choice));
+    }
+}
+
 static void BuildReadAloudMenuItems(HMENU menu, MainWindow* win, bool useContextMenuCursorPoint) {
     if (win) {
         ReadAloudUpdateMenuCursorPoint(win, useContextMenuCursorPoint);
@@ -17026,6 +17396,21 @@ static void BuildReadAloudMenuItems(HMENU menu, MainWindow* win, bool useContext
     AppendMenuW(menu, hasSelection ? MF_STRING : MF_STRING | MF_GRAYED, CmdTtsMenuReadSelection,
                 ToWStrTemp(_TRA("Start Reading Selection")));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    if (gGlobalPrefs) {
+        auto active = ReadAloudSourceForVoice(gGlobalPrefs->readAloudVoiceId);
+        for (int i = 0; i < (int)dimof(kReadAloudSourceCommands); i++) {
+            auto source = (ReadAloudVoiceSource)i;
+            UINT flags = MF_STRING;
+            if (source == active) {
+                flags |= MF_CHECKED;
+            }
+            if (!ReadAloudCanSelectSource(source)) {
+                flags |= MF_GRAYED;
+            }
+            AppendMenuW(menu, flags, kReadAloudSourceCommands[i], ToWStrTemp(ReadAloudSourceName(source)));
+        }
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    }
     AppendMenuW(menu, MF_STRING, CmdReadAloudSettings, ToWStrTemp(_TRA("Read Aloud Settings...")));
 }
 
@@ -17045,6 +17430,13 @@ void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursor
 static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
     if (!win || selected == 0) {
         return false;
+    }
+
+    for (int i = 0; i < (int)dimof(kReadAloudSourceCommands); i++) {
+        if (selected == (UINT)kReadAloudSourceCommands[i]) {
+            ReadAloudSelectSource(win, (ReadAloudVoiceSource)i);
+            return true;
+        }
     }
 
     WindowTab* currTab = win->CurrentTab();
@@ -17139,6 +17531,11 @@ static void ShowReadAloudPopupMenuAt(MainWindow* win, int x, int y) {
 }
 
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId) {
+    for (int sourceCmd : kReadAloudSourceCommands) {
+        if (cmdId == sourceCmd) {
+            return HandleReadAloudMenuSelection(win, cmdId);
+        }
+    }
     if (cmdId == CmdTtsVoiceDefault || cmdId == CmdTtsVoiceSmartBilingual || cmdId == CmdTtsSmartBilingualSettings ||
         cmdId == CmdTtsVoiceSmartOnlineBilingual || cmdId == CmdTtsSmartOnlineBilingualSettings ||
         cmdId == CmdTtsVoiceMultilingual || cmdId == CmdTtsMultilingualSettings ||
@@ -18090,6 +18487,17 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_TTS_EVENT:
             TtsProcessEvents();
+
+            if (TtsConsumeSynthesisFailure()) {
+                if (WindowTab* raTab = gReadAloudSourceTab) {
+                    raTab->readAloudResumePos = raTab->readAloudHighlightBase + raTab->readAloudChunkStart;
+                    ReadAloudStopRememberPos();
+                    ReadAloudShowNotif(raTab, ReadAloudUsesOfflineVoice()
+                                                  ? _TRA("Offline speech failed. Try continuing to retry.")
+                                                  : _TRA("Edge online speech failed. Try continuing to retry."));
+                }
+                return 0;
+            }
 
             if (TtsIsSpeaking() && gReadAloudSourceTab && gReadAloudSourceTab->win) {
                 InvalidateRect(gReadAloudSourceTab->win->hwndCanvas, nullptr, FALSE);

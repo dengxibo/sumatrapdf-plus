@@ -205,7 +205,7 @@ void ReadAloudSettingsPageInit(HWND hDlg);
 void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code);
 bool ReadAloudSettingsPageDrawItem(DRAWITEMSTRUCT* dis);
 // id of the first control with an invalid value, 0 if all are valid
-int ReadAloudSettingsPageInvalidControl(HWND hDlg);
+bool ReadAloudSettingsPageNeedsOfflineVoice(HWND hDlg);
 void ReadAloudSettingsPageApply(HWND hDlg);
 void ReadAloudSettingsPageDestroy();
 bool CanCloseWindow(MainWindow* win);

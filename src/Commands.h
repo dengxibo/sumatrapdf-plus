@@ -304,7 +304,10 @@ enum {
     CmdCapturePageRegion = 493,
     CmdTocLocateCurrentChapter = 494,
     CmdViewImage = 495,
-    CmdNone = 496,
+    CmdReadAloudSystemVoice = 496,
+    CmdReadAloudOfflineVoice = 497,
+    CmdReadAloudEdgeVoice = 498,
+    CmdNone = 499,
 
     /* range for file history */
     CmdFileHistoryFirst,

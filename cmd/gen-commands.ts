@@ -299,6 +299,9 @@ export const commands = [
     "CmdCapturePageRegion", "Capture Page Region",
     "CmdTocLocateCurrentChapter", "Locate Current Chapter",
     "CmdViewImage", "View Image",
+    "CmdReadAloudSystemVoice", "System speech",
+    "CmdReadAloudOfflineVoice", "Offline speech",
+    "CmdReadAloudEdgeVoice", "Online speech",
     "CmdNone", "Do nothing",
 ];
 

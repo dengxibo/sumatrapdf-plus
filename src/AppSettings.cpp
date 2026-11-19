@@ -27,6 +27,7 @@
 #include "ProgressUpdateUI.h"
 #include "PdfDarkMode.h"
 #include "SumatraPDF.h"
+#include "EdgeSpeechTransport.h"
 #include "WindowTab.h"
 #include "ExternalViewers.h"
 #include "Flags.h"
@@ -40,6 +41,7 @@
 #include "Theme.h"
 #include "EbookFontMenu.h"
 #include "TextToSpeech.h"
+#include "OfflineSpeech.h"
 #include "AiTocApi.h"
 #include "InlineTranslate.h"
 
@@ -56,7 +58,30 @@ static bool ApplyReadAloudVoiceFromSettings() {
         return false;
     }
 
+    // Keep saved online selections on the online source when a voice is removed from the catalog.
+    if (str::StartsWith(gGlobalPrefs->readAloudEdgeVoiceId, "edge:") &&
+        !FindEdgeReadAloudVoice(gGlobalPrefs->readAloudEdgeVoiceId)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->readAloudEdgeVoiceId, gEdgeReadAloudVoices[0].id);
+    }
+    if (str::StartsWith(gGlobalPrefs->readAloudVoiceId, "edge:") &&
+        !FindEdgeReadAloudVoice(gGlobalPrefs->readAloudVoiceId)) {
+        const char* replacement = gGlobalPrefs->readAloudEdgeVoiceId;
+        if (!FindEdgeReadAloudVoice(replacement)) {
+            replacement = gEdgeReadAloudVoices[0].id;
+        }
+        str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, replacement);
+    }
     const char* voiceId = gGlobalPrefs->readAloudVoiceId;
+    if (const auto* voice = FindOfflineVoice(voiceId)) {
+        OfflineSpeechPrepare(*voice);
+        return false;
+    }
+    if (FindEdgeReadAloudVoice(voiceId)) {
+        if (HasPermission(Perm::InternetAccess)) {
+            EdgeSpeechPrepare();
+        }
+        return false;
+    }
     if (str::IsEmpty(voiceId)) {
         TtsSetVoiceById("");
         return false;

@@ -13,10 +13,12 @@ struct HttpRsp {
 struct HttpProgress {
     i64 nDownloaded = 0;
     i64 nTotal = -1; // -1 if unknown (e.g. chunked transfer)
+    bool cancel = false;
 };
 
 bool IsHttpRspOk(const HttpRsp*);
 
 bool HttpPost(const char* server, int port, const char* url, StrBuilder* headers, StrBuilder* data);
 bool HttpGet(const char* url, HttpRsp* rspOut);
-bool HttpGetToFile(const char* url, const char* destFilePath, const Func1<HttpProgress*>& cbProgress);
+bool HttpGetToFile(const char* url, const char* destFilePath, const Func1<HttpProgress*>& cbProgress,
+                   bool direct = false);
