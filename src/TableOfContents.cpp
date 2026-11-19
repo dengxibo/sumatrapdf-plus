@@ -5321,6 +5321,7 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             if (LOWORD(wp) == IDC_TOC_LABEL_WITH_CLOSE) {
                 // The X closes the column. Bookmarks, thumbnails, and favorites
                 // all use this header, so it must not switch back to bookmarks.
+                RememberTabSidebarView(win->CurrentTab());
                 SetSidebarVisibility(win, false, false);
             }
             break;

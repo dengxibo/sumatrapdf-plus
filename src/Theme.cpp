@@ -637,7 +637,10 @@ COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
     // if user did change those colors in advanced settings, respect them
     bool userDidChange = text != kColBlack || bg != kColWhite;
     if (userDidChange) {
-        std::swap(text, bg);
+        // Accept an explicitly configured light-on-dark palette as written.
+        if (GetLightness(text) < GetLightness(bg)) {
+            std::swap(text, bg);
+        }
         return text;
     }
 
@@ -733,12 +736,10 @@ COLORREF ThemeControlBackgroundColor() {
     return col;
 }
 
-// toolbar, tabs, custom caption - match reading area in dark themes
+// Toolbar, tabs and caption follow the application theme.
 COLORREF ThemeChromeBackgroundColor() {
     if (ThemeUsesDarkChrome()) {
-        COLORREF bg;
-        ThemeDocumentColors(bg);
-        return bg;
+        return ThemeMainWindowBackgroundColor();
     }
     return ThemeControlBackgroundColor();
 }

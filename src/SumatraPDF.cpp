@@ -988,6 +988,7 @@ static void UpdateSidebarDisplayState(WindowTab* tab, FileState* fs) {
     ReportIf(!tab);
     MainWindow* win = tab->win;
     fs->showToc = tab->showToc;
+    fs->sidebarVisibilityManual = tab->sidebarVisibilityManual;
     str::ReplaceWithCopy(&fs->sidebarView, SidebarViewToStr((SidebarView)tab->sidebarView));
     if (win->tocLoaded && tab == win->CurrentTab()) {
         TocTree* tocTree = tab->ctrl->GetToc();
@@ -1911,6 +1912,35 @@ static bool DefaultShowTocForPath(const char* path) {
     return showToc;
 }
 
+static bool DefaultSidebarForLoadedTab(WindowTab* tab, const char* path, bool showToc) {
+    Kind kind = GuessFileTypeFromName(path);
+    if (kind != kindFilePDF && kind != kindFileChm) {
+        return showToc;
+    }
+    if (!gGlobalPrefs->showToc || !tab->ctrl) {
+        return false;
+    }
+    // Editable PDFs can provide an empty tree so the user can extract a TOC.
+    TocTree* toc = tab->ctrl->GetToc();
+    if (toc && toc->root && toc->root->child) {
+        tab->sidebarView = (int)SidebarView::Bookmarks;
+        return true;
+    }
+    FileState* fileState = gFileHistory.FindByPath(path);
+    if (!gPluginMode && CanAccessDisk() && fileState && !fileState->favorites->IsEmpty()) {
+        tab->sidebarView = (int)SidebarView::Favorites;
+        return true;
+    }
+    return false;
+}
+
+bool ResolveRestoredSidebarVisibility(WindowTab* tab, bool showToc) {
+    if (showToc && !tab->sidebarVisibilityManual && tab->sidebarView == (int)SidebarView::Bookmarks) {
+        return DefaultSidebarForLoadedTab(tab, tab->filePath, showToc);
+    }
+    return showToc;
+}
+
 static bool WinCtrlIsOwnedByAnyTab(MainWindow* win, DocController* ctrl) {
     if (!ctrl || !win) {
         return false;
@@ -2018,6 +2048,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     // Async font reload has already detached win->ctrl. Preserve the live
     // sidebar even when it differs from the last saved file state.
     bool preserveSidebar = tab->reloadForEbookFontChange;
+    bool useSidebarDefault = !fs && !preserveSidebar && !args->tabState && !tab->tabState && !tab->ctrl;
     bool showToc = preserveSidebar ? tab->showToc : DefaultShowTocForPath(path);
     bool showAsFullScreen = WIN_STATE_FULLSCREEN == gGlobalPrefs->windowState;
     int showType = SW_NORMAL;
@@ -2280,6 +2311,16 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
 
     if (!IsMainWindowValid(win) || win->isBeingClosed) {
         return;
+    }
+    if (useSidebarDefault && win->IsDocLoaded()) {
+        showToc = DefaultSidebarForLoadedTab(tab, path, showToc);
+    } else if (win->IsDocLoaded() && !win->presentation) {
+        TabState* state = tab->tabState ? tab->tabState : args->tabState;
+        if (state) {
+            tab->sidebarVisibilityManual = tab->sidebarVisibilityManual || state->sidebarVisibilityManual;
+            showToc = state->showToc;
+        }
+        showToc = ResolveRestoredSidebarVisibility(tab, showToc);
     }
     if (win->IsDocLoaded() && win->ctrl && !win->ctrl->HasToc()) {
         SidebarView saved = (SidebarView)tab->sidebarView;
@@ -4523,16 +4564,13 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
 
     // A font reload may finish after the user switches to another tab.
     if (!tab->reloadForEbookFontChange) {
-        tab->showToc = DefaultShowTocForPath(fullPath);
-        if (tab->ctrl && tab->ctrl->HasToc() && gGlobalPrefs->showToc) {
-            FileState* fs = gFileHistory.FindByPath(fullPath);
-            if (!gGlobalPrefs->rememberStatePerDocument || !fs) {
-                tab->showToc = true;
-            } else {
-                tab->showToc = fs->showToc;
-            }
-        }
         LoadTabSidebarView(tab);
+        tab->showToc = DefaultShowTocForPath(fullPath);
+        FileState* fs = gGlobalPrefs->rememberStatePerDocument ? gFileHistory.FindByPath(fullPath) : nullptr;
+        if ((!fs || fs->useDefaultState) && !tab->tabState && !args->tabState) {
+            bool showToc = showTocByDefault(fullPath) || (gGlobalPrefs->showToc && tab->ctrl->HasToc());
+            tab->showToc = DefaultSidebarForLoadedTab(tab, fullPath, showToc);
+        }
     }
     if (tab->ctrl && !tab->ctrl->HasToc() && (SidebarView)tab->sidebarView == SidebarView::Bookmarks) {
         if (tab->showToc && SidebarViewAvailable(win, SidebarView::Thumbnails)) {
@@ -4562,8 +4600,11 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     // state here calls GoToPage -> UpdateScrollbars which uses win->AsFixed()
     // (the foreground tab), not tab->ctrl, and crashes during concurrent loads.
     if (tab->tabState) {
-        tab->showToc = tab->tabState->showToc;
+        tab->sidebarVisibilityManual = tab->sidebarVisibilityManual || tab->tabState->sidebarVisibilityManual;
+        tab->showToc = ResolveRestoredSidebarVisibility(tab, tab->tabState->showToc);
         tab->tocState = *tab->tabState->tocState;
+    } else {
+        tab->showToc = ResolveRestoredSidebarVisibility(tab, tab->showToc);
     }
 
     // Already loaded into this background tab. needRefresh=true would leave
@@ -5800,6 +5841,12 @@ void LoadModelIntoTab(WindowTab* tab) {
         RepaintCanvasAfterTabSwitch(win, false);
     } else {
         RepaintCanvasAfterTabSwitch(win, rerenderAfterTheme);
+        // A background-loaded tab never ran the foreground load's OCR
+        // scheduling. Switching between documents on the same page number
+        // also may not produce a page-change notification.
+        if (win->CurrentTab() == tab && win->ctrl == tab->ctrl) {
+            OcrScheduleForPage(win, win->ctrl->CurrentPageNo());
+        }
     }
     if (tab->AsFixed()) {
         tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
@@ -6096,6 +6143,7 @@ struct EbookFontSizeChangeTask {
 };
 
 static constexpr UINT_PTR kEbookFontSizeDebounceTimerId = 0x104;
+static constexpr UINT_PTR kOnlineSpeechPreparationTimerId = 0x105;
 static constexpr UINT kEbookFontSizeDebounceMs = 280;
 static EbookFontSizeChangeTask gEbookFontSizeTask;
 static bool gEbookFontSizeTaskPosted = false;
@@ -7750,7 +7798,17 @@ static void SaveCurrentFileAs(MainWindow* win) {
     // TODO: engine->SaveFileA() is stupid
     // Replace with EngineGetDocumentData() and save that if not empty
     TempStr errorMsg = nullptr;
-    if (!file::Exists(srcFileName) && engine) {
+    AutoFreeStr ocrError;
+    if (engine && engine->HasUnsavedOcrText() && EngineMupdfCanEditPdfToc(engine)) {
+        if (path::IsSame(srcFileName, realDstFileName)) {
+            SaveAnnotationsToExistingFile(win->CurrentTab());
+            return;
+        }
+        char* detail = nullptr;
+        ok = OcrExportCachedTextPdf(engine, realDstFileName, &detail);
+        ocrError.Set(detail);
+        errorMsg = (TempStr)ocrError.Get();
+    } else if (!file::Exists(srcFileName) && engine) {
         // Recreate inexistant files from memory...
         logf("calling engine->SaveFileAs(%s)\n", realDstFileName);
         ok = engine->SaveFileAs(realDstFileName);
@@ -8075,6 +8133,7 @@ bool SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const ch
             dstFs->rotation = srcFs->rotation;
             dstFs->scrollPos = srcFs->scrollPos;
             dstFs->showToc = srcFs->showToc;
+            dstFs->sidebarVisibilityManual = srcFs->sidebarVisibilityManual;
             dstFs->sidebarDx = srcFs->sidebarDx;
             dstFs->displayR2L = srcFs->displayR2L;
             dstFs->windowState = srcFs->windowState;
@@ -15280,12 +15339,6 @@ static const char* ReadAloudEngineVoice(const char* choice) {
     return str::Eq(choice, kReadAloudSystemDefault) ? "" : choice;
 }
 
-static bool ReadAloudConfirmEdgeVoice(HWND owner) {
-    return HasPermission(Perm::InternetAccess) &&
-           AppMessageBoxW(owner, ToWStrTemp(_TRA("Edge online reading sends the text being read to Microsoft.")),
-                          ToWStrTemp(_TRA("Read Aloud")), MB_OKCANCEL | MB_ICONINFORMATION) == IDOK;
-}
-
 static void ReadAloudSaveVoicePref(const char* voiceId) {
     if (!gGlobalPrefs) {
         return;
@@ -15298,13 +15351,7 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
                              ReadAloudVoiceChoice(curPref));
         return;
     }
-    if (FindEdgeReadAloudVoice(newVoiceId)) {
-        if (!HasPermission(Perm::InternetAccess) ||
-            (!FindEdgeReadAloudVoice(gGlobalPrefs->readAloudEdgeVoiceId) && !FindEdgeReadAloudVoice(curPref) &&
-             !ReadAloudConfirmEdgeVoice(GetActiveWindow()))) {
-            return;
-        }
-    }
+    if (FindEdgeReadAloudVoice(newVoiceId) && !HasPermission(Perm::InternetAccess)) return;
 
     SmartBilingualKind smartKind;
     if (TryGetSmartBilingualKind(newVoiceId, &smartKind)) {
@@ -15326,9 +15373,8 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
         str::ReplaceWithCopy(&ReadAloudRememberedVoice(currentSource), ReadAloudVoiceChoice(curPref));
     }
     str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, newVoiceId);
-    if (const auto* offline = FindOfflineVoice(gGlobalPrefs->readAloudVoiceId)) {
-        OfflineSpeechPrepare(*offline);
-    } else if (FindEdgeReadAloudVoice(gGlobalPrefs->readAloudVoiceId) && HasPermission(Perm::InternetAccess)) {
+    if (FindEdgeReadAloudVoice(gGlobalPrefs->readAloudVoiceId) && HasPermission(Perm::InternetAccess)) {
+        TtsPrepareGeneratedPlayback();
         EdgeSpeechPrepare();
     }
     str::ReplaceWithCopy(&ReadAloudRememberedVoice(newSource), ReadAloudVoiceChoice(gGlobalPrefs->readAloudVoiceId));
@@ -15343,7 +15389,8 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
 
 // WinRT speech synthesis is too slow for whole-document requests; speak in chunks.
 static constexpr int kReadAloudMaxChunkLen = 1024;
-static constexpr int kGeneratedReadAloudFirstChunkLen = 96;
+static constexpr int kGeneratedReadAloudFirstChunkLen = 60;
+static constexpr int kOnlineReadAloudFirstChunkLen = 96;
 static constexpr int kGeneratedReadAloudMaxChunkLen = 216;
 
 static int ReadAloudFindChunkEnd(const char* text, int start, int maxLen) {
@@ -15599,6 +15646,14 @@ static void ReadAloudPrepareRestart(WindowTab* tab, MainWindow* win) {
         return;
     }
 
+    // Start preparation before document extraction instead of putting it on the
+    // first synthesis request's critical path.
+    if (ReadAloudUsesOfflineVoice() || ReadAloudUsesEdge()) TtsPrepareGeneratedPlayback();
+    if (const auto* offline = ReadAloudUsesOfflineVoice())
+        OfflineSpeechPrepare(*offline);
+    else if (ReadAloudUsesEdge() && HasPermission(Perm::InternetAccess))
+        EdgeSpeechPrepare();
+
     TtsProcessEvents();
     if (TtsIsSpeaking()) {
         TtsStop();
@@ -15666,6 +15721,9 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
         rateLang = lang;
     } else {
         int maxLen = firstGenerated ? kGeneratedReadAloudFirstChunkLen : kGeneratedReadAloudMaxChunkLen;
+        if (edge && firstGenerated) {
+            maxLen = kOnlineReadAloudFirstChunkLen;
+        }
         end = generated ? ReadAloudFindGeneratedChunkEnd(tab->readAloudText, start, maxLen)
                         : ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
         rateLang = edge || offline ? ReadAloudLang::Unknown : ReadAloudLangFromVoiceId(TtsGetVoiceId());
@@ -15897,6 +15955,7 @@ static void ReadAloudPagePopulateVoices(HWND hDlg) {
             }
         }
     } else if (HasPermission(Perm::InternetAccess)) {
+        TtsPrepareGeneratedPlayback();
         EdgeSpeechPrepare();
         for (int i = 0; i < gEdgeReadAloudVoiceCount; i++) {
             const auto& voice = gEdgeReadAloudVoices[i];
@@ -15913,12 +15972,6 @@ static void ReadAloudPagePopulateVoices(HWND hDlg) {
         ReadAloudPageComboAdd(combo, label, nullptr);
     }
     ReadAloudPageComboSelectId(combo, p->choices[(int)p->source]);
-    if (p->source == ReadAloudVoiceSource::Offline) {
-        const char* selected = ReadAloudPageComboId(combo);
-        if (const auto* voice = FindOfflineVoice(selected)) {
-            OfflineSpeechPrepare(*voice);
-        }
-    }
     ReadAloudPageFitDropWidth(combo);
     EnableWindow(combo, available);
     EnableWindow(GetDlgItem(hDlg, IDC_RA_PREVIEW), available);
@@ -16335,9 +16388,6 @@ void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
                 ReadAloudPageStopPreview();
                 gReadAloudPage->voiceChanged = true;
                 ReadAloudPageRememberSelection(hDlg);
-                if (const auto* voice = FindOfflineVoice(ReadAloudPageComboId(GetDlgItem(hDlg, id)))) {
-                    OfflineSpeechPrepare(*voice);
-                }
             }
             break;
         case IDC_RA_PREVIEW:
@@ -16416,8 +16466,7 @@ void ReadAloudSettingsPageApply(HWND hDlg) {
                 continue;
             }
             if (source != ReadAloudVoiceSource::Edge ||
-                (FindEdgeReadAloudVoice(choice) &&
-                 (FindEdgeReadAloudVoice(ReadAloudRememberedVoice(source)) || ReadAloudConfirmEdgeVoice(hDlg)))) {
+                (FindEdgeReadAloudVoice(choice) && HasPermission(Perm::InternetAccess))) {
                 str::ReplaceWithCopy(&ReadAloudRememberedVoice(source), choice);
             }
         }
@@ -17798,48 +17847,6 @@ static bool RefreshSidebarDpiFonts(MainWindow* win) {
     return true;
 }
 
-// InvalidateUiFonts() deletes shared HFONTs used by all windows. After a DPI
-// refresh on one window (e.g. ShowMainWindow for a tab dragged to a new
-// window), other windows must rebuild chrome controls that still reference
-// the old font handles.
-static void RefreshWindowChromeAfterFontInvalidate(MainWindow* win) {
-    if (!win || !win->hwndFrame) {
-        return;
-    }
-
-    bool menuRebarVisible = IsShowingMenuBarRebar(win);
-    if (menuRebarVisible) {
-        DestroyMenuBarRebar(win);
-    }
-
-    RefreshToolbarForDpi(win);
-
-    if (menuRebarVisible && IsMenubarVisible()) {
-        CreateMenuBarRebar(win);
-        ShowMenuBarRebar(win);
-    }
-
-    if (win->tabsCtrl) {
-        win->tabsCtrl->SetFont(GetAppTabFontForHwnd(win->hwndFrame));
-        UpdateTabWidth(win);
-        win->tabsCtrl->LayoutTabs();
-    }
-
-    RefreshSidebarDpiFonts(win);
-    RelayoutWindow(win);
-    LayoutAskAiSidebar(win);
-    ReadAloudBarUpdate(win);
-    win->RedrawAll(true);
-}
-
-static void RefreshOtherWindowsChromeAfterFontInvalidate(MainWindow* exceptWin) {
-    for (MainWindow* other : gWindows) {
-        if (other != exceptWin) {
-            RefreshWindowChromeAfterFontInvalidate(other);
-        }
-    }
-}
-
 static void ApplySidebarDpiMovePreview(MainWindow* win) {
     int dpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
     HFONT treeFont = GetAppTreeFontForDpi(dpi);
@@ -17918,7 +17925,7 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
 
     logf("ApplyMainWindowDpiChromeRefresh: dpi=%d\n", win->frameDpi);
 
-    InvalidateUiFonts();
+    // Fonts are cached per DPI. Other windows still use their existing handles.
     HideSelectionToolbar(win);
 
     bool menuRebarVisible = IsShowingMenuBarRebar(win);
@@ -17959,7 +17966,6 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
 
     win->RedrawAll(true);
 
-    RefreshOtherWindowsChromeAfterFontInvalidate(win);
     CloseEditAnnotationsWindowsForDpiMove(win);
     CloseEbookAnnotationsWindowsForDpiMove(win);
     ReopenEditAnnotationsWindowsAfterDpiMove(win);
@@ -18278,11 +18284,18 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             break;
 
         case WM_ACTIVATE:
-            if (wp != WA_INACTIVE) {
+            if (LOWORD(wp) != WA_INACTIVE) {
                 gLastActiveFrameHwnd = hwnd;
+                SetTimer(hwnd, kOnlineSpeechPreparationTimerId, 4000, nullptr);
+                if (ReadAloudUsesEdge() && HasPermission(Perm::InternetAccess) && !TtsIsSpeaking()) {
+                    EdgeSpeechRefreshPreparation();
+                    TtsPrepareGeneratedPlayback();
+                }
                 if (win && (win->isFullScreen || win->presentation)) {
                     ApplyFullscreenZOrder(hwnd);
                 }
+            } else {
+                KillTimer(hwnd, kOnlineSpeechPreparationTimerId);
             }
             break;
 
@@ -18480,6 +18493,14 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             return OnCopyData(hwnd, wp, lp);
 
         case WM_TIMER:
+            if (wp == kOnlineSpeechPreparationTimerId) {
+                if (GetForegroundWindow() == hwnd && win && win->IsDocLoaded() && ReadAloudUsesEdge() &&
+                    HasPermission(Perm::InternetAccess) && !TtsIsSpeaking()) {
+                    EdgeSpeechRefreshPreparation();
+                    TtsPrepareGeneratedPlayback();
+                }
+                return 0;
+            }
             if (win && win->stressTest) {
                 OnStressTestTimer(win, (int)wp);
             }

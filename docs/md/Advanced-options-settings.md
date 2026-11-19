@@ -832,6 +832,9 @@ FileStates [
     ; or favorites
     SidebarView = bookmarks
 
+    ; sidebar visibility was set manually for this file
+    SidebarVisibilityManual = false
+
     ; width of the left sidebar panel containing the table of contents
     SidebarDx = 0
 
@@ -906,6 +909,9 @@ SessionData [
 
         ; if true, the table of contents was shown when the document was closed
         ShowToc = true
+
+        ; sidebar visibility was set manually for this tab
+        SidebarVisibilityManual = false
 
         ; same as FileStates -> TocState
         TocState =

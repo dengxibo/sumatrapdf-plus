@@ -489,6 +489,9 @@ typedef struct {
     int vectorOps;
     int imageOps;
     float pageArea;
+    fz_rect pageBounds;
+    bool darkPaper;
+    bool lightTextOnDarkPaper;
 } pdf_scan_probe_device;
 
 static void probe_drop_device(fz_context* ctx, fz_device* dev) {
@@ -521,16 +524,21 @@ static void probe_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, f
     }
 }
 
+static float ProbeColorBrightness(fz_context* ctx, fz_colorspace* cs, const float* color, fz_color_params colorParams) {
+    float rgb[3];
+    fz_convert_color(ctx, cs, color, fz_device_rgb(ctx), rgb, cs, colorParams);
+    return 0.2126f * rgb[0] + 0.7152f * rgb[1] + 0.0722f * rgb[2];
+}
+
 static void probe_fill_text(fz_context* ctx, fz_device* dev, const fz_text* text, fz_matrix ctm,
                             fz_colorspace* colorspace, const float* color, float alpha, fz_color_params color_params) {
-    (void)ctx;
     (void)text;
     (void)ctm;
-    (void)colorspace;
-    (void)color;
-    (void)alpha;
-    (void)color_params;
-    ((pdf_scan_probe_device*)dev)->textOps++;
+    auto* probe = (pdf_scan_probe_device*)dev;
+    probe->textOps++;
+    if (probe->darkPaper && !probe->lightTextOnDarkPaper && colorspace && color && alpha >= 0.95f) {
+        probe->lightTextOnDarkPaper = ProbeColorBrightness(ctx, colorspace, color, color_params) > 0.6f;
+    }
 }
 
 static void probe_stroke_text(fz_context* ctx, fz_device* dev, const fz_text* text, const fz_stroke_state* stroke,
@@ -549,15 +557,17 @@ static void probe_stroke_text(fz_context* ctx, fz_device* dev, const fz_text* te
 
 static void probe_fill_path(fz_context* ctx, fz_device* dev, const fz_path* path, int even_odd, fz_matrix ctm,
                             fz_colorspace* colorspace, const float* color, float alpha, fz_color_params color_params) {
-    (void)ctx;
-    (void)path;
     (void)even_odd;
-    (void)ctm;
-    (void)colorspace;
-    (void)color;
-    (void)alpha;
-    (void)color_params;
-    ((pdf_scan_probe_device*)dev)->vectorOps++;
+    auto* probe = (pdf_scan_probe_device*)dev;
+    probe->vectorOps++;
+    if (!colorspace || !color || alpha < 0.99f) {
+        return;
+    }
+    fz_rect bounds = fz_intersect_rect(fz_bound_path(ctx, path, nullptr, ctm), probe->pageBounds);
+    if (dm_rect_area(bounds) >= 0.98f * probe->pageArea) {
+        probe->darkPaper = ProbeColorBrightness(ctx, colorspace, color, color_params) < 0.25f;
+        probe->lightTextOnDarkPaper = false;
+    }
 }
 
 static void probe_stroke_path(fz_context* ctx, fz_device* dev, const fz_path* path, const fz_stroke_state* stroke,
@@ -708,11 +718,13 @@ bool PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(fz_context* ctx, p
 static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_probe_device* probe,
                                                                 FollowThemePageProbeStats* stats) {
     DarkModeOptions opts = PdfDarkModeCurrentOptions();
-    FollowThemePageProbeStats st{.textOps = probe->textOps,
-                                 .imageOps = probe->imageOps,
-                                 .vectorOps = probe->vectorOps,
-                                 .maxImageCoverage = probe->maxImageCoverage,
-                                 .stackedImageCoverage = probe->stackedImageCoverage};
+    FollowThemePageProbeStats st{
+        .textOps = probe->textOps,
+        .imageOps = probe->imageOps,
+        .vectorOps = probe->vectorOps,
+        .maxImageCoverage = probe->maxImageCoverage,
+        .stackedImageCoverage = probe->stackedImageCoverage,
+        .hasDarkPaperAndLightText = probe->lightTextOnDarkPaper && probe->maxImageCoverage < 0.90f};
     if (stats) {
         *stats = st;
     }
@@ -758,6 +770,7 @@ static FollowThemeScanProbe PdfDarkModeRunFollowThemeScanProbe(fz_context* ctx, 
         probe = fz_new_derived_device(ctx, pdf_scan_probe_device);
         dev = &probe->super;
         probe->pageArea = pageArea;
+        probe->pageBounds = ToFzRect(pageBounds);
         dev->fill_image = probe_fill_image;
         dev->fill_text = probe_fill_text;
         dev->stroke_text = probe_stroke_text;

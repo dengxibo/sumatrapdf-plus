@@ -390,6 +390,8 @@ struct FileState {
     // which sidebar view was showing for this document: bookmarks,
     // thumbnails, or favorites
     char* sidebarView;
+    // sidebar visibility was set manually for this file
+    bool sidebarVisibilityManual;
     // width of the left sidebar panel containing the table of contents
     int sidebarDx;
     // ebook font size for this file; 0 inherits the reading options
@@ -468,6 +470,8 @@ struct TabState {
     // if true, the table of contents was shown when the document was
     // closed
     bool showToc;
+    // sidebar visibility was set manually for this tab
+    bool sidebarVisibilityManual;
     // same as FileStates -> TocState
     Vec<int>* tocState;
 };
@@ -1076,6 +1080,7 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, windowPos), SettingType::Compact, (intptr_t)&gRect_2_Info, nullptr},
     {offsetof(FileState, showToc), SettingType::Bool, true, nullptr},
     {offsetof(FileState, sidebarView), SettingType::String, (intptr_t)"bookmarks", nullptr},
+    {offsetof(FileState, sidebarVisibilityManual), SettingType::Bool, false, nullptr},
     {offsetof(FileState, sidebarDx), SettingType::Int, 0, nullptr},
     {offsetof(FileState, ebookFontSize), SettingType::Float, (intptr_t)"0", nullptr},
     {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
@@ -1091,11 +1096,11 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
-    sizeof(FileState), 28, gFileStateFields,
+    sizeof(FileState), 29, gFileStateFields,
     "FilePath\0Favorites\0IsPinned\0IsMissing\0OpenCount\0DecryptionKey\0UseDefaultState\0DisplayMode\0ScrollPos\0PageN"
-    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarDx\0EbookFontSize\0DisplayR2L\0BgCol\0TabC"
-    "ol\0DisplayFilterBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseI"
-    "dx\0TocState"};
+    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarVisibilityManual\0SidebarDx\0EbookFontSize"
+    "\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilter"
+    "Mode\0AutoOcrOn\0ReparseIdx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1111,10 +1116,12 @@ static const FieldInfo gTabStateFields[] = {
     {offsetof(TabState, rotation), SettingType::Int, 0, nullptr},
     {offsetof(TabState, scrollPos), SettingType::Compact, (intptr_t)&gPointF_1_Info, nullptr},
     {offsetof(TabState, showToc), SettingType::Bool, true, nullptr},
+    {offsetof(TabState, sidebarVisibilityManual), SettingType::Bool, false, nullptr},
     {offsetof(TabState, tocState), SettingType::IntArray, 0, nullptr},
 };
-static const StructInfo gTabStateInfo = {sizeof(TabState), 8, gTabStateFields,
-                                         "FilePath\0DisplayMode\0PageNo\0Zoom\0Rotation\0ScrollPos\0ShowToc\0TocState"};
+static const StructInfo gTabStateInfo = {
+    sizeof(TabState), 9, gTabStateFields,
+    "FilePath\0DisplayMode\0PageNo\0Zoom\0Rotation\0ScrollPos\0ShowToc\0SidebarVisibilityManual\0TocState"};
 
 static const FieldInfo gRect_3_Fields[] = {
     {offsetof(Rect, x), SettingType::Int, 0, nullptr},
@@ -1154,8 +1161,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-80.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-80.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-100.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-100.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},

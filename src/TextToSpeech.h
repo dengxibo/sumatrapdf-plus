@@ -12,6 +12,7 @@ bool TtsSpeakUtf8(const char* text);
 struct OfflineVoice;
 struct EdgeReadAloudVoice;
 bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const EdgeReadAloudVoice* edge = nullptr);
+void TtsPrepareGeneratedPlayback();
 void TtsQueueNextGeneratedUtf8(const char* text);
 bool TtsConsumeSynthesisFailure();
 // Queue one following SAPI chunk; the next matching Speak adopts it.

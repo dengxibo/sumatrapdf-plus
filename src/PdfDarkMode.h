@@ -208,6 +208,7 @@ struct FollowThemePageProbeStats {
     int vectorOps = 0;
     float maxImageCoverage = 0.f;
     float stackedImageCoverage = 0.f;
+    bool hasDarkPaperAndLightText = false;
 };
 
 inline bool FollowThemePageStatsAllowBitmapRecolor(const FollowThemePageProbeStats& st, const DarkModeOptions& opts) {

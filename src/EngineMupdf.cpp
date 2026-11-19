@@ -11836,18 +11836,15 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     // legacy recolor modes it only adds an extra full page traversal before the
     // first pixels can be displayed, so render the page directly as upstream
     // does.
-    bool useSmartDarkList = (args.target == RenderTarget::View) && !hideAnnotations && args.darkProfile &&
-                            args.darkProfile->mode == PageColorMode::SmartDark;
-    const DarkModeProfile* darkProfileForPath = args.darkProfile;
-    bool followDirectPath = DarkModeProfileUsesFollowThemeDirect(darkProfileForPath);
-    bool followV2Path = DarkModeProfileUsesFollowThemeV2(darkProfileForPath);
+    const DarkModeProfile* darkProfile = args.darkProfile;
+    bool useSmartDarkList = false;
     // Those display lists include the annotations that follow page colors.
     // A capture that asked to hide them must take the contents-only path
     // below, or the old glyphs stay under the caret and smear on edit.
     bool followThemeBitmapDoc =
         pdfdoc && followThemeDocBitmapRecolor == 1 && !InterlockedCompareExchange(&pdfFollowThemeProbePending, 0, 0);
     bool useBitmapTexList = false;
-    bool usePageDisplayList = useSmartDarkList;
+    bool usePageDisplayList = false;
 
     fz_rect pRect;
     fz_matrix ctm;
@@ -11880,10 +11877,26 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             ctm = WithPageDeskew(ctm, fullPage, deskew);
         }
 
+        if (pdfdoc && args.target == RenderTarget::View && GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto &&
+            DarkModeProfileUsesObjectLevel(darkProfile) && IsLightColor(darkProfile->foreground) &&
+            !IsLightColor(darkProfile->pageBackground)) {
+            if (pageInfo->nativeDarkPage == 0) {
+                FollowThemePageProbeStats stats;
+                PdfDarkModeProbeFollowThemeScanPage(ctx, page, pageInfo->mediabox, &stats);
+                pageInfo->nativeDarkPage = stats.hasDarkPaperAndLightText ? 2 : 1;
+            }
+            if (pageInfo->nativeDarkPage == 2) {
+                darkProfile = nullptr;
+            }
+        }
+        useSmartDarkList = args.target == RenderTarget::View && !hideAnnotations && darkProfile &&
+                           darkProfile->mode == PageColorMode::SmartDark;
         if (useSmartDarkList) {
             pageRenderPerf.path = "smart-list";
             keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
-        } else if (!hideAnnotations && (followDirectPath || followV2Path) && args.darkProfile) {
+            usePageDisplayList = true;
+        } else if (!hideAnnotations && (DarkModeProfileUsesFollowThemeDirect(darkProfile) ||
+                                        DarkModeProfileUsesFollowThemeV2(darkProfile))) {
             pageRenderPerf.path = "follow-direct";
             bool bitmapRecolor = FollowThemePageShouldRasterizeThenRecolor(this, ctx, pageInfo, page);
             if (bitmapRecolor) {
@@ -11914,7 +11927,6 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         ReflowRenderLock replayRenderGuard(this, reflowLoading);
         fz_try(ctx) {
             pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
-            const DarkModeProfile* darkProfile = args.darkProfile;
             if (useBitmapTexList && !useSmartDarkList) {
                 bool blockOfficePaperBmp = FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, this, pageInfo, page);
                 if (followThemeBitmapDoc && !blockOfficePaperBmp) {
@@ -12022,7 +12034,6 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     pdf_page* pdfpage = nullptr;
     fz_var(pdfpage);
     if (pdfdoc) {
-        const DarkModeProfile* darkProfile = args.darkProfile;
         bool followDirect = DarkModeProfileUsesFollowThemeDirect(darkProfile);
         bool followV2 = DarkModeProfileUsesFollowThemeV2(darkProfile);
         bool paperScanBinarize = GetPdfImageDarkStrategy() != PdfImageDarkStrategy::Original &&

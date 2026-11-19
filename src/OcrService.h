@@ -34,6 +34,7 @@ void OcrScheduleDocument(MainWindow* win, bool extractTocIfMissing = false, bool
 void OcrRerunAllPages(MainWindow* win, bool accurate);
 void OcrSaveSearchablePdfAfterOcr(MainWindow* win, const char* destPath, bool extractTocWhenDone = false);
 bool OcrSaveCachedSearchablePdf(MainWindow* win, const char* destPath);
+bool OcrExportCachedTextPdf(EngineBase* engine, const char* destPath, char** error);
 void OcrExtractTocAfterDocumentOcr(MainWindow* win);
 void OcrCancelQueued(MainWindow* win, bool quiet = false);
 void OcrCancelAuto(MainWindow* win);

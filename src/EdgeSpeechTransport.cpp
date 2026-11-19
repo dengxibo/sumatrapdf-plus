@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "utils/Log.h"
 #include "EdgeSpeechResponse.h"
 #include "EdgeSpeechTransport.h"
 #include "../ext/edge-gec/EdgeGec.h"
@@ -98,39 +99,124 @@ static HINTERNET EdgeHttpSession() {
     return sharedSession;
 }
 
-static DWORD WINAPI PrepareEdgeConnection(void*) {
+struct EdgeConnection {
+    HINTERNET connection = nullptr;
+    HINTERNET socket = nullptr;
+    void Reset() {
+        if (socket) WinHttpCloseHandle(socket);
+        if (connection) WinHttpCloseHandle(connection);
+        socket = connection = nullptr;
+    }
+    void Take(EdgeConnection& source) {
+        connection = source.connection;
+        socket = source.socket;
+        source.connection = source.socket = nullptr;
+    }
+};
+
+static EdgeSpeechTransportResult OpenEdgeConnection(const EdgeSpeechTurn& turn, HANDLE cancel, EdgeConnection& out) {
+    ULONGLONG started = GetTickCount64();
+    const auto api = GetEdgeWebSocketApi();
+    if (!api.upgrade || !api.send || !api.receive) return {ERROR_NOT_SUPPORTED};
     HINTERNET session = EdgeHttpSession();
-    if (!session) return 0;
-    HINTERNET connection = WinHttpConnect(session, L"speech.platform.bing.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
-    if (!connection) return 0;
-    defer {
-        WinHttpCloseHandle(connection);
-    };
-    HINTERNET request = WinHttpOpenRequest(connection, L"HEAD", L"/", nullptr, WINHTTP_NO_REFERER,
+    if (!session) return {GetLastError()};
+    out.connection = WinHttpConnect(session, L"speech.platform.bing.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
+    if (!out.connection) return {GetLastError()};
+    HINTERNET request = WinHttpOpenRequest(out.connection, L"GET", turn.resource, nullptr, WINHTTP_NO_REFERER,
                                            WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
-    if (!request) return 0;
+    if (!request) return {GetLastError()};
     defer {
         WinHttpCloseHandle(request);
     };
-    DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-    WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect));
-    WinHttpSetTimeouts(request, 2000, 2000, 2000, 2000);
-    if (WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, nullptr, 0, 0, 0)) {
-        WinHttpReceiveResponse(request, nullptr);
+    DWORD redirects = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    if (!WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirects, sizeof(redirects)) ||
+        !WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0))
+        return {GetLastError()};
+    if (EdgeTurnCancelled(cancel)) return {ERROR_CANCELLED};
+    if (!WinHttpSendRequest(request, turn.headers, turn.headers ? (DWORD)-1 : 0, nullptr, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request, nullptr))
+        return {EdgeTurnCancelled(cancel) ? ERROR_CANCELLED : GetLastError()};
+    DWORD status = 0, size = sizeof(status);
+    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &size,
+                             nullptr))
+        return {GetLastError()};
+    if (status != 101) return {ERROR_WINHTTP_INVALID_SERVER_RESPONSE, status};
+    out.socket = api.upgrade(request, 0);
+    if (out.socket) logf("Edge speech: WebSocket ready after %llu ms\n", GetTickCount64() - started);
+    return {out.socket ? ERROR_SUCCESS : GetLastError(), status};
+}
+
+static SRWLOCK gEdgeConnectionLock = SRWLOCK_INIT;
+static EdgeConnection gEdgePreparedConnection;
+static ULONGLONG gEdgePreparedAt = 0;
+static bool gEdgePreparing = false;
+static constexpr ULONGLONG kEdgeConnectionIdleMs = 20000;
+static bool BuildEdgeRequest(WStrBuilder& target, WStrBuilder& headers);
+
+static void SaveEdgeConnection(EdgeConnection& connection) {
+    AcquireSRWLockExclusive(&gEdgeConnectionLock);
+    gEdgePreparedConnection.Reset();
+    gEdgePreparedConnection.Take(connection);
+    gEdgePreparedAt = GetTickCount64();
+    ReleaseSRWLockExclusive(&gEdgeConnectionLock);
+}
+
+static bool TakeEdgeConnection(EdgeConnection& connection) {
+    AcquireSRWLockExclusive(&gEdgeConnectionLock);
+    ULONGLONG age = GetTickCount64() - gEdgePreparedAt;
+    if (gEdgePreparedConnection.socket && age > kEdgeConnectionIdleMs) {
+        gEdgePreparedConnection.Reset();
     }
+    bool ready = gEdgePreparedConnection.socket != nullptr;
+    if (ready) connection.Take(gEdgePreparedConnection);
+    ReleaseSRWLockExclusive(&gEdgeConnectionLock);
+    if (ready) logf("Edge speech: prepared connection age %llu ms\n", age);
+    return ready;
+}
+
+static DWORD WINAPI PrepareEdgeConnection(void*) {
+    EdgeConnection connection;
+    WStrBuilder target, headers;
+    if (BuildEdgeRequest(target, headers)) {
+        EdgeSpeechTurn turn{};
+        turn.resource = target.Get();
+        turn.headers = headers.Get();
+        if (OpenEdgeConnection(turn, nullptr, connection).error == ERROR_SUCCESS) SaveEdgeConnection(connection);
+    }
+    connection.Reset();
+    AcquireSRWLockExclusive(&gEdgeConnectionLock);
+    gEdgePreparing = false;
+    ReleaseSRWLockExclusive(&gEdgeConnectionLock);
     DestroyTempAllocator();
     return 0;
 }
 
-void EdgeSpeechPrepare() {
-    static LONG prepared = 0;
-    if (InterlockedCompareExchange(&prepared, 1, 0) != 0) return;
-    HANDLE worker = CreateThread(nullptr, 0, PrepareEdgeConnection, nullptr, 0, nullptr);
-    if (worker) {
-        CloseHandle(worker);
-    } else {
-        InterlockedExchange(&prepared, 0);
+static void PrepareEdgeSpeech(ULONGLONG maxAge) {
+    AcquireSRWLockExclusive(&gEdgeConnectionLock);
+    bool ready = gEdgePreparedConnection.socket && GetTickCount64() - gEdgePreparedAt <= maxAge;
+    if (ready || gEdgePreparing) {
+        ReleaseSRWLockExclusive(&gEdgeConnectionLock);
+        return;
     }
+    gEdgePreparing = true;
+    ReleaseSRWLockExclusive(&gEdgeConnectionLock);
+    HANDLE worker = CreateThread(nullptr, 0, PrepareEdgeConnection, nullptr, 0, nullptr);
+    if (worker)
+        CloseHandle(worker);
+    else {
+        AcquireSRWLockExclusive(&gEdgeConnectionLock);
+        gEdgePreparing = false;
+        ReleaseSRWLockExclusive(&gEdgeConnectionLock);
+    }
+}
+
+void EdgeSpeechPrepare() {
+    PrepareEdgeSpeech(kEdgeConnectionIdleMs);
+}
+
+void EdgeSpeechRefreshPreparation() {
+    // Leave time to establish a replacement before the current socket expires.
+    PrepareEdgeSpeech(12000);
 }
 
 EdgeSpeechTransportResult EdgeSpeechReceiveTurn(const EdgeSpeechTurn& turn, HANDLE cancelEvent,
@@ -150,64 +236,41 @@ EdgeSpeechTransportResult EdgeSpeechReceiveTurn(const EdgeSpeechTurn& turn, HAND
         return {ERROR_NOT_SUPPORTED};
     }
 
-    HINTERNET session = EdgeHttpSession();
-    if (!session) {
-        return {GetLastError()};
-    }
-    HINTERNET connection = WinHttpConnect(session, L"speech.platform.bing.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
-    if (!connection) {
-        return {GetLastError()};
-    }
+    EdgeConnection connection;
     defer {
-        WinHttpCloseHandle(connection);
+        connection.Reset();
     };
-    HINTERNET request = WinHttpOpenRequest(connection, L"GET", turn.resource, nullptr, WINHTTP_NO_REFERER,
-                                           WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
-    if (!request) {
-        return {GetLastError()};
-    }
-    defer {
-        WinHttpCloseHandle(request);
-    };
-    DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-    if (!WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy)) ||
-        !WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
-        return {GetLastError()};
-    }
-    if (EdgeTurnCancelled(cancelEvent)) {
-        return {ERROR_CANCELLED};
-    }
-    if (!WinHttpSendRequest(request, turn.headers, turn.headers ? (DWORD)-1 : 0, nullptr, 0, 0, 0) ||
-        !WinHttpReceiveResponse(request, nullptr)) {
-        return {EdgeTurnCancelled(cancelEvent) ? ERROR_CANCELLED : GetLastError()};
-    }
-    DWORD status = 0;
-    DWORD statusSize = sizeof(status);
-    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status,
-                             &statusSize, nullptr)) {
-        return {GetLastError()};
-    }
-    if (status != 101) {
-        return {ERROR_WINHTTP_INVALID_SERVER_RESPONSE, status};
-    }
-    HINTERNET socket = api.upgrade(request, 0);
-    if (!socket) {
-        return {GetLastError(), status};
-    }
-    defer {
-        WinHttpCloseHandle(socket);
-    };
-    const char* messages[] = {turn.configMessage, turn.ssmlMessage};
-    for (const char* msg : messages) {
-        if (EdgeTurnCancelled(cancelEvent)) {
-            return {ERROR_CANCELLED, status};
+    bool reused = turn.allowPreparedConnection && TakeEdgeConnection(connection);
+    if (reused) log("Edge speech: using prepared WebSocket\n");
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (EdgeTurnCancelled(cancelEvent)) return {ERROR_CANCELLED};
+        EdgeSpeechTransportResult result{ERROR_SUCCESS, 101};
+        if (!connection.socket) result = OpenEdgeConnection(turn, cancelEvent, connection);
+        if (result.error == ERROR_SUCCESS) {
+            const char* messages[] = {turn.configMessage, turn.ssmlMessage};
+            for (const char* message : messages) {
+                if (EdgeTurnCancelled(cancelEvent)) return {ERROR_CANCELLED, 101};
+                result.error = api.send(connection.socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (void*)message,
+                                        (DWORD)strlen(message));
+                if (result.error != ERROR_SUCCESS) break;
+            }
+            if (result.error == ERROR_SUCCESS)
+                result.error = EdgeReadWebSocket(api, connection.socket, cancelEvent, response);
         }
-        DWORD error = api.send(socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (void*)msg, (DWORD)strlen(msg));
-        if (error != ERROR_SUCCESS) {
-            return {error, status};
+        if (result.error == ERROR_SUCCESS) {
+            if (turn.allowPreparedConnection && !EdgeTurnCancelled(cancelEvent)) SaveEdgeConnection(connection);
+            return result;
         }
+        connection.Reset();
+        // The server can expire an idle socket. Retry only before publishing any
+        // audio or word data, so a stale connection never repeats spoken text.
+        if (!reused || attempt || EdgeTurnCancelled(cancelEvent) || !response.mp3.IsEmpty() ||
+            !response.words.IsEmpty())
+            return result;
+        reused = false;
+        log("Edge speech: idle WebSocket expired; reconnecting before audio\n");
     }
-    return {EdgeReadWebSocket(api, socket, cancelEvent, response), status};
+    return {ERROR_GEN_FAILURE};
 }
 
 static bool IsEdgeVoiceName(const char* voice) {
@@ -248,7 +311,7 @@ static bool AppendEdgeSsmlText(StrBuilder& ssml, const char* text) {
 
 EdgeSpeechTransportResult EdgeSpeechSynthesize(const WCHAR* resource, const WCHAR* headers, const char* text,
                                                const char* voice, float rate, HANDLE cancelEvent,
-                                               EdgeSpeechResponse& response) {
+                                               EdgeSpeechResponse& response, bool allowPreparedConnection) {
     if (str::IsEmpty(text) || strlen(text) > 4096 || !IsEdgeVoiceName(voice) || !(rate >= 0.25f && rate <= 2.0f)) {
         return {ERROR_INVALID_PARAMETER};
     }
@@ -301,7 +364,7 @@ EdgeSpeechTransportResult EdgeSpeechSynthesize(const WCHAR* resource, const WCHA
     }
     ssml.Append("</prosody></voice></speak>");
 
-    EdgeSpeechTurn turn{resource, headers, config.Get(), ssml.Get()};
+    EdgeSpeechTurn turn{resource, headers, config.Get(), ssml.Get(), allowPreparedConnection};
     return EdgeSpeechReceiveTurn(turn, cancelEvent, response);
 }
 
@@ -352,8 +415,7 @@ const EdgeReadAloudVoice* FindEdgeReadAloudVoice(const char* id) {
     return nullptr;
 }
 
-EdgeSpeechTransportResult EdgeSpeechSynthesizeOnline(const char* text, const char* voice, float rate,
-                                                     HANDLE cancelEvent, EdgeSpeechResponse& response) {
+static bool BuildEdgeRequest(WStrBuilder& target, WStrBuilder& headers) {
     FILETIME now;
     GetSystemTimeAsFileTime(&now);
     ULARGE_INTEGER ticks;
@@ -361,13 +423,13 @@ EdgeSpeechTransportResult EdgeSpeechSynthesizeOnline(const char* text, const cha
     ticks.HighPart = now.dwHighDateTime;
     char validation[82];
     EdgeGec::Generate(ticks.QuadPart, validation);
-    TempStr target = str::FormatTemp(
+    TempStr requestTarget = str::FormatTemp(
         "/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4"
         "&Sec-MS-GEC=%s&Sec-MS-GEC-Version=2-143.0.3650.75",
         validation);
     GUID id;
     if (FAILED(CoCreateGuid(&id))) {
-        return {ERROR_GEN_FAILURE};
+        return false;
     }
     char muid[33];
     constexpr char hex[] = "0123456789ABCDEF";
@@ -377,11 +439,21 @@ EdgeSpeechTransportResult EdgeSpeechSynthesizeOnline(const char* text, const cha
         muid[2 * i + 1] = hex[bytes[i] & 15];
     }
     muid[32] = 0;
-    TempStr headers = str::FormatTemp(
+    TempStr requestHeaders = str::FormatTemp(
         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\r\n"
         "Origin: chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold\r\n"
         "Pragma: no-cache\r\nCache-Control: no-cache\r\nAccept-Language: en-US,en;q=0.9\r\nCookie: muid=%s;",
         muid);
-    return EdgeSpeechSynthesize(ToWStrTemp(target), ToWStrTemp(headers), text, voice, rate, cancelEvent, response);
+    target.Set(ToWStrTemp(requestTarget));
+    headers.Set(ToWStrTemp(requestHeaders));
+    return true;
+}
+
+EdgeSpeechTransportResult EdgeSpeechSynthesizeOnline(const char* text, const char* voice, float rate,
+                                                     HANDLE cancelEvent, EdgeSpeechResponse& response,
+                                                     bool usePrepared) {
+    WStrBuilder target, headers;
+    if (!BuildEdgeRequest(target, headers)) return {ERROR_GEN_FAILURE};
+    return EdgeSpeechSynthesize(target.Get(), headers.Get(), text, voice, rate, cancelEvent, response, usePrepared);
 }

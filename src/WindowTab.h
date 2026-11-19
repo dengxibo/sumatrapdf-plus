@@ -31,6 +31,7 @@ struct WindowTab {
     const char* frameTitle = nullptr;
     // state of the table of contents
     bool showToc = false;
+    bool sidebarVisibilityManual = false;
     // Keep page-count width stable across reflow reloads of this book.
     int toolbarPageDigits = 0;
     bool showTocPresentation = false;

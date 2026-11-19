@@ -615,6 +615,7 @@ const fileSettings: Field[] = [
     "bookmarks",
     "which sidebar view was showing for this document: bookmarks, thumbnails, or favorites",
   ),
+  mkField("SidebarVisibilityManual", Bool, false, "sidebar visibility was set manually for this file"),
   mkField("SidebarDx", Int, 0, "width of the left sidebar panel containing the table of contents"),
   mkField("EbookFontSize", Float, 0, "ebook font size for this file; 0 inherits the reading options default"),
   mkField(
@@ -736,6 +737,7 @@ const tabState: Field[] = [
     "PointF",
   ),
   mkField("ShowToc", Bool, true, "if true, the table of contents was shown when the document was closed"),
+  mkField("SidebarVisibilityManual", Bool, false, "sidebar visibility was set manually for this tab"),
   mkCompactArray("TocState", Int, null, "same as FileStates -> TocState"),
 ];
 

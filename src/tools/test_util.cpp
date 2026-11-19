@@ -2,6 +2,7 @@
 #include "utils/WinDynCalls.h"
 #include "utils/FileUtil.h"
 #include "utils/WinUtil.h"
+#include "utils/Log.h"
 #include "EdgeSpeechResponse.h"
 #include "EdgeSpeechTransport.h"
 #include "LookupAudio.h"
@@ -181,21 +182,30 @@ static void SearchTextTests() {
 }
 
 struct EdgePrefixProbe {
+    struct Sample {
+        char* wav;
+        DWORD size;
+    };
+    Vec<Sample> samples;
     ULONGLONG started = 0;
     char* wav = nullptr;
     DWORD size = 0;
     HANDLE cancel = nullptr;
+    int nextProbe = 2000;
 };
 
 static void ProbeEdgePrefix(void* context, EdgeSpeechResponse& response) {
     auto* probe = (EdgePrefixProbe*)context;
-    if (probe->wav || response.mp3.Size() < 6000) {
+    if (probe->samples.Size() >= 6 || response.mp3.Size() < probe->nextProbe) {
         return;
     }
+    probe->nextProbe = response.mp3.Size() + 4000;
     probe->wav = DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), probe->cancel, &probe->size);
     if (probe->wav) {
-        printf("Edge first decoded audio after %llu ms, %lu WAV bytes\n", GetTickCount64() - probe->started,
-               probe->size);
+        probe->samples.Append({probe->wav, probe->size});
+        if (probe->samples.Size() == 1)
+            printf("Edge first decoded audio after %llu ms, %lu WAV bytes\n", GetTickCount64() - probe->started,
+                   probe->size);
     }
 }
 
@@ -229,9 +239,11 @@ static int ProbeEdgeSpeech(const char* output, const EdgeReadAloudVoice& edgeVoi
     EdgeSpeechResponse response(text);
     ULONGLONG start = GetTickCount64();
     HRESULT prefixCom = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    EdgePrefixProbe prefix{start, nullptr, 0, CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    EdgePrefixProbe prefix;
+    prefix.started = start;
+    prefix.cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     defer {
-        free(prefix.wav);
+        for (const auto& sample : prefix.samples) free(sample.wav);
         if (prefix.cancel) CloseHandle(prefix.cancel);
         if (SUCCEEDED(prefixCom)) CoUninitialize();
     };
@@ -267,13 +279,15 @@ static int ProbeEdgeSpeech(const char* output, const EdgeReadAloudVoice& edgeVoi
         defer {
             free(wav);
         };
-        if (prefix.wav && wav && prefix.size > 44 + 2304 && size >= prefix.size) {
-            DWORD bytes = prefix.size - 44 - 2304;
-            if (memcmp(prefix.wav + 44, wav + 44, bytes) != 0) {
-                fprintf(stderr, "Edge prefix differs from full decode\n");
-                return 3;
+        for (const auto& sample : prefix.samples) {
+            if (sample.wav && wav && sample.size > 44 + 2304 && size >= sample.size) {
+                DWORD bytes = sample.size - 44 - 2304;
+                if (memcmp(sample.wav + 44, wav + 44, bytes) != 0) {
+                    fprintf(stderr, "Edge prefix differs from full decode\n");
+                    return 3;
+                }
+                printf("Edge streaming splice verified for %lu PCM bytes\n", bytes);
             }
-            printf("Edge streaming splice verified for %lu PCM bytes\n", bytes);
         }
         return wav && file::WriteFile(output, ByteSlice((const u8*)wav, size)) ? 0 : 2;
     }
@@ -287,7 +301,18 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Unknown Edge voice: %s\n", argv[3]);
             return 1;
         }
-        return ProbeEdgeSpeech(argv[2], *voice);
+        gLogToConsole = true;
+        if (const char* warm = GetEnvVariableTemp("SUMATRA_EDGE_PROBE_PREPARE_MS")) {
+            EdgeSpeechPrepare();
+            Sleep((DWORD)atoi(warm));
+        }
+        int repeats = 1;
+        if (const char* count = GetEnvVariableTemp("SUMATRA_EDGE_PROBE_REPEATS")) repeats = atoi(count);
+        for (int i = 0; i < repeats; i++) {
+            int result = ProbeEdgeSpeech(argv[2], *voice);
+            if (result) return result;
+        }
+        return 0;
     }
     if (argc == 2 && str::Eq(argv[1], "--search-text-test")) {
         SearchTextTests();

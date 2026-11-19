@@ -105,6 +105,7 @@ TabState* NewTabState(FileState* fs) {
     state->rotation = fs->rotation;
     state->scrollPos = fs->scrollPos;
     state->showToc = fs->showToc;
+    state->sidebarVisibilityManual = fs->sidebarVisibilityManual;
     *state->tocState = *fs->tocState;
     return state;
 }
@@ -121,6 +122,7 @@ TabState* CloneTabState(const TabState* src) {
     dst->rotation = src->rotation;
     dst->scrollPos = src->scrollPos;
     dst->showToc = src->showToc;
+    dst->sidebarVisibilityManual = src->sidebarVisibilityManual;
     *dst->tocState = *src->tocState;
     return dst;
 }

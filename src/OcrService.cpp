@@ -2828,6 +2828,7 @@ struct OcrDoneUi {
     bool ok = false;
     bool documentJob = false;
     bool regionJob = false;
+    bool explicitPageJob = false;
     bool showStatus = false;
     bool prefetchNext = false;
     RectF clipRect;
@@ -2922,7 +2923,29 @@ static char* AllocOcrSaveTempPath(const char* destPath) {
         }
         str::Free(p);
     }
-    return str::Join(destPath, ".ocr-tmp");
+    return nullptr;
+}
+
+bool OcrExportCachedTextPdf(EngineBase* engine, const char* destPath, char** error) {
+    AutoFreeStr staging(AllocOcrSaveTempPath(destPath));
+    if (!staging.Get()) {
+        return false;
+    }
+    // Stage the export so an existing output file is never used as the source.
+    defer {
+        file::Delete(staging.Get());
+    };
+    if (EngineMupdfHasUnsavedPdfChanges(engine) && !EngineMupdfSaveUpdated(engine, staging.Get(), ShowErrorCb{})) {
+        return false;
+    }
+    if (!EngineMupdfSaveSearchablePdf(engine, staging.Get(), error)) {
+        return false;
+    }
+    if (!MoveFileExW(ToWStrTemp(staging.Get()), ToWStrTemp(destPath), MOVEFILE_REPLACE_EXISTING)) {
+        *error = str::Dup(GetLastErrorStrTemp());
+        return false;
+    }
+    return true;
 }
 
 static bool OcrWriteSearchablePdfToPath(EngineBase* engine, HWND hwnd, const char* destPath, bool extractTocWhenDone,
@@ -3240,6 +3263,10 @@ static void OcrFinishUi(OcrDoneUi* d) {
         logfa("OCR-T page=%d T6->T7 uiApply=%.0fms\n", d->pageNo, TimeSinceInMs(d->tCommitted));
     }
     if (d->ok && d->engine && d->pageNo > 0) {
+        if (d->explicitPageJob && str::EndsWithI(d->engine->FilePath(), ".pdf") &&
+            EngineMupdfCanEditPdfToc(d->engine) && d->engine->HasCachedOcrText(d->pageNo)) {
+            d->engine->MarkUnsavedOcrText();
+        }
         int rot = d->engine->GetOcrPageRotate(d->pageNo);
         bool applied = rot > 0 && EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo);
         logfa("OCR[page-done] page=%d corr=%d applied=%d\n", d->pageNo, rot, applied);
@@ -3413,6 +3440,7 @@ static void OcrWorker() {
         done->ok = ok;
         done->documentJob = job->documentJob;
         done->regionJob = job->regionJob;
+        done->explicitPageJob = job->op == OcrOperation::CurrentPage && !job->regionJob;
         done->showStatus = job->showStatus;
         done->prefetchNext = job->autoJob && job->prio == kOcrPrioCurrent;
         done->clipRect = job->clipRect;

@@ -71,9 +71,9 @@ struct Engine {
                         self.callbacks.word(self.callbacks.context, event.ticks, text.c_str());
                 });
             bool update = false;
-            const wchar_t* sample = L"Hello, this is a test.";
+            const wchar_t* sample = L"Hello.";
             if (self.locale.starts_with(L"zh"))
-                sample = L"你好。Hello, this is a test.";
+                sample = L"好。Hi.";
             else if (self.locale.starts_with(L"ja"))
                 sample = L"こんにちは。";
             else if (self.locale.starts_with(L"ko"))

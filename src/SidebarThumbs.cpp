@@ -183,13 +183,15 @@ void LoadTabSidebarView(WindowTab* tab) {
         return;
     }
     tab->sidebarView = 0;
+    tab->sidebarVisibilityManual = false;
     if (!tab->filePath || !gGlobalPrefs->rememberStatePerDocument) {
         return;
     }
     FileState* fs = gFileHistory.FindByPath(tab->filePath);
-    if (!fs || fs->useDefaultState || str::IsEmpty(fs->sidebarView)) {
+    if (!fs || fs->useDefaultState) {
         return;
     }
+    tab->sidebarVisibilityManual = fs->sidebarVisibilityManual;
     tab->sidebarView = (int)SidebarViewFromStr(fs->sidebarView);
 }
 
@@ -197,11 +199,13 @@ void RememberTabSidebarView(WindowTab* tab) {
     if (!tab || !tab->filePath) {
         return;
     }
+    tab->sidebarVisibilityManual = true;
     FileState* fs = gFileHistory.FindByPath(tab->filePath);
     if (!fs) {
         return;
     }
     str::ReplaceWithCopy(&fs->sidebarView, SidebarViewToStr((SidebarView)tab->sidebarView));
+    fs->sidebarVisibilityManual = true;
 }
 
 static SidebarThumbsWnd* ThumbsFromWin(MainWindow* win) {
@@ -1598,6 +1602,7 @@ void ShowOrToggleSidebarView(MainWindow* win, SidebarView view) {
     bool showing = win->tocVisible && CurrentSidebarView(win) == view;
     WindowTab* tab = win->CurrentTab();
     if (showing) {
+        RememberTabSidebarView(tab);
         SetSidebarVisibility(win, false, false);
         return;
     }

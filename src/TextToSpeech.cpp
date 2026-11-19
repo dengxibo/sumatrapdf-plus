@@ -3,6 +3,7 @@
 #include "utils/WinUtil.h"
 
 #include <mmsystem.h>
+#include <mmddk.h>
 #include <roapi.h>
 #include <winstring.h>
 #include <activation.h>
@@ -428,7 +429,8 @@ struct SpeechSynthesisJob {
     WAVEFORMATEX format{};
     int submitted = 0;
     DWORD earlyPcmBytes = 0;
-    int nextMp3Probe = 6000;
+    int nextMp3Probe = 2000;
+    int prefixDecodes = 0;
     SpeechSynthesisJob() { InitializeCriticalSection(&lock); }
     ~SpeechSynthesisJob() {
         for (auto* block : blocks) {
@@ -444,6 +446,7 @@ struct SpeechSynthesisJob {
     HANDLE cancel = nullptr;
     HANDLE firstAudio = nullptr;
     HANDLE predecessorAudio = nullptr;
+    bool lookahead = false;
     HWND hwnd = nullptr;
     UINT msg = 0;
     char* text = nullptr;
@@ -462,6 +465,9 @@ static SpeechSynthesisJob* gNextSynthesisJob = nullptr;
 static SpeechSynthesisJob* gGeneratedPlayback = nullptr;
 static bool gSynthesisFailure = false;
 static void WinTtsStopPlayback();
+static bool GeneratedPcmFormat(const WAVEFORMATEX& format);
+static void ReturnGeneratedOutput(HWAVEOUT output);
+static void ReleasePreparedOutput();
 
 static void ReleaseSynthesisJob(SpeechSynthesisJob* job) {
     if (InterlockedDecrement(&job->refs) == 0) {
@@ -522,9 +528,16 @@ static void AppendGeneratedPcm(void* context, const char* data, DWORD size) {
     memcpy(block->data, data, size);
     block->header.lpData = block->data;
     block->header.dwBufferLength = size;
+    bool firstBlock;
     {
         ScopedCritSec guard(&job->lock);
+        firstBlock = job->blocks.IsEmpty();
         job->blocks.Append(block);
+    }
+    if (firstBlock) {
+        logf("%s speech: first PCM ready after %llu ms\n", job->edge ? "Edge" : "Offline",
+             GetTickCount64() - job->started);
+        if (job->firstAudio) SetEvent(job->firstAudio);
     }
     NotifyGeneratedAudio(job);
 }
@@ -549,10 +562,11 @@ static void PublishEdgeWords(SpeechSynthesisJob* job, const EdgeSpeechResponse& 
 
 static void PublishEdgePrefix(void* context, EdgeSpeechResponse& response) {
     auto* job = (SpeechSynthesisJob*)context;
-    if (job->earlyPcmBytes || response.mp3.Size() < job->nextMp3Probe) {
+    if (job->prefixDecodes >= 6 || response.mp3.Size() < job->nextMp3Probe) {
         return;
     }
-    job->nextMp3Probe += 6000;
+    job->nextMp3Probe = response.mp3.Size() + 4000;
+    job->prefixDecodes++;
     DWORD size = 0;
     char* wav = DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), job->cancel, &size);
     defer {
@@ -566,39 +580,43 @@ static void PublishEdgePrefix(void* context, EdgeSpeechResponse& response) {
     }
     // Leave the last MP3 frame for the final decode, including decoder end padding.
     DWORD guardBytes = 1152 * format.nBlockAlign;
-    if (pcmSize <= guardBytes + format.nAvgBytesPerSec / 4) {
+    if (pcmSize <= guardBytes + format.nAvgBytesPerSec / 10) {
         return;
     }
-    job->earlyPcmBytes = (pcmSize - guardBytes) / format.nBlockAlign * format.nBlockAlign;
+    DWORD available = (pcmSize - guardBytes) / format.nBlockAlign * format.nBlockAlign;
+    if (available <= job->earlyPcmBytes) return;
+    DWORD published = job->earlyPcmBytes;
+    job->earlyPcmBytes = available;
     {
         ScopedCritSec guard(&job->lock);
         job->format = format;
     }
     PublishEdgeWords(job, response);
-    AppendGeneratedPcm(job, pcm, job->earlyPcmBytes);
+    AppendGeneratedPcm(job, pcm + published, available - published);
 }
 
 static DWORD WINAPI RunSynthesisJob(void* arg) {
     auto* job = (SpeechSynthesisJob*)arg;
-    if (job->offline) {
+    HANDLE events[] = {job->cancel, job->predecessorAudio};
+    bool mayStart =
+        !job->predecessorAudio || WaitForMultipleObjects(dimof(events), events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1;
+    if (mayStart && job->offline) {
         Vec<OfflineSpeechCue> cues;
-        HANDLE events[] = {job->cancel, job->predecessorAudio};
-        // Let the current offline model load and produce PCM before starting a second helper.
-        if (!job->predecessorAudio ||
-            WaitForMultipleObjects(dimof(events), events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
+        {
             OfflineSpeechStream stream{job, AppendGeneratedPcm, AppendGeneratedWord};
             job->wav = OfflineSpeechSynthesize(*job->offline, job->text, job->rate, job->cancel, &job->wavSize, cues,
                                                job->firstAudio, &stream);
         }
         logf("Offline speech: %lu WAV bytes, %d word cues\n", job->wavSize, job->cues.Size());
-    } else {
+    } else if (mayStart) {
         HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         EdgeSpeechResponse response(job->text);
         if (SUCCEEDED(com)) {
             response.audioContext = job;
             response.audioReceived = PublishEdgePrefix;
         }
-        auto result = EdgeSpeechSynthesizeOnline(job->text, job->edge->shortName, job->rate, job->cancel, response);
+        auto result = EdgeSpeechSynthesizeOnline(job->text, job->edge->shortName, job->rate, job->cancel, response,
+                                                 !job->lookahead);
         if (result.error == ERROR_SUCCESS && SUCCEEDED(com) && WaitForSingleObject(job->cancel, 0) != WAIT_OBJECT_0) {
             job->wav =
                 DecodeSpeechMp3ToWave((const u8*)response.mp3.Get(), response.mp3.size(), job->cancel, &job->wavSize);
@@ -636,9 +654,7 @@ static SpeechSynthesisJob* NewSynthesisJob(const char* text, const OfflineVoice*
                                            const EdgeReadAloudVoice* edge) {
     auto* job = new SpeechSynthesisJob();
     job->cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (offline) {
-        job->firstAudio = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    }
+    job->firstAudio = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     job->text = str::Dup(text);
     job->rate = gTtsSpeakingRate;
     job->offline = offline;
@@ -653,7 +669,7 @@ static SpeechSynthesisJob* NewSynthesisJob(const char* text, const OfflineVoice*
     job->edge = edge;
     job->hwnd = gTtsNotifyHwnd;
     job->msg = gTtsNotifyMsg;
-    if (!job->cancel || !job->text || (offline && !job->firstAudio)) {
+    if (!job->cancel || !job->text || !job->firstAudio) {
         ReleaseSynthesisJob(job);
         return nullptr;
     }
@@ -745,7 +761,10 @@ static void WinTtsStopPlayback() {
         if (gWinWaveHdr.dwFlags & WHDR_PREPARED) {
             waveOutUnprepareHeader(gWinWaveOut, &gWinWaveHdr, sizeof(gWinWaveHdr));
         }
-        waveOutClose(gWinWaveOut);
+        if (gGeneratedPlayback && GeneratedPcmFormat(gGeneratedPlayback->format))
+            ReturnGeneratedOutput(gWinWaveOut);
+        else
+            waveOutClose(gWinWaveOut);
         gWinWaveOut = nullptr;
     }
     gGeneratedPlayback = nullptr;
@@ -1235,6 +1254,159 @@ static void CALLBACK WinTtsWaveOutCb(HWAVEOUT, UINT msg, DWORD_PTR, DWORD_PTR, D
     TtsPostNotifyMsg();
 }
 
+static SRWLOCK gPreparedOutputLock = SRWLOCK_INIT;
+static HWAVEOUT gPreparedOutput = nullptr;
+static UINT gPreparedOutputDevice = WAVE_MAPPER;
+static UINT gActiveOutputDevice = WAVE_MAPPER;
+static MMRESULT gPreparedOutputError = MMSYSERR_NOERROR;
+static bool gPreparingOutput = false, gOutputPreparationUnsupported = false, gOutputClosing = false;
+static ULONG gOutputEpoch = 0;
+static HANDLE gOutputIdleTimer = nullptr;
+static ULONGLONG gOutputIdleSince = 0;
+
+static void CALLBACK CloseIdleGeneratedOutput(void*, BOOLEAN) {
+    HWAVEOUT output = nullptr;
+    AcquireSRWLockExclusive(&gPreparedOutputLock);
+    if (gPreparedOutput && GetTickCount64() - gOutputIdleSince >= 30000) {
+        output = gPreparedOutput;
+        gPreparedOutput = nullptr;
+    }
+    ReleaseSRWLockExclusive(&gPreparedOutputLock);
+    if (output) waveOutClose(output);
+}
+
+static bool GeneratedPcmFormat(const WAVEFORMATEX& format) {
+    return format.wFormatTag == WAVE_FORMAT_PCM && format.nChannels == 1 && format.nSamplesPerSec == 24000 &&
+           format.wBitsPerSample == 16 && format.nBlockAlign == 2;
+}
+
+static MMRESULT PreferredWaveDevice(UINT& device) {
+    DWORD flags = 0;
+    return waveOutMessage((HWAVEOUT)(UINT_PTR)WAVE_MAPPER, DRVM_MAPPER_PREFERRED_GET, (DWORD_PTR)&device,
+                          (DWORD_PTR)&flags);
+}
+
+static DWORD WINAPI PrepareGeneratedOutput(void* context) {
+    ULONG epoch = (ULONG)(UINT_PTR)context;
+    HWAVEOUT output = nullptr;
+    UINT preferred = WAVE_MAPPER, actual = WAVE_MAPPER;
+    MMRESULT result = PreferredWaveDevice(preferred);
+    // Device identity is optional. Drivers that cannot report it use the
+    // existing open-on-demand path rather than failing otherwise valid audio.
+    bool unsupported = result != MMSYSERR_NOERROR;
+    ULONGLONG started = GetTickCount64();
+    if (result == MMSYSERR_NOERROR) {
+        WAVEFORMATEX format{WAVE_FORMAT_PCM, 1, 24000, 48000, 2, 16, 0};
+        result = waveOutOpen(&output, WAVE_MAPPER, &format, (DWORD_PTR)WinTtsWaveOutCb, 0, CALLBACK_FUNCTION);
+        if (result == MMSYSERR_NOERROR) result = waveOutGetID(output, &actual);
+    }
+    logf("TTS: audio device prepared after %llu ms, result %u, preferred %u, handle device %u\n",
+         GetTickCount64() - started, result, preferred, actual);
+    AcquireSRWLockExclusive(&gPreparedOutputLock);
+    if (epoch == gOutputEpoch && !gOutputClosing) {
+        gOutputPreparationUnsupported = unsupported;
+        gPreparedOutputError = result;
+        if (result == MMSYSERR_NOERROR && !gPreparedOutput) {
+            gPreparedOutput = output;
+            gPreparedOutputDevice = preferred;
+            gOutputIdleSince = GetTickCount64();
+            output = nullptr;
+        }
+    }
+    gPreparingOutput = false;
+    ReleaseSRWLockExclusive(&gPreparedOutputLock);
+    if (output) waveOutClose(output);
+    TtsPostNotifyMsg();
+    return 0;
+}
+
+void TtsPrepareGeneratedPlayback() {
+    if (gWinWaveOut) return;
+    AcquireSRWLockExclusive(&gPreparedOutputLock);
+    if (gPreparingOutput || gPreparedOutput || gOutputPreparationUnsupported) {
+        ReleaseSRWLockExclusive(&gPreparedOutputLock);
+        return;
+    }
+    gOutputClosing = false;
+    if (!gOutputIdleTimer)
+        CreateTimerQueueTimer(&gOutputIdleTimer, nullptr, CloseIdleGeneratedOutput, nullptr, 30000, 10000,
+                              WT_EXECUTEDEFAULT);
+    gPreparingOutput = true;
+    gPreparedOutputError = MMSYSERR_NOERROR;
+    ULONG epoch = gOutputEpoch;
+    ReleaseSRWLockExclusive(&gPreparedOutputLock);
+    HANDLE worker = CreateThread(nullptr, 0, PrepareGeneratedOutput, (void*)(UINT_PTR)epoch, 0, nullptr);
+    if (worker)
+        CloseHandle(worker);
+    else {
+        MMRESULT error = GetLastError();
+        AcquireSRWLockExclusive(&gPreparedOutputLock);
+        gPreparingOutput = false;
+        gPreparedOutputError = error ? error : MMSYSERR_ERROR;
+        ReleaseSRWLockExclusive(&gPreparedOutputLock);
+        TtsPostNotifyMsg();
+    }
+}
+
+static MMRESULT TakePreparedOutput(HWAVEOUT& output, bool& waiting, bool& fallback) {
+    AcquireSRWLockExclusive(&gPreparedOutputLock);
+    output = gPreparedOutput;
+    UINT device = gPreparedOutputDevice;
+    gPreparedOutput = nullptr;
+    waiting = gPreparingOutput;
+    fallback = gOutputPreparationUnsupported;
+    MMRESULT error = gPreparedOutputError;
+    ReleaseSRWLockExclusive(&gPreparedOutputLock);
+    if (output) {
+        UINT preferred = WAVE_MAPPER, actual = WAVE_MAPPER;
+        if (PreferredWaveDevice(preferred) == MMSYSERR_NOERROR && waveOutGetID(output, &actual) == MMSYSERR_NOERROR &&
+            preferred == device) {
+            gActiveOutputDevice = device;
+            waiting = false;
+            return MMSYSERR_NOERROR;
+        }
+        waveOutClose(output);
+        output = nullptr;
+        error = MMSYSERR_NOERROR;
+    }
+    if (!waiting && !fallback && error == MMSYSERR_NOERROR) {
+        TtsPrepareGeneratedPlayback();
+        waiting = true;
+    }
+    return error;
+}
+
+static void ReturnGeneratedOutput(HWAVEOUT output) {
+    UINT device = WAVE_MAPPER;
+    if (waveOutGetID(output, &device) != MMSYSERR_NOERROR) {
+        waveOutClose(output);
+        return;
+    }
+    AcquireSRWLockExclusive(&gPreparedOutputLock);
+    if (!gOutputClosing && !gPreparedOutput && !gOutputPreparationUnsupported) {
+        gPreparedOutput = output;
+        gPreparedOutputDevice = gActiveOutputDevice;
+        gOutputIdleSince = GetTickCount64();
+        gPreparedOutputError = MMSYSERR_NOERROR;
+        output = nullptr;
+    }
+    ReleaseSRWLockExclusive(&gPreparedOutputLock);
+    if (output) waveOutClose(output);
+}
+
+static void ReleasePreparedOutput() {
+    AcquireSRWLockExclusive(&gPreparedOutputLock);
+    ++gOutputEpoch;
+    gOutputClosing = true;
+    HWAVEOUT output = gPreparedOutput;
+    gPreparedOutput = nullptr;
+    HANDLE timer = gOutputIdleTimer;
+    gOutputIdleTimer = nullptr;
+    ReleaseSRWLockExclusive(&gPreparedOutputLock);
+    if (timer) DeleteTimerQueueTimer(nullptr, timer, nullptr);
+    if (output) waveOutClose(output);
+}
+
 static bool WinTtsStartPlayback() {
     DWORD wavSize = gWinWaveHdr.dwBufferLength;
     gWinWaveHdr = {};
@@ -1281,8 +1453,14 @@ static void WinTtsProcessEvents() {
             ScopedCritSec guard(&job->lock);
             bool done = InterlockedCompareExchange(&job->done, 0, 0) != 0;
             if (!gWinWaveOut && !job->blocks.IsEmpty()) {
-                MMRESULT result = waveOutOpen(&gWinWaveOut, WAVE_MAPPER, &job->format, (DWORD_PTR)WinTtsWaveOutCb, 0,
-                                              CALLBACK_FUNCTION);
+                ULONGLONG opening = GetTickCount64();
+                bool waiting = false, fallback = !GeneratedPcmFormat(job->format);
+                MMRESULT result = fallback ? MMSYSERR_NOERROR : TakePreparedOutput(gWinWaveOut, waiting, fallback);
+                if (waiting) return;
+                if (fallback)
+                    result = waveOutOpen(&gWinWaveOut, WAVE_MAPPER, &job->format, (DWORD_PTR)WinTtsWaveOutCb, 0,
+                                         CALLBACK_FUNCTION);
+                logf("TTS: audio device opened after %llu ms\n", GetTickCount64() - opening);
                 failed = result != MMSYSERR_NOERROR;
                 if (!failed) {
                     gGeneratedPlayback = job;
@@ -1873,11 +2051,13 @@ bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const 
         }
     }
     TtsStop();
+    TtsPrepareGeneratedPlayback();
     if (!job) {
         job = NewSynthesisJob(text, offline, edge);
         if (!job) {
             return false;
         }
+        job->playRequested = GetTickCount64();
         if (!StartSynthesisJob(job)) {
             ReleaseSynthesisJob(job);
             return false;
@@ -1898,7 +2078,12 @@ bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const 
 void TtsQueueNextGeneratedUtf8(const char* text) {
     if (gSynthesisJob && !gNextSynthesisJob && !str::IsEmpty(text)) {
         gNextSynthesisJob = NewSynthesisJob(text, gSynthesisJob->offline, gSynthesisJob->edge);
-        if (gNextSynthesisJob && gSynthesisJob->firstAudio) {
+        if (gNextSynthesisJob) {
+            gNextSynthesisJob->lookahead = true;
+        }
+        // Online lookahead needs its own round trip. Start it while the first
+        // request connects and synthesizes, especially for short openings.
+        if (gNextSynthesisJob && gSynthesisJob->offline && gSynthesisJob->firstAudio) {
             HANDLE process = GetCurrentProcess();
             DuplicateHandle(process, gSynthesisJob->firstAudio, process, &gNextSynthesisJob->predecessorAudio, 0, FALSE,
                             DUPLICATE_SAME_ACCESS);
@@ -2086,6 +2271,7 @@ void TtsFreeVoices(Vec<TtsVoiceInfo>& voices) {
 }
 
 void TtsRelease() {
+    ReleasePreparedOutput();
     WinTtsRelease();
     SapiRelease();
 

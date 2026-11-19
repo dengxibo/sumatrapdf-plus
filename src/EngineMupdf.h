@@ -97,6 +97,8 @@ struct FzPageInfo {
 
     // Follow-theme direct: cached PdfDarkModeProbeFollowThemeScanPage (see FollowThemeScanProbe).
     u8 followThemeScanProbe = 0;
+    // Cached source colors: 0 unknown, 1 regular page, 2 dark paper with light text.
+    u8 nativeDarkPage = 0;
     // 0 unknown, 1 no, 2 yes — office-paper scan wants display-res binarize.
     u8 followThemePaperBinarize = 0;
 

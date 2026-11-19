@@ -22,12 +22,14 @@ extern const EdgeReadAloudVoice gEdgeReadAloudVoices[];
 extern const int gEdgeReadAloudVoiceCount;
 const EdgeReadAloudVoice* FindEdgeReadAloudVoice(const char* id);
 void EdgeSpeechPrepare();
+void EdgeSpeechRefreshPreparation();
 
 struct EdgeSpeechTurn {
     const WCHAR* resource = nullptr; // Request target, including provider-supplied query parameters.
     const WCHAR* headers = nullptr;
     const char* configMessage = nullptr;
     const char* ssmlMessage = nullptr;
+    bool allowPreparedConnection = false;
 };
 
 struct EdgeSpeechTransportResult {
@@ -41,6 +43,7 @@ EdgeSpeechTransportResult EdgeSpeechReceiveTurn(const EdgeSpeechTurn&, HANDLE ca
 // The caller passes the connection credentials supplied for this turn.
 // Construct the response with the same text and keep it alive through the call.
 EdgeSpeechTransportResult EdgeSpeechSynthesize(const WCHAR* resource, const WCHAR* headers, const char* text,
-                                               const char* voice, float rate, HANDLE cancelEvent, EdgeSpeechResponse&);
+                                               const char* voice, float rate, HANDLE cancelEvent, EdgeSpeechResponse&,
+                                               bool allowPreparedConnection = false);
 EdgeSpeechTransportResult EdgeSpeechSynthesizeOnline(const char* text, const char* voice, float rate,
-                                                     HANDLE cancelEvent, EdgeSpeechResponse&);
+                                                     HANDLE cancelEvent, EdgeSpeechResponse&, bool usePrepared = true);

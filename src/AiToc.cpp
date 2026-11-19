@@ -2766,12 +2766,8 @@ static bool AiTocPhaseActive(AiTocDialog* dlg, HWND phase) {
 static LRESULT AiTocColorControl(AiTocDialog* dlg, HDC dc, HWND control) {
     bool edit = control == dlg->pagesEdit;
     COLORREF text = ThemeWindowTextColor();
-    // Current phase gets the theme selection color, everything auxiliary is
-    // muted one step, matching a classic Win32 settings page hierarchy.
-    if (control == dlg->phasePrep || control == dlg->phaseAi || control == dlg->phaseImport) {
-        bool active = AiTocPhaseActive(dlg, control);
-        text = active ? GetSelectionHighlightColor() : AiTocMutedTextColor();
-    } else if (control == dlg->phaseArrow || control == dlg->phaseArrow2) {
+    // Phase labels use the dialog foreground. Bold identifies the current phase.
+    if (control == dlg->phaseArrow || control == dlg->phaseArrow2) {
         text = AiTocMutedTextColor();
     }
     SetTextColor(dc, text);
@@ -3811,40 +3807,74 @@ static void AiTocRememberBodyMethod(AiTocDialog* dlg, bool api) {
     AiTocUpdateBodyMethod(dlg);
 }
 
+struct AiTocBodyMethodData {
+    bool configured;
+    bool useApi;
+    AppDialogBrushes brushes;
+};
+
+static INT_PTR CALLBACK AiTocBodyMethodProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    auto* data = (AiTocBodyMethodData*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    switch (msg) {
+        case WM_INITDIALOG:
+            data = (AiTocBodyMethodData*)lp;
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, lp);
+            data->brushes.Create();
+            SetWindowTextW(hwnd, _TRW("Generate TOC From Body"));
+            SetDlgItemTextW(hwnd, IDC_TOC_BODY_HEADING, _TRW("Choose how to generate the TOC"));
+            SetDlgItemTextW(
+                hwnd, IDC_TOC_MESSAGE,
+                data->configured
+                    ? _TRW("API imports the reply automatically. Web AI requires copying the reply.\nYour choice is "
+                           "remembered.")
+                    : _TRW("No API is configured. Use Web AI or configure an API first.\nYour choice is remembered."));
+            SetDlgItemTextW(hwnd, IDC_TOC_BODY_API, _TRW("API"));
+            SetDlgItemTextW(hwnd, IDC_TOC_BODY_WEB, _TRW("Web AI"));
+            SetDlgItemTextW(hwnd, IDOK, _TRW("Continue"));
+            SetDlgItemTextW(hwnd, IDC_TOC_BODY_CONFIGURE, _TRW("Configure API…"));
+            SetDlgItemTextW(hwnd, IDCANCEL, _TRW("Cancel"));
+            CheckRadioButton(hwnd, IDC_TOC_BODY_API, IDC_TOC_BODY_WEB,
+                             data->useApi ? IDC_TOC_BODY_API : IDC_TOC_BODY_WEB);
+            AppDialogApplyChrome(hwnd);
+            CenterDialog(hwnd);
+            return TRUE;
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+            if (data) return (INT_PTR)AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background);
+            break;
+        case WM_COMMAND: {
+            int button = LOWORD(wp);
+            if (button == IDOK || button == IDCANCEL || button == IDC_TOC_BODY_CONFIGURE) {
+                data->useApi = IsDlgButtonChecked(hwnd, IDC_TOC_BODY_API) == BST_CHECKED;
+                EndDialog(hwnd, button);
+                return TRUE;
+            }
+            break;
+        }
+        case WM_CLOSE:
+            EndDialog(hwnd, IDCANCEL);
+            return TRUE;
+        case WM_DESTROY:
+            if (data) data->brushes.Destroy();
+            break;
+    }
+    return FALSE;
+}
+
 static bool AiTocChooseBodyMethod(AiTocDialog* dlg) {
     for (;;) {
         bool configured = AiTocApiConfigured();
-        TASKDIALOG_BUTTON radios[] = {{100, _TRW("API")}, {101, _TRW("Web AI")}};
-        TASKDIALOG_BUTTON buttons[] = {{IDOK, _TRW("Continue")}, {102, _TRW("Configure API…")}};
-        TASKDIALOGCONFIG config{};
-        config.cbSize = sizeof(config);
-        config.hwndParent = dlg->hwnd;
-        config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
-        if (trans::IsCurrLangRtl()) config.dwFlags |= TDF_RTL_LAYOUT;
-        config.pszWindowTitle = _TRW("Generate TOC From Body");
-        config.pszMainInstruction = _TRW("Choose how to generate the TOC");
-        config.pszContent =
-            configured
-                ? _TRW(
-                      "API imports the reply automatically. Web AI requires copying the reply.\nYour choice is "
-                      "remembered.")
-                : _TRW("No API is configured. Use Web AI or configure an API first.\nYour choice is remembered.");
-        config.cRadioButtons = dimof(radios);
-        config.pRadioButtons = radios;
-        config.nDefaultRadioButton = configured && dlg->bodyUseApi ? 100 : 101;
-        config.cButtons = dimof(buttons);
-        config.pButtons = buttons;
-        config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-        config.nDefaultButton = IDOK;
-        int button = 0, radio = 0;
-        if (FAILED(AppTaskDialogIndirect(&config, &button, &radio, nullptr))) return false;
-        if (button == 102 || (button == IDOK && radio == 100 && !configured)) {
+        AiTocBodyMethodData data{configured, configured && dlg->bodyUseApi, {}};
+        INT_PTR button =
+            CreateAppDialogBox(IDD_DIALOG_AI_TOC_BODY_METHOD, dlg->hwnd, AiTocBodyMethodProc, (LPARAM)&data);
+        if (button == IDC_TOC_BODY_CONFIGURE || (button == IDOK && data.useApi && !configured)) {
             ShowOptionsDialogAtPage(dlg->win, kSettingsPageAi);
             if (!configured && AiTocApiConfigured()) dlg->bodyUseApi = true;
             continue;
         }
-        if (button != IDOK || (radio != 100 && radio != 101)) return false;
-        AiTocRememberBodyMethod(dlg, radio == 100);
+        if (button != IDOK) return false;
+        AiTocRememberBodyMethod(dlg, data.useApi);
         AiTocLayoutControls(dlg);
         return true;
     }
@@ -3861,7 +3891,8 @@ static void AiTocBodyApiFailed(AiTocDialog* dlg, const char* error) {
     SetWindowTextW(dlg->status, _TRW("The body TOC API request failed."));
     AiTocLayoutControls(dlg);
     InvalidateRect(dlg->hwnd, nullptr, TRUE);
-    TASKDIALOG_BUTTON buttons[] = {{IDRETRY, _TRW("Try again")}, {100, _TRW("Switch to Web AI")}};
+    TASKDIALOG_BUTTON buttons[] = {
+        {IDRETRY, _TRW("Try again")}, {100, _TRW("Switch to Web AI")}, {IDCANCEL, _TRW("Cancel")}};
     TASKDIALOGCONFIG config{};
     config.cbSize = sizeof(config);
     config.hwndParent = dlg->hwnd;
@@ -3873,7 +3904,6 @@ static void AiTocBodyApiFailed(AiTocDialog* dlg, const char* error) {
     config.pszMainIcon = TD_WARNING_ICON;
     config.cButtons = dimof(buttons);
     config.pButtons = buttons;
-    config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
     config.nDefaultButton = IDRETRY;
     int button = 0;
     if (SUCCEEDED(AppTaskDialogIndirect(&config, &button, nullptr, nullptr))) {

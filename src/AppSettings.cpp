@@ -72,12 +72,12 @@ static bool ApplyReadAloudVoiceFromSettings() {
         str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, replacement);
     }
     const char* voiceId = gGlobalPrefs->readAloudVoiceId;
-    if (const auto* voice = FindOfflineVoice(voiceId)) {
-        OfflineSpeechPrepare(*voice);
+    if (FindOfflineVoice(voiceId)) {
         return false;
     }
     if (FindEdgeReadAloudVoice(voiceId)) {
         if (HasPermission(Perm::InternetAccess)) {
+            TtsPrepareGeneratedPlayback();
             EdgeSpeechPrepare();
         }
         return false;
@@ -724,6 +724,7 @@ static void RememberSessionState() {
                 if (!didFind) {
                     FileState* fs = NewFileState(fp);
                     fs->showToc = tab->showToc;
+                    fs->sidebarVisibilityManual = tab->sidebarVisibilityManual;
                     *fs->tocState = tab->tocState;
                     TabState* ts = NewTabState(fs);
                     logf("SESSIONTRACE RememberSessionState fallback file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n",
@@ -736,6 +737,7 @@ static void RememberSessionState() {
             FileState* fs = NewFileState(fp);
             tab->ctrl->GetDisplayState(fs);
             fs->showToc = tab->showToc;
+            fs->sidebarVisibilityManual = tab->sidebarVisibilityManual;
             *fs->tocState = tab->tocState;
             TabState* ts = NewTabState(fs);
             logf("SESSIONTRACE RememberSessionState controller file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n", fp,

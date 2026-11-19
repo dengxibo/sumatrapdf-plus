@@ -31,6 +31,7 @@
 #include "Menu.h"
 #include "TableOfContents.h"
 #include "Tabs.h"
+#include "MediaOverlayPlayer.h"
 
 void ResetFindUIForTabSwitch(MainWindow* win);
 #include "FindBar.h"
@@ -236,6 +237,7 @@ static MainWindow* MaybeMigrateTab(WindowTab* tab, MainWindow* newWin, const Poi
         SetWindowPos(newWin->hwndFrame, nullptr, position->x - 80, position->y - 16, rc.right - rc.left,
                      rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
     }
+    MediaOverlayOnTabDocumentGone(tab);
     RemoveTab(tab);
 
     // TODO: we should be able to just slide the existing tab
@@ -847,6 +849,7 @@ void SaveCurrentWindowTab(MainWindow* win) {
         logf("SESSIONTRACE SaveCurrentWindowTab file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n", tab->filePath,
              fs->pageNo, fs->scrollPos.x, fs->scrollPos.y, fs->zoom);
         fs->showToc = tab->showToc;
+        fs->sidebarVisibilityManual = tab->sidebarVisibilityManual;
         *fs->tocState = tab->tocState;
         TabState* state = NewTabState(fs);
         DeleteFileState(fs);

@@ -958,7 +958,7 @@ static ReadAloudBarSource* RabWantedSource(MainWindow* win) {
 }
 
 void ReadAloudBarUpdate(MainWindow* win) {
-    if (!win || !win->hwndCanvas) {
+    if (!win || !IsMainWindowValid(win) || !win->hwndCanvas) {
         return;
     }
     ReadAloudBarSource* src = RabWantedSource(win);
