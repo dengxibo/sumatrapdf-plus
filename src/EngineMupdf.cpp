@@ -15426,6 +15426,40 @@ bool EngineMupdfIsScannedTextPage(EngineBase* engine, int pageNo) {
 }
 
 // Invisible text (Tr 3) does not paint. A flat fill also has no contrast.
+static bool PdfPageHasExtractableText(fz_context* ctx, pdf_document* doc, int pageIndex) {
+    pdf_page* page = nullptr;
+    fz_stext_page* text = nullptr;
+    bool hasText = false;
+    fz_var(page);
+    fz_var(text);
+    fz_try(ctx) {
+        page = pdf_load_page(ctx, doc, pageIndex);
+        auto opts = NewTextPageOptions(0);
+        text = fz_new_stext_page_from_page(ctx, &page->super, &opts);
+        for (auto* block = text->first_block; block && !hasText; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) {
+                continue;
+            }
+            for (auto* line = block->u.t.first_line; line && !hasText; line = line->next) {
+                for (auto* ch = line->first_char; ch; ch = ch->next) {
+                    if (ch->c > 32 && ch->c != 0xA0) {
+                        hasText = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_stext_page(ctx, text);
+        fz_drop_page(ctx, page ? &page->super : nullptr);
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+    return hasText;
+}
+
 static bool PdfPageHasVisibleContrast(fz_context* ctx, pdf_document* doc, int pageIndex) {
     pdf_page* page = nullptr;
     fz_pixmap* pix = nullptr;
@@ -15537,16 +15571,13 @@ static bool AppendOcrTextLayer(fz_context* ctx, pdf_document* doc, pdf_obj* font
 
     pdf_obj* resources = pdf_dict_get(ctx, pageobj, PDF_NAME(Resources));
     if (!resources) {
-        resources = pdf_new_dict(ctx, doc, 2);
+        pdf_obj* inherited = pdf_dict_get_inheritable(ctx, pageobj, PDF_NAME(Resources));
+        resources = inherited ? pdf_copy_dict(ctx, inherited) : pdf_new_dict(ctx, doc, 2);
         pdf_dict_put_drop(ctx, pageobj, PDF_NAME(Resources), resources);
-        resources = pdf_dict_get(ctx, pageobj, PDF_NAME(Resources));
     }
     pdf_obj* fonts = pdf_dict_get(ctx, resources, PDF_NAME(Font));
-    if (!fonts) {
-        fonts = pdf_new_dict(ctx, doc, 1);
-        pdf_dict_put_drop(ctx, resources, PDF_NAME(Font), fonts);
-        fonts = pdf_dict_get(ctx, resources, PDF_NAME(Font));
-    }
+    fonts = fonts ? pdf_copy_dict(ctx, fonts) : pdf_new_dict(ctx, doc, 1);
+    pdf_dict_put_drop(ctx, resources, PDF_NAME(Font), fonts);
     pdf_dict_puts(ctx, fonts, "OCR0", fontObj);
 
     fz_buffer* buf = fz_new_buffer(ctx, 1024);
@@ -16595,8 +16626,11 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
             }
             if (p.writeLayer) {
                 StripExistingPdfText(ctx, doc, p.pageNo - 1);
-                anyLayer = true;
+            } else if (!PdfPageHasExtractableText(ctx, doc, p.pageNo - 1)) {
+                // A scan can be split across several images or have wide margins.
+                p.writeLayer = true;
             }
+            anyLayer |= p.writeLayer;
         }
         if (anyLayer) {
             // Add the CID font after stripping so filter/GC cannot reuse its xref for a content stream.
@@ -16604,7 +16638,9 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
             for (int i = 0; i < pages.Size(); i++) {
                 PageOcrDump& p = pages[i];
                 if (p.writeLayer) {
-                    AppendOcrTextLayer(ctx, doc, fontObj, p.pageNo - 1, p.text, p.coords, p.len, p.visibleLayer);
+                    if (!AppendOcrTextLayer(ctx, doc, fontObj, p.pageNo - 1, p.text, p.coords, p.len, p.visibleLayer)) {
+                        fz_throw(ctx, FZ_ERROR_GENERIC, "Could not write OCR text on page %d.", p.pageNo);
+                    }
                 }
             }
         }

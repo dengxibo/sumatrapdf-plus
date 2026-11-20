@@ -6728,7 +6728,12 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
         }
     }
     if (ocr) {
-        ok = OcrSaveCachedSearchablePdf(tab->win, path);
+        MainWindow* win = tab->win;
+        ok = OcrSaveCachedSearchablePdf(win, path);
+        tab = IsMainWindowValid(win) ? win->CurrentTab() : nullptr;
+        if (!tab) {
+            return ok;
+        }
         if (!ok) {
             tab->ignoreNextAutoReload = false;
             return false;
