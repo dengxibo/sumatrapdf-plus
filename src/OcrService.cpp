@@ -4167,6 +4167,71 @@ static char* OcrBoxesJoinText(const Vec<OcrBox>& boxes) {
     return sb.StealData();
 }
 
+struct OcrBenchPage {
+    EngineBase* engine;
+    int page;
+    OcrProfile profile;
+    char* text = nullptr;
+    bool ok = false;
+};
+
+static void OcrBenchRecognizePage(OcrBenchPage* page) {
+    RenderedBitmap* bmp = RenderPageForOcr(page->engine, page->page);
+    int w = 0, h = 0, stride = 0;
+    u8* rgb = bmp ? CopyBitmapToRgb(bmp->GetBitmap(), &w, &h, &stride) : nullptr;
+    delete bmp;
+    if (!rgb) return;
+    Vec<OcrBox> boxes;
+    page->ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, page->profile);
+    page->text = OcrBoxesJoinText(boxes);
+    FreeOcrBoxes(boxes);
+    free(rgb);
+}
+
+// Whole-document throughput differs from single-page latency: document workers
+// compete for the same inference slots. Keep this optional benchmark read-only.
+static int OcrRunParallelBenchmark(EngineBase* engine, int first, int count, const char* dir, int workers) {
+    StrBuilder summary;
+    summary.Append("profile,avg_ms,pages_per_sec,raster_ms,det_ms,rec_ms,text_ms,ok_pages\n");
+    const char* names[] = {"tiny", "small", "hybrid"};
+    OcrProfile profiles[] = {OcrProfile::Fast, OcrProfile::Balanced, OcrProfile::Hybrid};
+    bool allOk = true;
+    for (int p = 0; p < 3; p++) {
+        StrBuilder text;
+        int ok = 0;
+        LARGE_INTEGER start = TimeGet();
+        for (int offset = 0; offset < count; offset += workers) {
+            OcrBenchPage pages[8]{};
+            HANDLE threads[8]{};
+            int batch = std::min(workers, count - offset);
+            for (int i = 0; i < batch; i++) {
+                pages[i].engine = engine;
+                pages[i].page = first + offset + i;
+                pages[i].profile = profiles[p];
+                threads[i] = StartThread(MkFunc0(OcrBenchRecognizePage, &pages[i]), "OcrBench");
+                if (!threads[i]) OcrBenchRecognizePage(&pages[i]);
+            }
+            for (int i = 0; i < batch; i++) {
+                if (threads[i]) {
+                    WaitForSingleObject(threads[i], INFINITE);
+                    CloseHandle(threads[i]);
+                }
+                ok += pages[i].ok ? 1 : 0;
+                text.AppendFmt("--- page %d ---\n", pages[i].page);
+                if (pages[i].text) text.Append(pages[i].text);
+                text.Append("\n");
+                str::Free(pages[i].text);
+            }
+        }
+        double ms = TimeSinceInMs(start);
+        summary.AppendFmt("%s,%.0f,%.2f,0,0,0,0,%d\n", names[p], ms / count, count * 1000.0 / ms, ok);
+        OcrWriteUtf8File(path::JoinTemp(dir, str::FormatTemp("%s_all.txt", names[p])), text.CStr());
+        allOk &= ok == count;
+    }
+    OcrWriteUtf8File(path::JoinTemp(dir, "summary.csv"), summary.CStr());
+    return allOk ? 0 : 1;
+}
+
 int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
     if (str::IsEmpty(pdfPath)) {
         logf("OCR bench: missing pdf path\n");
@@ -4210,6 +4275,14 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
         maxPages = nPages - firstPage + 1;
     }
     logf("OCR bench: %s pages=%d first=%d benchPages=%d out=%s\n", pdfPath, nPages, firstPage, maxPages, dir);
+
+    char workersBuf[16]{};
+    if (GetEnvironmentVariableA("SUMATRA_OCR_BENCH_WORKERS", workersBuf, dimof(workersBuf)) > 0) {
+        int workers = limitValue(atoi(workersBuf), 1, 8);
+        int result = OcrRunParallelBenchmark(engine, firstPage, maxPages, dir, workers);
+        SafeEngineRelease(&engine);
+        return result;
+    }
 
     OcrProfile profiles[3] = {OcrProfile::Fast, OcrProfile::Balanced, OcrProfile::Hybrid};
     const char* names[3] = {"tiny", "small", "hybrid"};

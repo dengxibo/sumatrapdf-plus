@@ -1501,18 +1501,24 @@ fz_stext_clip_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, 
 	tdev->lasttext = fz_keep_text(ctx, text);
 }
 
-static void
-fz_stext_ignore_text(fz_context *ctx, fz_device *dev, const fz_text *text, fz_matrix ctm)
-{
-	fz_stext_device *tdev = (fz_stext_device*)dev;
-	fz_text_span *span;
-	if (text == tdev->lasttext && (tdev->opts.flags & FZ_STEXT_COLLECT_STYLES) == 0)
-		return;
-	tdev->color = 0;
-	for (span = text->head; span; span = span->next)
-		fz_stext_extract(ctx, tdev, span, ctm, 0);
-	fz_drop_text(ctx, tdev->lasttext);
-	tdev->lasttext = fz_keep_text(ctx, text);
+static void fz_stext_ignore_text(fz_context* ctx, fz_device* dev, const fz_text* text, fz_matrix ctm) {
+    fz_stext_device* tdev = (fz_stext_device*)dev;
+    fz_text_span* span;
+    int saved_flags = tdev->flags;
+    if (text == tdev->lasttext && (tdev->opts.flags & FZ_STEXT_COLLECT_STYLES) == 0) return;
+    tdev->color = 0;
+    /* Invisible OCR text encodes image-space boxes using font metrics and
+     * text matrices. Substitute glyph outlines do not describe the scanned
+     * ink. In particular, accurate bounds can expand a saved OCR box into
+     * the neighboring row. Keep the descriptor metrics used by the writer. */
+    tdev->flags &= ~(FZ_STEXT_ACCURATE_BBOXES | FZ_STEXT_ACCURATE_ASCENDERS);
+    fz_try(ctx) {
+        for (span = text->head; span; span = span->next) fz_stext_extract(ctx, tdev, span, ctm, 0);
+    }
+    fz_always(ctx) tdev->flags = saved_flags;
+    fz_catch(ctx) fz_rethrow(ctx);
+    fz_drop_text(ctx, tdev->lasttext);
+    tdev->lasttext = fz_keep_text(ctx, text);
 }
 
 static void

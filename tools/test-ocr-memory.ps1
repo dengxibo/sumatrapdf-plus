@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Pdf,
     [int]$Pages = 7,
+    [int]$FirstPage = 1,
+    [ValidateRange(0, 8)][int]$Workers = 0,
     [string]$Output = "tmp/issues107-108-memory",
     [string]$Exe = "out/dbg64/SumatraPDF-Plus.exe",
     [switch]$Arena,
@@ -14,13 +16,15 @@ $benchmarkPdf = (Resolve-Path -LiteralPath $Pdf).Path
 $benchmarkExe = (Resolve-Path -LiteralPath $Exe).Path
 $benchmarkOutput = [IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Force -Path $benchmarkOutput | Out-Null
-$envNames = @("SUMATRA_OCR_BENCH_PDF", "SUMATRA_OCR_BENCH_DIR", "SUMATRA_OCR_BENCH_PAGES", "SUMATRA_OCR_BENCH_ARENA", "SUMATRA_OCR_BENCH_IDLE_SECONDS")
+$envNames = @("SUMATRA_OCR_BENCH_PDF", "SUMATRA_OCR_BENCH_DIR", "SUMATRA_OCR_BENCH_PAGES", "SUMATRA_OCR_BENCH_FIRST", "SUMATRA_OCR_BENCH_WORKERS", "SUMATRA_OCR_BENCH_ARENA", "SUMATRA_OCR_BENCH_IDLE_SECONDS")
 $savedEnv = @{}
 foreach ($name in $envNames) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name) }
 try {
     $env:SUMATRA_OCR_BENCH_PDF = $benchmarkPdf
     $env:SUMATRA_OCR_BENCH_DIR = $benchmarkOutput
     $env:SUMATRA_OCR_BENCH_PAGES = "$Pages"
+    $env:SUMATRA_OCR_BENCH_FIRST = "$FirstPage"
+    $env:SUMATRA_OCR_BENCH_WORKERS = $(if ($Workers -gt 0) { "$Workers" } else { $null })
     $env:SUMATRA_OCR_BENCH_ARENA = $(if ($NoArena) { "0" } else { "1" })
     $env:SUMATRA_OCR_BENCH_IDLE_SECONDS = "$IdleSeconds"
     $benchmarkProcess = Start-Process -FilePath $benchmarkExe -ArgumentList "-new-window" -WindowStyle Hidden -PassThru

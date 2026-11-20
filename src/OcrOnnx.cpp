@@ -7,6 +7,7 @@
 #include "utils/ThreadUtil.h"
 #include "utils/Timer.h"
 #include "utils/WinUtil.h"
+#include "utils/OcrArgMax.h"
 
 #include "OcrOnnx.h"
 #include "Settings.h"
@@ -961,6 +962,12 @@ static bool EnsureOrtRuntimeLocked() {
     if (st) {
         OrtFail(st, "SetIntraOpNumThreads");
     }
+    // Idle detector pools must not compete with active recognition pools (or
+    // other pages) for CPU time. Each slot owns separate det/rec sessions.
+    st = gApi->AddSessionConfigEntry(gOpts, "session.intra_op.allow_spinning", "0");
+    if (st) {
+        OrtFail(st, "DisableIntraOpSpinning");
+    }
     st = gApi->SetSessionGraphOptimizationLevel(gOpts, ORT_ENABLE_EXTENDED);
     if (st) {
         OrtFail(st, "SetSessionGraphOptimizationLevel");
@@ -1135,6 +1142,26 @@ static void BilinearRgb(const u8* src, int sw, int sh, int sstride, u8* dst, int
     if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) {
         return;
     }
+    struct Column {
+        int x0, x1;
+        float weight;
+    };
+    Vec<Column> columns;
+    Column* cols = columns.AppendBlanks(dw);
+    // Horizontal sampling is identical on every row. Calculate it once rather
+    // than repeating divisions and floorf for every pixel of a page/crop.
+    for (int x = 0; x < dw; x++) {
+        float fx = ((float)x + 0.5f) * (float)sw / (float)dw - 0.5f;
+        int x0 = (int)floorf(fx);
+        int x1 = x0 + 1;
+        float wx = fx - (float)x0;
+        if (x0 < 0) {
+            x0 = 0;
+            wx = 0;
+        }
+        if (x1 >= sw) x1 = sw - 1;
+        cols[x] = {x0, x1, wx};
+    }
     for (int y = 0; y < dh; y++) {
         float fy = ((float)y + 0.5f) * (float)sh / (float)dh - 0.5f;
         int y0 = (int)floorf(fy);
@@ -1149,17 +1176,9 @@ static void BilinearRgb(const u8* src, int sw, int sh, int sstride, u8* dst, int
         }
         u8* row = dst + (size_t)y * (size_t)dw * 3;
         for (int x = 0; x < dw; x++) {
-            float fx = ((float)x + 0.5f) * (float)sw / (float)dw - 0.5f;
-            int x0 = (int)floorf(fx);
-            int x1 = x0 + 1;
-            float wx = fx - (float)x0;
-            if (x0 < 0) {
-                x0 = 0;
-                wx = 0;
-            }
-            if (x1 >= sw) {
-                x1 = sw - 1;
-            }
+            int x0 = cols[x].x0;
+            int x1 = cols[x].x1;
+            float wx = cols[x].weight;
             const u8* p00 = src + (size_t)y0 * (size_t)sstride + (size_t)x0 * 3;
             const u8* p01 = src + (size_t)y0 * (size_t)sstride + (size_t)x1 * 3;
             const u8* p10 = src + (size_t)y1 * (size_t)sstride + (size_t)x0 * 3;
@@ -1172,16 +1191,30 @@ static void BilinearRgb(const u8* src, int sw, int sh, int sstride, u8* dst, int
     }
 }
 
+struct OcrNormalization {
+    float rgb[256]{};
+    float bgr[3][256]{};
+    constexpr OcrNormalization() {
+        const float mean[] = {.485f, .456f, .406f};
+        const float stddev[] = {.229f, .224f, .225f};
+        for (int i = 0; i < 256; i++) {
+            float v = (float)i / 255.f;
+            rgb[i] = (v - 0.5f) / 0.5f;
+            for (int c = 0; c < 3; c++) bgr[c][i] = (v - mean[c]) / stddev[c];
+        }
+    }
+};
+static constexpr OcrNormalization kOcrNormalization;
+
 static void RgbToNchwNorm(const u8* rgb, int w, int h, int stride, float* out) {
     size_t plane = (size_t)w * (size_t)h;
     for (int y = 0; y < h; y++) {
         const u8* row = rgb + (size_t)y * (size_t)stride;
         for (int x = 0; x < w; x++) {
             size_t i = (size_t)y * (size_t)w + (size_t)x;
-            for (int c = 0; c < 3; c++) {
-                float v = (float)row[x * 3 + c] / 255.f;
-                out[c * plane + i] = (v - 0.5f) / 0.5f;
-            }
+            out[i] = kOcrNormalization.rgb[row[x * 3]];
+            out[plane + i] = kOcrNormalization.rgb[row[x * 3 + 1]];
+            out[2 * plane + i] = kOcrNormalization.rgb[row[x * 3 + 2]];
         }
     }
 }
@@ -1189,23 +1222,29 @@ static void RgbToNchwNorm(const u8* rgb, int w, int h, int stride, float* out) {
 // RapidOrientation's reference loader is OpenCV imread(), hence BGR. OCR
 // raster data here is RGB, so preserve the model's documented channel order.
 static void RgbToNchwNormBgr(const u8* rgb, int w, int h, int stride, float* out) {
-    static const float mean[] = {.485f, .456f, .406f};
-    static const float stddev[] = {.229f, .224f, .225f};
     size_t plane = (size_t)w * (size_t)h;
     for (int y = 0; y < h; y++) {
         const u8* row = rgb + (size_t)y * (size_t)stride;
         for (int x = 0; x < w; x++) {
             size_t i = (size_t)y * (size_t)w + (size_t)x;
-            for (int c = 0; c < 3; c++) {
-                float v = (float)row[x * 3 + (2 - c)] / 255.f;
-                out[c * plane + i] = (v - mean[c]) / stddev[c];
-            }
+            out[i] = kOcrNormalization.bgr[0][row[x * 3 + 2]];
+            out[plane + i] = kOcrNormalization.bgr[1][row[x * 3 + 1]];
+            out[2 * plane + i] = kOcrNormalization.bgr[2][row[x * 3]];
         }
     }
 }
 
+struct ScopedOrtOutput {
+    OrtValue* value = nullptr;
+    ~ScopedOrtOutput() {
+        if (value) {
+            gApi->ReleaseValue(value);
+        }
+    }
+};
+
 static bool RunTensor(OrtSession* session, const char* inName, const char* outName, float* in, const int64_t* inShape,
-                      size_t inDim, float** out, size_t* outCount) {
+                      size_t inDim, float** out, size_t* outCount, OrtValue** ownedOutput = nullptr) {
     *out = nullptr;
     *outCount = 0;
     OrtValue* inVal = nullptr;
@@ -1245,10 +1284,17 @@ static bool RunTensor(OrtSession* session, const char* inName, const char* outNa
     size_t count = 0;
     gApi->GetTensorShapeElementCount(info, &count);
     gApi->ReleaseTensorTypeAndShapeInfo(info);
-    *out = AllocArray<float>(count);
-    memcpy(*out, data, count * sizeof(float));
+    if (ownedOutput) {
+        // Recognition logits can occupy tens of MB per batch. Decode directly
+        // from the runtime tensor, keeping it alive until decoding finishes.
+        *ownedOutput = outVal;
+        *out = data;
+    } else {
+        *out = AllocArray<float>(count);
+        memcpy(*out, data, count * sizeof(float));
+        gApi->ReleaseValue(outVal);
+    }
     *outCount = count;
-    gApi->ReleaseValue(outVal);
     return true;
 }
 
@@ -1484,14 +1530,7 @@ static char* CtcDecode(const float* out, int t, int cls, int cropW, const StrVec
     int cur = -1, s = 0, e = 0;
     for (int i = 0; i < t; i++) {
         const float* row = out + (size_t)i * (size_t)cls;
-        int best = 0;
-        float bestV = row[0];
-        for (int c = 1; c < cls; c++) {
-            if (row[c] > bestV) {
-                bestV = row[c];
-                best = c;
-            }
-        }
+        int best = OcrArgMax(row, cls);
         if (best == 0) {
             if (cur > 0) {
                 CtcEmit(sb, xs, cur, s, e, cropW, t, keys);
@@ -1729,10 +1768,9 @@ static void RecItemToBatchPlanes(const u8* resized, int rw, int batchW, int n, f
         size_t yo = (size_t)y * (size_t)batchW;
         for (int x = 0; x < rw; x++) {
             size_t i = yo + (size_t)x;
-            for (int c = 0; c < 3; c++) {
-                float v = (float)row[x * 3 + c] / 255.f;
-                base[(size_t)c * plane + i] = (v - 0.5f) / 0.5f;
-            }
+            base[i] = kOcrNormalization.rgb[row[x * 3]];
+            base[plane + i] = kOcrNormalization.rgb[row[x * 3 + 1]];
+            base[2 * plane + i] = kOcrNormalization.rgb[row[x * 3 + 2]];
         }
     }
 }
@@ -1822,12 +1860,12 @@ static void RecognizeChunk(RecParCtx* ctx, int start, int count) {
     int64_t shape[4] = {nItems, 3, kRecH, batchW};
     float* out = nullptr;
     size_t outN = 0;
-    bool ok = RunTensor(b->rec, b->recIn, b->recOut, nchw, shape, 4, &out, &outN);
+    ScopedOrtOutput output;
+    bool ok = RunTensor(b->rec, b->recIn, b->recOut, nchw, shape, 4, &out, &outN, &output.value);
     free(nchw);
     ctx->local.recInferenceMs += TimeSinceInMs(tInf);
     ctx->local.nRecBatches++;
     if (!ok || !out || outN < 2) {
-        free(out);
         // Robustness fallback: the model probe should prevent this, but if a
         // batched run is rejected fall back to the proven per-item path.
         for (int i = 0; i < nItems; i++) {
@@ -1858,7 +1896,6 @@ static void RecognizeChunk(RecParCtx* ctx, int start, int count) {
     if (cls <= 0 || outN % (size_t)(nItems * cls) != 0) {
         SetOcrError("recognition output size does not match dictionary class count");
         logf("OcrOnnx: rec batch outN=%zu n=%d cls=%d — refusing CTC decode\n", outN, nItems, cls);
-        free(out);
         ctx->local.recPostprocessMs += TimeSinceInMs(tPost);
         return;
     }
@@ -1894,7 +1931,6 @@ static void RecognizeChunk(RecParCtx* ctx, int start, int count) {
         s->out[it.detIdx].nChar = nChar;
         s->out[it.detIdx].vertical = it.vertical;
     }
-    free(out);
     ctx->local.recPostprocessMs += TimeSinceInMs(tPost);
 }
 
