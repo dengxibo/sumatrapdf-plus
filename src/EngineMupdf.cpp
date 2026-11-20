@@ -15580,6 +15580,15 @@ static bool AppendOcrTextLayer(fz_context* ctx, pdf_document* doc, pdf_obj* font
     pdf_dict_put_drop(ctx, resources, PDF_NAME(Font), fonts);
     pdf_dict_puts(ctx, fonts, "OCR0", fontObj);
 
+    pdf_obj* descendant = pdf_array_get(ctx, pdf_dict_get(ctx, fontObj, PDF_NAME(DescendantFonts)), 0);
+    pdf_obj* descriptor = pdf_dict_get(ctx, descendant, PDF_NAME(FontDescriptor));
+    float ascent = pdf_dict_get_int(ctx, descriptor, PDF_NAME(Ascent)) / 1000.f;
+    float descent = pdf_dict_get_int(ctx, descriptor, PDF_NAME(Descent)) / 1000.f;
+    if (ascent <= descent) {
+        ascent = 1.f;
+        descent = 0.f;
+    }
+
     fz_buffer* buf = fz_new_buffer(ctx, 1024);
     fz_append_string(ctx, buf, "\nq\n");
     fz_append_printf(ctx, buf, "%g %g %g %g %g %g cm\n", inv.a, inv.b, inv.c, inv.d, inv.e, inv.f);
@@ -15602,17 +15611,18 @@ static bool AppendOcrTextLayer(fz_context* ctx, pdf_document* doc, pdf_obj* font
         if (r.IsEmpty() || r.dx < 1 || r.dy < 1) {
             continue;
         }
-        float fs = (float)r.dy;
-        if (fs < 1.f) {
-            fs = 1.f;
-        }
+        // OCR rectangles are top-down. PDF glyphs rise above the baseline,
+        // so flip the text Y axis and put the baseline inside the rectangle.
+        float sy = r.dy / (ascent - descent);
+        float baseline = r.y + sy * ascent;
+        // This CJK font has no width overrides and uses the default 1000-unit advance.
+        fz_append_printf(ctx, buf, "%g 0 0 %g %g %g Tm\n", (float)r.dx, -sy, (float)r.x, baseline);
         // UniGB-UTF16-H: Tj bytes are UTF-16BE Unicode, not glyph IDs.
         if (cp > 0xFFFF) {
             unsigned int u = (unsigned int)cp - 0x10000;
-            fz_append_printf(ctx, buf, "%g 0 0 %g %g %g Tm\n<%04X%04X> Tj\n", fs, fs, (float)r.x, (float)r.y,
-                             0xD800 + (u >> 10), 0xDC00 + (u & 0x3FF));
+            fz_append_printf(ctx, buf, "<%04X%04X> Tj\n", 0xD800 + (u >> 10), 0xDC00 + (u & 0x3FF));
         } else {
-            fz_append_printf(ctx, buf, "%g 0 0 %g %g %g Tm\n<%04X> Tj\n", fs, fs, (float)r.x, (float)r.y, cp);
+            fz_append_printf(ctx, buf, "<%04X> Tj\n", cp);
         }
     }
     fz_append_string(ctx, buf, "ET\nQ\n");
