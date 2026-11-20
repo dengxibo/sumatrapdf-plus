@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.101
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.101/SumatraPDF-Plus.exe
-Notes: Fix OCR on restored tabs and improve smart document colors, sidebar restoration, and read-aloud latency.
-NotesZh: 修复恢复标签的 OCR，改善智能配色、侧栏恢复和朗读延迟。
+Latest: 3.7.102
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.102/SumatraPDF-Plus.exe
+Notes: Fix saving the recognized text layer after running OCR on the current page of a scanned PDF.
+NotesZh: 修复扫描 PDF 在识别当前页后保存时漏写正文 OCR 文本层的问题。
