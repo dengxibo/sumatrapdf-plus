@@ -60,7 +60,8 @@ static bool ApplyReadAloudVoiceFromSettings() {
 
     // Keep saved online selections on the online source when a voice is removed from the catalog.
     auto removedOnlineVoice = [](const char* id) {
-        return str::Eq(id, "bridge:configured") || (str::StartsWith(id, "edge:") && !FindEdgeReadAloudVoice(id));
+        return str::Eq(id, "bridge:configured") ||
+               ((str::StartsWith(id, "edge:") || str::StartsWith(id, "joyinside:")) && !FindEdgeReadAloudVoice(id));
     };
     const char* fallback = gEdgeReadAloudVoices[0].id;
     if (str::Eq(gGlobalPrefs->readAloudVoiceId, "bridge:configured") ||

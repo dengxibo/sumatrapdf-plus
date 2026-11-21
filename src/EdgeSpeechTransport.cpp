@@ -416,16 +416,13 @@ const int gEdgeReadAloudVoiceCount = (int)dimof(gEdgeReadAloudVoices);
 
 static const EdgeReadAloudVoice kCloudVoices[] = {
     {"azure:configured", "Microsoft Azure Speech", "azure:configured", EdgeVoiceLanguage::Multilingual},
-    {"joyinside:40486", "JoyInside · Mature uncle", "joyinside:40486", EdgeVoiceLanguage::Chinese},
+    {"joyinside:40486", "JoyInside · 沉稳男声", "joyinside:40486", EdgeVoiceLanguage::Chinese},
+    {"joyinside:40245", "JoyInside · 温情女声", "joyinside:40245", EdgeVoiceLanguage::Chinese},
 };
 
 static volatile LONG gJoySettingsVersion = 0;
 static SRWLOCK gCloudSettingsLock = SRWLOCK_INIT;
 static WCHAR gCloudSettings[kCloudSpeechSettingCount][256] = {};
-static SRWLOCK gJoyCatalogLock = SRWLOCK_INIT;
-static Vec<const EdgeReadAloudVoice*> gJoyCatalog, gJoyKnownVoices;
-static LONG gJoyCatalogVersion = -1, gJoyFetchingVersion = -1;
-
 bool ReadCloudSpeechSetting(int index, WCHAR* value, DWORD capacity) {
     if (!capacity) return false;
     value[0] = 0;
@@ -514,23 +511,6 @@ const EdgeReadAloudVoice* ConfiguredCloudSpeechVoice(int index) {
 static bool JoySafeId(const char* text, bool bearer = false);
 
 const EdgeReadAloudVoice* FindEdgeReadAloudVoice(const char* id) {
-    if (str::StartsWith(id, "joyinside:") && !str::Eq(id, kCloudVoices[1].id) && strlen(id) < 128 &&
-        JoySafeId(id + 10) && ConfiguredCloudSpeechVoice(1)) {
-        AcquireSRWLockExclusive(&gJoyCatalogLock);
-        defer {
-            ReleaseSRWLockExclusive(&gJoyCatalogLock);
-        };
-        for (const auto* voice : gJoyCatalog) {
-            if (str::Eq(id, voice->id)) return voice;
-        }
-        for (const auto* voice : gJoyKnownVoices) {
-            if (str::Eq(id, voice->id)) return voice;
-        }
-        char* storedId = str::Dup(id);
-        auto* voice = new EdgeReadAloudVoice{storedId, storedId + 10, storedId, EdgeVoiceLanguage::Multilingual};
-        gJoyKnownVoices.Append(voice);
-        return voice;
-    }
     for (const auto& voice : kCloudVoices) {
         if (str::Eq(id, voice.id)) return &voice;
     }
@@ -697,7 +677,7 @@ static TempStr JoyRequestId() {
 }
 
 static bool JoyRequestToken(const char* accessKey, const char* secret, const char* identity, HANDLE cancel,
-                            JoySpeechJson& reply, bool vendor = false) {
+                            JoySpeechJson& reply) {
     auto nonce = JoyRequestId();
     if (!nonce) return false;
     FILETIME time;
@@ -731,151 +711,46 @@ static bool JoyRequestToken(const char* accessKey, const char* secret, const cha
     }
     StrBuilder body, output;
     body.AppendFmt(R"({"accessVersion":"V2","accessTimestamp":"%s","accessNonce":"%s",)"
-                   R"("accessKeyId":"%s","accessSign":"%s","%s":"%s"})",
-                   stamp, nonce, accessKey, signature, vendor ? "vendorId" : "botId", identity);
+                   R"("accessKeyId":"%s","accessSign":"%s","botId":"%s"})",
+                   stamp, nonce, accessKey, signature, identity);
     auto result =
         PostSpeech(L"api.joyinside.com", L"/auth/getToken", L"Content-Type: application/json", body, cancel, output);
     return result.error == ERROR_SUCCESS && json::Parse(output.Get(), &reply) && !reply.failed &&
            JoySafeId(reply.token.Get(), true);
 }
 
-struct JoyVoiceList : json::ValueVisitor {
-    struct Item {
-        char* id = nullptr;
-        char* name = nullptr;
-    };
-    Vec<Item> items;
-    ~JoyVoiceList() override {
-        for (auto& item : items) {
-            free(item.id);
-            free(item.name);
-        }
-    }
-    bool Visit(const char* path, const char* value, json::Type type) override {
-        if (!str::StartsWith(path, "/data[")) return true;
-        const char* index = path + 6;
-        char* end = nullptr;
-        unsigned long i = strtoul(index, &end, 10);
-        if (index == end || i >= 4096 || *end != ']') return false;
-        bool id = str::Eq(end + 1, "/timbreId") && (type == json::Type::String || type == json::Type::Number);
-        bool name = str::Eq(end + 1, "/voiceName") && type == json::Type::String;
-        if (!id && !name) return true;
-        while ((unsigned long)items.Size() <= i) items.Append(Item{});
-        str::ReplaceWithCopy(id ? &items[i].id : &items[i].name, value);
-        return true;
-    }
-};
-
-static bool IsJoyReadingVoice(const char* id) {
-    // Character and novelty voices, plus voices excluded by editorial preference.
-    // Use catalog IDs so renamed voices remain filtered. Keep 40486 for long-form reading.
-    static constexpr const char* excluded[] = {
-        "40186", "40231", "40230", "40283", "40280", "40351", "40252", "40408", "40033", "40030", "40094", "40027",
-        "40407", "40409", "40309", "40210", "40212", "40418", "40421", "40422", "40424", "40427", "40469", "40484",
-        "40488", "40489", "40490", "40491", "40261", "40565", "40577", "40578", "40594", "40229", "40596", "40614",
-        "40258", "40665", "32094", "40677", "40680", "40682", "40683", "40684", "40685", "40686", "40687", "40228",
-        "40621", "40620", "40618", "40566", "40198", "40366", "40420", "40619", "40678", "40246", "40503", "40200",
-    };
-    for (const char* candidate : excluded) {
-        if (str::Eq(id, candidate)) return false;
-    }
-    return true;
-}
-
 void GetJoySpeechVoices(Vec<const EdgeReadAloudVoice*>& voices) {
-    AcquireSRWLockShared(&gJoyCatalogLock);
-    defer {
-        ReleaseSRWLockShared(&gJoyCatalogLock);
-    };
-    if (gJoyCatalogVersion == InterlockedCompareExchange(&gJoySettingsVersion, 0, 0))
-        for (const auto* voice : gJoyCatalog) voices.Append(voice);
-}
-
-struct JoyCatalogFetch {
-    LONG version;
-    void (*onChanged)();
-};
-
-static DWORD WINAPI FetchJoyCatalog(void* arg) {
-    auto* work = (JoyCatalogFetch*)arg;
-    defer {
-        delete work;
-        DestroyTempAllocator();
-    };
-    JoyVoiceList list;
-    bool success = false;
-    WCHAR accessKey[128], secret[256], vendorId[128];
-    defer {
-        SecureZeroMemory(secret, sizeof(secret));
-    };
-    if (ReadCloudSpeechSetting(3, accessKey, dimof(accessKey)) && ReadCloudSpeechSetting(4, secret, dimof(secret)) &&
-        ReadCloudSpeechSetting(6, vendorId, dimof(vendorId))) {
-        const char* access = ToUtf8Temp(accessKey);
-        const char* vendor = ToUtf8Temp(vendorId);
-        auto id = JoyRequestId();
-        JoySpeechJson token;
-        if (id && JoySafeId(access) && JoySafeId(vendor) &&
-            JoyRequestToken(access, ToUtf8Temp(secret), vendor, nullptr, token, true)) {
-            StrBuilder request, output;
-            request.AppendFmt(R"({"requestId":"%s","vendorId":"%s"})", id, vendor);
-            auto headers = ToWStrTemp(
-                str::FormatTemp("Content-Type: application/json\r\nAuthorization: Bearer %s", token.token.Get()));
-            auto http = PostSpeech(L"api.joyinside.com", L"/soulmate/timbre/findAllByVendorId", headers, request,
-                                   nullptr, output);
-            success = http.error == ERROR_SUCCESS && json::Parse(output.Get(), &list) && !list.items.IsEmpty();
-        }
-    }
-    AcquireSRWLockExclusive(&gJoyCatalogLock);
-    if (work->version == gJoyFetchingVersion) gJoyFetchingVersion = -1;
-    success = success && work->version == InterlockedCompareExchange(&gJoySettingsVersion, 0, 0);
-    if (success) {
-        gJoyCatalog.Reset();
-        for (const auto& item : list.items) {
-            if (!JoySafeId(item.id) || str::IsEmpty(item.name) || !IsJoyReadingVoice(item.id)) continue;
-            const char* id = str::FormatTemp("joyinside:%s", item.id);
-            const EdgeReadAloudVoice* voice = nullptr;
-            for (const auto* known : gJoyKnownVoices) {
-                if (str::Eq(known->id, id) && str::Eq(known->name, item.name)) {
-                    voice = known;
-                    break;
-                }
-            }
-            if (!voice) {
-                // Synthesis jobs retain these pointers across configuration changes.
-                char* storedId = str::Dup(id);
-                voice =
-                    new EdgeReadAloudVoice{storedId, str::Dup(item.name), storedId, EdgeVoiceLanguage::Multilingual};
-                gJoyKnownVoices.Append(voice);
-            }
-            if (!gJoyCatalog.Contains(voice)) gJoyCatalog.Append(voice);
-        }
-        gJoyCatalogVersion = work->version;
-    }
-    ReleaseSRWLockExclusive(&gJoyCatalogLock);
-    if (success && work->onChanged) work->onChanged();
-    return 0;
-}
-
-void RefreshJoySpeechVoices(void (*onChanged)()) {
-    WCHAR vendorId[128];
-    if (!ConfiguredCloudSpeechVoice(1) || !ReadCloudSpeechSetting(6, vendorId, dimof(vendorId))) return;
-    LONG version = InterlockedCompareExchange(&gJoySettingsVersion, 0, 0);
-    AcquireSRWLockExclusive(&gJoyCatalogLock);
-    if (gJoyCatalogVersion != version && gJoyFetchingVersion != version) {
-        auto* work = new JoyCatalogFetch{version, onChanged};
-        if (HANDLE thread = CreateThread(nullptr, 0, FetchJoyCatalog, work, 0, nullptr)) {
-            gJoyFetchingVersion = version;
-            CloseHandle(thread);
-        } else {
-            delete work;
-        }
-    }
-    ReleaseSRWLockExclusive(&gJoyCatalogLock);
+    if (!ConfiguredCloudSpeechVoice(1)) return;
+    voices.Append(&kCloudVoices[1]);
+    voices.Append(&kCloudVoices[2]);
 }
 
 static DWORD SendJoyFrame(const EdgeWebSocketApi& api, HINTERNET socket, StrBuilder& frame) {
     return api.send(socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (void*)frame.Get(), (DWORD)frame.Size());
 }
+
+// Closing a socket interrupts a synchronous WinHTTP receive. Merely checking the
+// event between receives leaves a cancelled lookahead holding the synthesis lock.
+struct JoySocketCancellation {
+    HINTERNET socket;
+    HANDLE wait = nullptr;
+    volatile LONG closed = 0;
+
+    static void CALLBACK Cancel(void* context, BOOLEAN) {
+        auto* self = (JoySocketCancellation*)context;
+        InterlockedExchange(&self->closed, 1);
+        WinHttpCloseHandle(self->socket);
+    }
+
+    bool Watch(HANDLE cancel) {
+        return !cancel || RegisterWaitForSingleObject(&wait, cancel, Cancel, this, INFINITE, WT_EXECUTEONLYONCE);
+    }
+
+    void Finish(EdgeConnection& connection) {
+        if (wait) UnregisterWaitEx(wait, INVALID_HANDLE_VALUE);
+        if (closed) connection.socket = nullptr;
+    }
+};
 
 static DWORD ReceiveJoySpeech(const EdgeWebSocketApi& api, HINTERNET socket, HANDLE cancel, StrBuilder& request,
                               EdgeSpeechResponse& response, bool submitted) {
@@ -893,7 +768,10 @@ static DWORD ReceiveJoySpeech(const EdgeWebSocketApi& api, HINTERNET socket, HAN
         if (message.Size() + count > 2 * 1024 * 1024 || !message.Append(buffer, count)) return ERROR_INVALID_DATA;
         if (type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) continue;
         JoySpeechJson reply;
-        if (!json::Parse(message.Get(), &reply) || reply.failed) return ERROR_INVALID_DATA;
+        if (!json::Parse(message.Get(), &reply) || reply.failed) {
+            log("Joy speech: invalid response or provider error\n");
+            return ERROR_INVALID_DATA;
+        }
         message.Reset();
         if (!submitted) {
             if (str::Eq(reply.event.Get(), "SERVER_VOICE_CHAT_UPDATED")) {
@@ -904,6 +782,7 @@ static DWORD ReceiveJoySpeech(const EdgeWebSocketApi& api, HINTERNET socket, HAN
             continue;
         }
         if (str::Eq(reply.type.Get(), "TTS") && !reply.audio.IsEmpty()) {
+            if (mp3.IsEmpty()) logf("Joy speech: first audio after %llu ms\n", GetTickCount64() - start);
             DWORD bytes = 0;
             if (!str::Eq(reply.codec.Get(), "mp3") ||
                 !CryptStringToBinaryA(reply.audio.Get(), 0, CRYPT_STRING_BASE64, nullptr, &bytes, nullptr, nullptr) ||
@@ -926,6 +805,7 @@ static DWORD ReceiveJoySpeech(const EdgeWebSocketApi& api, HINTERNET socket, HAN
 
 static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const char* voiceId, float rate, HANDLE cancel,
                                                      EdgeSpeechResponse& response) {
+    ULONGLONG started = GetTickCount64();
     static SRWLOCK lock = SRWLOCK_INIT;
     while (!TryAcquireSRWLockExclusive(&lock)) {
         if (cancel && WaitForSingleObject(cancel, 25) == WAIT_OBJECT_0) return {ERROR_CANCELLED};
@@ -934,6 +814,8 @@ static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const cha
     defer {
         ReleaseSRWLockExclusive(&lock);
     };
+    if (EdgeTurnCancelled(cancel)) return {ERROR_CANCELLED};
+    logf("Joy speech: synthesis lock after %llu ms\n", GetTickCount64() - started);
     WCHAR accessKey[128], secret[256], botId[128];
     defer {
         SecureZeroMemory(secret, sizeof(secret));
@@ -981,7 +863,7 @@ static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const cha
         cachedToken.Reset();
         version = currentVersion;
     }
-    if (now - lastUsed > 15000 || !str::Eq(activeVoice.Get(), voiceId) || speed != activeSpeed) connection.Reset();
+    if (now - lastUsed > 15000) connection.Reset();
     auto api = GetEdgeWebSocketApi();
     EdgeSpeechTransportResult result{ERROR_GEN_FAILURE};
     for (int attempt = 0; attempt < 2 && !EdgeTurnCancelled(cancel); attempt++) {
@@ -994,6 +876,7 @@ static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const cha
                 }
                 cachedToken.Set(token.token.Get());
                 tokenAt = GetTickCount64();
+                logf("Joy speech: token ready after %llu ms\n", tokenAt - started);
             }
             auto headers = str::FormatTemp("Authorization: Bearer %s", cachedToken.Get());
             EdgeSpeechTurn turn{ToWStrTemp(target), ToWStrTemp(headers), nullptr, nullptr, false};
@@ -1005,10 +888,22 @@ static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const cha
             }
         }
         result.httpStatus = 101;
-        result.error = SendJoyFrame(api, connection.socket, reused ? request : config);
-        if (result.error == ERROR_SUCCESS) {
-            result.error = ReceiveJoySpeech(api, connection.socket, cancel, request, response, reused);
+        bool configured = reused && str::Eq(activeVoice.Get(), voiceId) && speed == activeSpeed;
+        logf("Joy speech: voice %s, reused %d, configured %d, ready after %llu ms\n", voiceId, reused, configured,
+             GetTickCount64() - started);
+        JoySocketCancellation cancellation{connection.socket};
+        if (!cancellation.Watch(cancel)) {
+            DWORD error = GetLastError();
+            connection.Reset();
+            return {error};
         }
+        result.error = SendJoyFrame(api, connection.socket, configured ? request : config);
+        if (result.error == ERROR_SUCCESS) {
+            result.error = ReceiveJoySpeech(api, connection.socket, cancel, request, response, configured);
+        }
+        cancellation.Finish(connection);
+        if (EdgeTurnCancelled(cancel)) result.error = ERROR_CANCELLED;
+        logf("Joy speech: finished after %llu ms, error %lu\n", GetTickCount64() - started, result.error);
         if (result.error == ERROR_SUCCESS) {
             activeVoice.Set(voiceId);
             activeSpeed = speed;
@@ -1016,6 +911,7 @@ static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const cha
             return result;
         }
         connection.Reset();
+        if (result.error == ERROR_CANCELLED) break;
         if (!reused || !response.mp3.IsEmpty()) break;
     }
     if (EdgeTurnCancelled(cancel)) result.error = ERROR_CANCELLED;

@@ -15932,16 +15932,6 @@ static void ReadAloudPageClearVoiceIds(ReadAloudSettingsPage* page) {
 
 static void ReadAloudPagePopulateVoices(HWND hDlg);
 
-static void RefreshJoyCatalogOnUi() {
-    if (gReadAloudPage && gReadAloudPage->source == ReadAloudVoiceSource::Edge) {
-        ReadAloudPagePopulateVoices(gReadAloudPage->dialog);
-    }
-}
-
-static void OnJoyCatalogChanged() {
-    uitask::Post(MkFunc0Void(RefreshJoyCatalogOnUi), "JoySpeechVoiceCatalog");
-}
-
 static void ReadAloudPagePopulateVoices(HWND hDlg) {
     ReadAloudSettingsPage* p = gReadAloudPage;
     HWND combo = GetDlgItem(hDlg, IDC_RA_VOICE_PICK);
@@ -15969,15 +15959,11 @@ static void ReadAloudPagePopulateVoices(HWND hDlg) {
     } else if (HasPermission(Perm::InternetAccess)) {
         TtsPrepareGeneratedPlayback();
         EdgeSpeechPrepare();
-        RefreshJoySpeechVoices(OnJoyCatalogChanged);
-        if (const auto* joy = ConfiguredCloudSpeechVoice(1)) {
+        if (ConfiguredCloudSpeechVoice(1)) {
             Vec<const EdgeReadAloudVoice*> voices;
             GetJoySpeechVoices(voices);
-            ReadAloudPageComboAdd(combo, _TRA("JoyInside · Mature uncle"), joy->id);
             for (const auto* voice : voices) {
-                if (!str::Eq(voice->id, joy->id)) {
-                    ReadAloudPageComboAdd(combo, str::FormatTemp("JoyInside · %s", voice->name), voice->id);
-                }
+                ReadAloudPageComboAdd(combo, voice->name, voice->id);
             }
         }
         for (int i = 0; i < gEdgeReadAloudVoiceCount; i++) {

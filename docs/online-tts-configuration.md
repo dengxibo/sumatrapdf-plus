@@ -10,10 +10,12 @@ Select **Microsoft Azure Speech**. The app calls the regional endpoint in the pu
 
 ## JoyInside
 
-In **Online setup…**, enter your JoyInside AccessKey, SecretKey and the `botId` of a device registered in your JoyInside account. Select **JoyInside · Mature uncle** under **Online speech**. SumatraPDF Plus uses voice ID `40486` and connects directly over HTTPS and WebSocket.
+In **Online setup…**, enter your JoyInside AccessKey, SecretKey and the `botId` of a device registered in your JoyInside account. Under **Online speech**, select **JoyInside · 沉稳男声** (formerly 唐僧, voice ID `40486`) or **JoyInside · 温情女声** (formerly F25 青年-温情范, voice ID `40245`). SumatraPDF Plus connects directly over HTTPS and WebSocket.
 
-To load your organization's available voices, also enter its JoyInside enterprise ID (`vendorId`). The app loads that catalog in the background and lists the returned voices before the Edge voices. The enterprise ID is optional for the preset voice.
+Only these two voices are listed. No enterprise catalog request or enterprise ID (`vendorId`) is required. Previously saved enterprise IDs remain compatible with the encrypted settings format.
 
 The SecretKey is encrypted for your Windows account using DPAPI. Register the device in JoyInside before entering its ID. The device and credentials must have access to this voice.
 
 These interfaces return audio without word timing. They support chunk playback, with Azure rate set through SSML and JoyInside rate set by the service.
+
+JoyInside reuses an active connection for consecutive chunks and updates its configuration when the voice or speed changes. After 15 seconds of inactivity it reconnects; after 60 seconds it also refreshes the cached authentication token when opening a connection. These extra round trips make a cold start slower than continuous playback. Cancelling synthesis closes its WebSocket so an old request cannot keep the next voice waiting on a blocked receive. Diagnostic logs separate lock wait, authentication, connection readiness and first audio latency.

@@ -313,6 +313,38 @@ int main(int argc, char** argv) {
         printf("Online speech settings encryption, round-trip and reset passed.\n");
         return 0;
     }
+    if (argc == 2 && str::Eq(argv[1], "--joy-speech-switch-test")) {
+        LoadCloudSpeechSettings(GetEnvVariableTemp("SUMATRA_SPEECH_PROBE_DPAPI_SETTINGS"));
+        gLogToConsole = true;
+        Vec<const EdgeReadAloudVoice*> voices;
+        GetJoySpeechVoices(voices);
+        if (voices.Size() != 2 || FindEdgeReadAloudVoice("joyinside:40231")) return 1;
+        const char* text = "这是一段语音切换与取消测试。";
+        int sequence[] = {0, 1, 0, 1, 1, 0};
+        for (int i = 0; i < 6; i++) {
+            if (i == 5) Sleep(16000); // Exercise the expired idle connection too.
+            const auto* voice = voices[sequence[i]];
+            HANDLE cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            HANDLE timer = nullptr;
+            bool cancelling = i == 2;
+            if (cancelling && !CreateTimerQueueTimer(
+                                  &timer, nullptr, [](void* event, BOOLEAN) { SetEvent((HANDLE)event); }, cancel, 100,
+                                  0, WT_EXECUTEONLYONCE))
+                return 2;
+            EdgeSpeechResponse response(text);
+            ULONGLONG start = GetTickCount64();
+            auto result = EdgeSpeechSynthesizeOnline(text, voice->shortName, 1.0f, cancel, response);
+            ULONGLONG elapsed = GetTickCount64() - start;
+            if (timer) DeleteTimerQueueTimer(nullptr, timer, INVALID_HANDLE_VALUE);
+            CloseHandle(cancel);
+            printf("Joy switch test %d: %s, error %lu, %d bytes, %llu ms\n", i, voice->id, result.error,
+                   response.mp3.Size(), elapsed);
+            if (cancelling ? result.error != ERROR_CANCELLED || elapsed > 2000
+                           : result.error != ERROR_SUCCESS || response.mp3.IsEmpty())
+                return 3;
+        }
+        return 0;
+    }
     if ((argc == 3 || argc == 4) && str::Eq(argv[1], "--edge-speech-probe")) {
         if (const char* settings = GetEnvVariableTemp("SUMATRA_SPEECH_PROBE_DPAPI_SETTINGS")) {
             LoadCloudSpeechSettings(settings);
