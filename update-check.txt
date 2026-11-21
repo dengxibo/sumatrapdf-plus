@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.104
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.104/SumatraPDF-Plus.exe
-Notes: Fix reopened OCR text selection and optimize document OCR processing.
-NotesZh: 修复 OCR 保存重开后的选区高度，优化快速和精确全书识别。
+Latest: 3.7.105
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.105/SumatraPDF-Plus.exe
+Notes: Add Azure and JoyInside voices, resume after voice changes, and fix fullscreen read-aloud flicker.
+NotesZh: 新增 Azure 和 JoyInside 语音，切换音色后继续朗读，修复全屏退出按钮闪动。
