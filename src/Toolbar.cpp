@@ -3114,6 +3114,14 @@ static LRESULT CALLBACK MenuBarReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam,
 
 static LRESULT CALLBACK MenuBarToolbarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
                                               DWORD_PTR dwRefData) {
+    if ((uMsg == WM_PAINT || uMsg == WM_PRINTCLIENT) && dwRefData != GetUiFontGeneration()) {
+        // Settings reloads invalidate shared fonts in every window. A toolbar
+        // keeps its WM_SETFONT handle, which may already have been reused for
+        // another GDI object by the time an older window paints again.
+        SetWindowSubclass(hWnd, MenuBarToolbarWndProc, uIdSubclass, GetUiFontGeneration());
+        SendMessageW(hWnd, WM_SETFONT, (WPARAM)GetAppMenuFontForHwnd(hWnd), FALSE);
+        SendMessageW(hWnd, TB_AUTOSIZE, 0, 0);
+    }
     if (WM_ERASEBKGND == uMsg) {
         // don't erase background here; toolbar paints its own background during WM_PAINT
         // filling here causes visible flicker (erase then paint) during window resize
@@ -3123,6 +3131,57 @@ static LRESULT CALLBACK MenuBarToolbarWndProc(HWND hWnd, UINT uMsg, WPARAM wPara
         RemoveWindowSubclass(hWnd, MenuBarToolbarWndProc, uIdSubclass);
     }
     return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+bool TestMenuBarFontInvalidation() {
+    HWND parent = CreateWindowExW(0, L"STATIC", L"Menu font test", WS_OVERLAPPED, 0, 0, 800, 100, nullptr, nullptr,
+                                  GetModuleHandle(nullptr), nullptr);
+    if (!parent) {
+        return false;
+    }
+    defer {
+        DestroyWindow(parent);
+    };
+    HWND bars[3]{};
+    bool ok = true;
+    for (int i = 0; i < dimof(bars); i++) {
+        bars[i] = CreateWindowExW(0, TOOLBARCLASSNAME, nullptr, WS_CHILD | TBSTYLE_LIST, 0, 0, 800, 30, parent, nullptr,
+                                  GetModuleHandle(nullptr), nullptr);
+        if (!bars[i]) {
+            return false;
+        }
+        SendMessageW(bars[i], TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
+        SetWindowSubclass(bars[i], MenuBarToolbarWndProc, 0, GetUiFontGeneration());
+        HwndSetFont(bars[i], GetAppMenuFontForHwnd(bars[i]));
+        TBBUTTON button{};
+        button.iBitmap = I_IMAGENONE;
+        button.fsState = TBSTATE_ENABLED;
+        button.fsStyle = BTNS_AUTOSIZE | BTNS_SHOWTEXT;
+        button.iString = (INT_PTR)L"File / View / Settings";
+        SendMessageW(bars[i], TB_ADDBUTTONS, 1, (LPARAM)&button);
+    }
+    // Older windows must recover even when they never receive activation or
+    // DPI messages after another process causes the settings to reload.
+    for (int pass = 0; pass < 3; pass++) {
+        InvalidateUiFonts();
+        // Populate another DPI first so GDI can reuse a deleted handle for a
+        // different font, as when a second window opens on another monitor.
+        GetAppMenuFontForDpi(DpiGet(bars[0]) == 120 ? 96 : 120);
+        for (HWND bar : bars) {
+            HDC dc = GetDC(bar);
+            if (!dc) {
+                return false;
+            }
+            SendMessageW(bar, WM_PRINTCLIENT, (WPARAM)dc, PRF_CLIENT);
+            ReleaseDC(bar, dc);
+            HFONT actual = (HFONT)SendMessageW(bar, WM_GETFONT, 0, 0);
+            LOGFONTW lf{};
+            RECT item{};
+            ok = actual == GetAppMenuFontForHwnd(bar) && GetObjectW(actual, sizeof(lf), &lf) &&
+                 SendMessageW(bar, TB_GETITEMRECT, 0, (LPARAM)&item) && item.right > item.left && ok;
+        }
+    }
+    return ok;
 }
 
 constexpr int kMenuBarCmdFirst = 50000;
@@ -3321,7 +3380,7 @@ void CreateMenuBarRebar(MainWindow* win) {
 
     win->hwndMenuToolbar = CreateWindowExW(exStyle, TOOLBARCLASSNAME, nullptr, style, 0, 0, 0, 0, win->hwndMenuReBar,
                                            (HMENU)IDC_MENUBAR, hinst, nullptr);
-    SetWindowSubclass(win->hwndMenuToolbar, MenuBarToolbarWndProc, 0, 0);
+    SetWindowSubclass(win->hwndMenuToolbar, MenuBarToolbarWndProc, 0, GetUiFontGeneration());
     SendMessageW(win->hwndMenuToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
     if (!UseDarkModeLib() || !DarkMode::isEnabled()) {

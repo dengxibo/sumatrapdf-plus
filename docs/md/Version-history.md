@@ -2,6 +2,10 @@
 
 ## next
 
+## 3.7.106 (2026-11-21)
+
+- 修复 Light-Warm 主题下多窗口重新加载配置后，旧窗口菜单字体异常、文字被截断的问题（#129）。
+
 ## 3.7.105 (2026-11-21)
 
 - 在线朗读新增 Azure Speech 和 JoyInside。配置由 Windows DPAPI 加密并保存到当前 `SumatraPDF-settings.txt`。

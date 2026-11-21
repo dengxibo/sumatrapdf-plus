@@ -1191,6 +1191,12 @@ void TestRenderPage(const Flags& i) {
         TestTextMarkupOverlay();
         return;
     }
+    if (getenv("SUMATRA_TEST_MENU_FONTS")) {
+        bool ok = TestMenuBarFontInvalidation();
+        printf("Menu fonts after settings reload: %s\n", ok ? "PASS" : "FAIL");
+        fflush(stdout);
+        ExitProcess(ok ? 0 : 1);
+    }
     if (getenv("SUMATRA_TEST_AI_CHAT")) {
         bool ok = TestAskAiChatLayout();
         ok = TestReadAloudBarDpiFonts() && ok;

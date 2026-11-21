@@ -41,6 +41,7 @@ bool NeedsPdfDocumentColorModeUI(MainWindow* win);
 LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol);
 
 void CreateMenuBarRebar(MainWindow*);
+bool TestMenuBarFontInvalidation();
 void DestroyMenuBarRebar(MainWindow*);
 void ShowMenuBarRebar(MainWindow*);
 void RebuildMenuBarButtons(MainWindow*);
