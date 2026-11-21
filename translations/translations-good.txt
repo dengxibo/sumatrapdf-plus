@@ -48052,6 +48052,15 @@ ru:ID компании (список голосов):
 :Enter all three JoyInside fields or leave them blank.
 cn:请填写全部三项 JoyInside 设置，或全部留空。
 tw:請填寫全部三項 JoyInside 設定，或全部留空。
+:JoyInside botId must be 32 hexadecimal characters with no spaces.
+cn:JoyInside 设备 ID（botId）必须是 32 位十六进制字符，不能含空格。
+tw:JoyInside 裝置 ID（botId）必須是 32 位十六進位字元，不能含空格。
+:JoyInside speech failed. Check your online speech settings and try again.
+cn:JoyInside 朗读失败。请检查在线语音设置后重试。
+tw:JoyInside 朗讀失敗。請檢查線上語音設定後重試。
+:Azure speech failed. Check your online speech settings and try again.
+cn:Azure 朗读失败。请检查在线语音设置后重试。
+tw:Azure 朗讀失敗。請檢查線上語音設定後重試。
 :Azure and JoyInside connect directly. Configure only the services you use.
 cn:Azure 和 JoyInside 均可直连。只需配置你使用的服务。
 tw:Azure 和 JoyInside 皆可直接連線。只需設定你使用的服務。

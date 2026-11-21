@@ -16441,6 +16441,12 @@ static INT_PTR CALLBACK OnlineSpeechSetupProc(HWND dlg, UINT msg, WPARAM wp, LPA
                        ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONWARNING);
         return TRUE;
     }
+    if (botId[0] && !IsJoySpeechBotIdValid(botId)) {
+        AppMessageBoxW(dlg, ToWStrTemp(_TRA("JoyInside botId must be 32 hexadecimal characters with no spaces.")),
+                       ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONWARNING);
+        SetFocus(GetDlgItem(dlg, IDC_RA_JOY_BOT_ID));
+        return TRUE;
+    }
     AutoFreeStr protectedSettings(ProtectCloudSpeechSettings(values));
     bool saved = false;
     if (protectedSettings.Get()) {
@@ -18621,9 +18627,16 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 if (WindowTab* raTab = gReadAloudSourceTab) {
                     raTab->readAloudResumePos = raTab->readAloudHighlightBase + raTab->readAloudChunkStart;
                     ReadAloudStopRememberPos();
-                    ReadAloudShowNotif(raTab, ReadAloudUsesOfflineVoice()
-                                                  ? _TRA("Offline speech failed. Try continuing to retry.")
-                                                  : _TRA("Edge online speech failed. Try continuing to retry."));
+                    const auto* online = ReadAloudUsesEdge();
+                    const char* message = _TRA("Edge online speech failed. Try continuing to retry.");
+                    if (ReadAloudUsesOfflineVoice()) {
+                        message = _TRA("Offline speech failed. Try continuing to retry.");
+                    } else if (online && str::StartsWith(online->id, "joyinside:")) {
+                        message = _TRA("JoyInside speech failed. Check your online speech settings and try again.");
+                    } else if (online && str::StartsWith(online->id, "azure:")) {
+                        message = _TRA("Azure speech failed. Check your online speech settings and try again.");
+                    }
+                    ReadAloudShowNotif(raTab, message);
                 }
                 return 0;
             }

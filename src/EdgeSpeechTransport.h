@@ -23,6 +23,7 @@ extern const int gEdgeReadAloudVoiceCount;
 const EdgeReadAloudVoice* FindEdgeReadAloudVoice(const char* id);
 const EdgeReadAloudVoice* ConfiguredCloudSpeechVoice(int index);
 bool ReadCloudSpeechSetting(int index, WCHAR* value, DWORD capacity);
+bool IsJoySpeechBotIdValid(const WCHAR* botId);
 void RefreshJoySpeechVoices(void (*onChanged)());
 void GetJoySpeechVoices(Vec<const EdgeReadAloudVoice*>& voices);
 constexpr int kCloudSpeechSettingCount = 7;

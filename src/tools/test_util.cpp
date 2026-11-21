@@ -314,6 +314,9 @@ int main(int argc, char** argv) {
         return 0;
     }
     if ((argc == 3 || argc == 4) && str::Eq(argv[1], "--edge-speech-probe")) {
+        if (const char* settings = GetEnvVariableTemp("SUMATRA_SPEECH_PROBE_DPAPI_SETTINGS")) {
+            LoadCloudSpeechSettings(settings);
+        }
         const auto* voice = argc == 4 ? FindEdgeReadAloudVoice(argv[3]) : &gEdgeReadAloudVoices[0];
         if (!voice) {
             fprintf(stderr, "Unknown Edge voice: %s\n", argv[3]);

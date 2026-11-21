@@ -684,6 +684,10 @@ static bool JoySafeId(const char* text, bool bearer) {
     return true;
 }
 
+bool IsJoySpeechBotIdValid(const WCHAR* botId) {
+    return wcslen(botId) == 32 && wcsspn(botId, L"0123456789abcdefABCDEF") == 32;
+}
+
 static TempStr JoyRequestId() {
     GUID id;
     WCHAR text[40];
@@ -940,7 +944,7 @@ static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const cha
     }
     const char* access = ToUtf8Temp(accessKey);
     const char* bot = ToUtf8Temp(botId);
-    if (!JoySafeId(access) || !JoySafeId(bot)) return {ERROR_INVALID_PARAMETER};
+    if (!JoySafeId(access) || !IsJoySpeechBotIdValid(botId)) return {ERROR_INVALID_PARAMETER};
     auto id = JoyRequestId();
     auto speechId = JoyRequestId();
     if (!id || !speechId) return {ERROR_GEN_FAILURE};
