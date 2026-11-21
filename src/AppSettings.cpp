@@ -516,6 +516,7 @@ bool LoadSettings() {
         gprefs = gGlobalPrefs;
         prefsData.Free();
     }
+    LoadCloudSpeechSettings(gprefs->readAloudOnlineSpeechConfig);
     MigrateAiChatProvider(settingsRaw.Get());
     AutoFillAiTocApiFromFile();
     NormalizeAiTocApiPrefs();

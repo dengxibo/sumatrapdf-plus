@@ -25,8 +25,9 @@ const EdgeReadAloudVoice* ConfiguredCloudSpeechVoice(int index);
 bool ReadCloudSpeechSetting(int index, WCHAR* value, DWORD capacity);
 void RefreshJoySpeechVoices(void (*onChanged)());
 void GetJoySpeechVoices(Vec<const EdgeReadAloudVoice*>& voices);
-bool SaveCloudSpeechSettings(const WCHAR* region, const WCHAR* key, const WCHAR* voice, const WCHAR* accessKey,
-                             const WCHAR* secret, const WCHAR* botId, const WCHAR* vendorId);
+constexpr int kCloudSpeechSettingCount = 7;
+char* ProtectCloudSpeechSettings(WCHAR* const (&values)[kCloudSpeechSettingCount]);
+void LoadCloudSpeechSettings(const char* protectedSettings);
 void EdgeSpeechPrepare();
 void EdgeSpeechRefreshPreparation();
 

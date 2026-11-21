@@ -1,18 +1,12 @@
 # Online speech configuration
 
-In the read-aloud settings, open **Online setup…** and enter your provider details. Click **OK**, choose **Online speech**, select the provider, and click **Preview** to try it. The setup dialog saves values for the current Windows user and encrypts the Azure key with Windows DPAPI. Environment variables remain available as defaults before a field is saved in the dialog.
+In the read-aloud settings, open **Online setup…** and enter your provider details. Click **OK**, choose **Online speech**, select the provider, and click **Preview** to try it. The app encrypts the entire online speech configuration with Windows DPAPI and saves it as `ReadAloudOnlineSpeechConfig` in the active `SumatraPDF-settings.txt`. A new settings file starts with empty online speech fields. Re-enter values that were saved by an older version in the Windows registry.
 
 ## Microsoft Azure Speech
 
-Fill in the Azure region, resource key, and voice. For launches configured through the environment, the equivalent variables are:
+Fill in the Azure region (for example `eastasia`), resource key and voice (for example `zh-CN-YunxiNeural`).
 
-| Variable | Value |
-| --- | --- |
-| `SUMATRA_AZURE_REGION` | The region of your Azure Speech resource, for example `eastasia` |
-| `SUMATRA_AZURE_KEY` | Your Speech resource key |
-| `SUMATRA_AZURE_VOICE` | A standard Azure voice name, for example `zh-CN-YunxiNeural` |
-
-Select **Microsoft Azure Speech**. The app calls the regional endpoint in the public Azure cloud. Azure receives the text of each chunk you read. The resource key stays out of SumatraPDF settings and the installer.
+Select **Microsoft Azure Speech**. The app calls the regional endpoint in the public Azure cloud. Azure receives the text of each chunk you read.
 
 ## JoyInside
 

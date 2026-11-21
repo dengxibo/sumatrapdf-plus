@@ -295,6 +295,24 @@ static int ProbeEdgeSpeech(const char* output, const EdgeReadAloudVoice& edgeVoi
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && str::Eq(argv[1], "--online-speech-settings-test")) {
+        WCHAR region[] = L"eastasia", key[] = L"test-azure-key", azureVoice[] = L"zh-CN-YunxiNeural";
+        WCHAR access[] = L"test-access", secret[] = L"test-京东-secret", bot[] = L"test-bot", vendor[] = L"123";
+        WCHAR* fields[] = {region, key, azureVoice, access, secret, bot, vendor};
+        AutoFree protectedSettings(ProtectCloudSpeechSettings(fields));
+        if (!str::StartsWith(protectedSettings.Get(), "dpapi:") || strstr(protectedSettings.Get(), "test-")) return 1;
+        LoadCloudSpeechSettings(protectedSettings.Get());
+        WCHAR actual[256];
+        for (int i = 0; i < kCloudSpeechSettingCount; i++) {
+            if (!ReadCloudSpeechSetting(i, actual, dimof(actual)) || wcscmp(actual, fields[i]) != 0) return 2;
+        }
+        LoadCloudSpeechSettings(nullptr);
+        for (int i = 0; i < kCloudSpeechSettingCount; i++) {
+            if (ReadCloudSpeechSetting(i, actual, dimof(actual))) return 3;
+        }
+        printf("Online speech settings encryption, round-trip and reset passed.\n");
+        return 0;
+    }
     if ((argc == 3 || argc == 4) && str::Eq(argv[1], "--edge-speech-probe")) {
         const auto* voice = argc == 4 ? FindEdgeReadAloudVoice(argv[3]) : &gEdgeReadAloudVoices[0];
         if (!voice) {

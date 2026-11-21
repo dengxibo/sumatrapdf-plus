@@ -1303,6 +1303,7 @@ const globalPrefs: Field[] = [
   setVersion(setExpert(mkField("ReadAloudSystemVoiceId", Str, null, "remembered Windows voice for Read Aloud")), "3.7"),
   setVersion(setExpert(mkField("ReadAloudOfflineVoiceId", Str, null, "remembered downloaded voice for Read Aloud")), "3.7"),
   setVersion(setExpert(mkField("ReadAloudEdgeVoiceId", Str, null, "remembered Edge online voice for Read Aloud")), "3.7"),
+  setVersion(setExpert(mkField("ReadAloudOnlineSpeechConfig", Str, null, "DPAPI encrypted configuration for Azure and JoyInside speech")), "3.7"),
   setVersion(
     setExpert(
       mkField(

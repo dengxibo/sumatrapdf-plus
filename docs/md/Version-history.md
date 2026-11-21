@@ -4,7 +4,7 @@
 
 ## 3.7.105 (2026-11-21)
 
-- 在线朗读新增 Azure Speech 和 JoyInside。可在设置中填写自己的凭据，密钥由 Windows 加密保存。
+- 在线朗读新增 Azure Speech 和 JoyInside。配置由 Windows DPAPI 加密并保存到当前 `SumatraPDF-settings.txt`。
 - JoyInside 支持加载企业音色，并筛去不适合图书朗读的音色。保留「成熟大叔」，提前解码音频并复用连续朗读的连接。
 - 朗读中更换音色后从当前位置继续播放，修复全屏朗读时退出按钮随高亮刷新闪动的问题。
 

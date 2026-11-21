@@ -419,43 +419,82 @@ static const EdgeReadAloudVoice kCloudVoices[] = {
     {"joyinside:40486", "JoyInside · Mature uncle", "joyinside:40486", EdgeVoiceLanguage::Chinese},
 };
 
-static constexpr const char* kSpeechRegistry = "Software\\SumatraPDF-Plus\\OnlineSpeech";
 static volatile LONG gJoySettingsVersion = 0;
-static constexpr const char* kSpeechValues[] = {"AzureRegion", "AzureKey", "AzureVoice", "JoyAccessKey",
-                                                "JoySecret",   "JoyBotId", "JoyVendorId"};
-static constexpr const WCHAR* kSpeechEnvironment[] = {
-    L"SUMATRA_AZURE_REGION", L"SUMATRA_AZURE_KEY",  L"SUMATRA_AZURE_VOICE",   L"SUMATRA_JOY_ACCESS_KEY",
-    L"SUMATRA_JOY_SECRET",   L"SUMATRA_JOY_BOT_ID", L"SUMATRA_JOY_VENDOR_ID",
-};
+static SRWLOCK gCloudSettingsLock = SRWLOCK_INIT;
+static WCHAR gCloudSettings[kCloudSpeechSettingCount][256] = {};
 static SRWLOCK gJoyCatalogLock = SRWLOCK_INIT;
 static Vec<const EdgeReadAloudVoice*> gJoyCatalog, gJoyKnownVoices;
 static LONG gJoyCatalogVersion = -1, gJoyFetchingVersion = -1;
 
 bool ReadCloudSpeechSetting(int index, WCHAR* value, DWORD capacity) {
+    if (!capacity) return false;
     value[0] = 0;
-    if (const char* stored = ReadRegStrTemp(HKEY_CURRENT_USER, kSpeechRegistry, kSpeechValues[index])) {
-        bool encrypted = index == 1 || index == 4;
-        AutoFree plain(encrypted ? UnprotectStringDpapi(stored) : nullptr);
-        const char* data = encrypted ? plain.Get() : stored;
-        if (str::IsEmpty(data)) return false;
-        return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, data, -1, value, capacity) > 0;
-    }
-    DWORD length = GetEnvironmentVariableW(kSpeechEnvironment[index], value, capacity);
-    return length > 0 && length < capacity;
+    if (index < 0 || index >= kCloudSpeechSettingCount) return false;
+    AcquireSRWLockShared(&gCloudSettingsLock);
+    defer {
+        ReleaseSRWLockShared(&gCloudSettingsLock);
+    };
+    const WCHAR* s = gCloudSettings[index];
+    size_t length = wcslen(s);
+    if (length == 0 || length >= capacity) return false;
+    memcpy(value, s, (length + 1) * sizeof(WCHAR));
+    return true;
 }
 
-bool SaveCloudSpeechSettings(const WCHAR* region, const WCHAR* key, const WCHAR* voice, const WCHAR* accessKey,
-                             const WCHAR* secret, const WCHAR* botId, const WCHAR* vendorId) {
-    AutoFree protectedKey(ProtectStringDpapi(ToUtf8Temp(key)));
-    AutoFree protectedSecret(ProtectStringDpapi(ToUtf8Temp(secret)));
-    if (!protectedKey.Get() || !protectedSecret.Get()) return false;
-    const char* values[] = {ToUtf8Temp(region),    protectedKey.Get(), ToUtf8Temp(voice),   ToUtf8Temp(accessKey),
-                            protectedSecret.Get(), ToUtf8Temp(botId),  ToUtf8Temp(vendorId)};
-    for (int i = 0; i < (int)dimof(values); i++) {
-        if (!WriteRegStr(HKEY_CURRENT_USER, kSpeechRegistry, kSpeechValues[i], values[i])) return false;
+char* ProtectCloudSpeechSettings(WCHAR* const (&values)[kCloudSpeechSettingCount]) {
+    StrBuilder plain;
+    bool hasValue = false;
+    defer {
+        SecureZeroMemory((void*)plain.Get(), plain.Size());
+    };
+    for (const WCHAR* value : values) {
+        if (wcspbrk(value, L"\r\n")) return nullptr;
+        AutoFree utf8(ToUtf8(value));
+        if (!utf8.Get()) return nullptr;
+        defer {
+            SecureZeroMemory(utf8.Get(), strlen(utf8.Get()));
+        };
+        hasValue = hasValue || *value != 0;
+        if (!plain.Append(utf8.Get()) || !plain.AppendChar('\n')) return nullptr;
     }
-    InterlockedIncrement(&gJoySettingsVersion);
-    return true;
+    return hasValue ? ProtectStringDpapi(plain.Get()) : str::Dup("");
+}
+
+void LoadCloudSpeechSettings(const char* protectedSettings) {
+    WCHAR values[kCloudSpeechSettingCount][256] = {};
+    defer {
+        SecureZeroMemory(values, sizeof(values));
+    };
+    if (IsDpapiProtectedString(protectedSettings)) {
+        AutoFree plain(UnprotectStringDpapi(protectedSettings));
+        if (char* next = plain.Get()) {
+            size_t bytes = strlen(next);
+            defer {
+                SecureZeroMemory(plain.Get(), bytes);
+            };
+            bool valid = true;
+            for (auto& value : values) {
+                char* end = strchr(next, '\n');
+                if (!end) {
+                    valid = false;
+                    break;
+                }
+                *end = 0;
+                if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, next, -1, value, dimof(value))) {
+                    valid = false;
+                    break;
+                }
+                next = end + 1;
+            }
+            if (!valid || *next) SecureZeroMemory(values, sizeof(values));
+        }
+    }
+    AcquireSRWLockExclusive(&gCloudSettingsLock);
+    if (memcmp(gCloudSettings, values, sizeof(values)) != 0) {
+        memcpy(gCloudSettings, values, sizeof(values));
+        InterlockedIncrement(&gJoySettingsVersion);
+    }
+    ReleaseSRWLockExclusive(&gCloudSettingsLock);
 }
 
 const EdgeReadAloudVoice* ConfiguredCloudSpeechVoice(int index) {

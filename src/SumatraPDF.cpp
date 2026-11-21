@@ -16441,7 +16441,20 @@ static INT_PTR CALLBACK OnlineSpeechSetupProc(HWND dlg, UINT msg, WPARAM wp, LPA
                        ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONWARNING);
         return TRUE;
     }
-    if (!SaveCloudSpeechSettings(region, key, voice, accessKey, secret, botId, vendorId)) {
+    AutoFreeStr protectedSettings(ProtectCloudSpeechSettings(values));
+    bool saved = false;
+    if (protectedSettings.Get()) {
+        AutoFreeStr previous(gGlobalPrefs->readAloudOnlineSpeechConfig);
+        gGlobalPrefs->readAloudOnlineSpeechConfig = protectedSettings.Release();
+        saved = SaveSettings();
+        if (saved) {
+            LoadCloudSpeechSettings(gGlobalPrefs->readAloudOnlineSpeechConfig);
+        } else {
+            str::Free(gGlobalPrefs->readAloudOnlineSpeechConfig);
+            gGlobalPrefs->readAloudOnlineSpeechConfig = previous.Release();
+        }
+    }
+    if (!saved) {
         AppMessageBoxW(dlg, ToWStrTemp(_TRA("Could not save the online speech settings.")),
                        ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONERROR);
         return TRUE;
