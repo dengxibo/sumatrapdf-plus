@@ -942,12 +942,12 @@ static const int gSettingsReadingControls[] = {IDC_GROUP_DEFAULT_VIEW,
                                                IDC_GROUP_FULLSCREEN,
                                                IDC_PREVENT_SLEEP_FULLSCREEN};
 static const int gSettingsReadAloudControls[] = {
-    IDC_GROUP_RA_VOICE,        IDC_RA_VOICE_MODE_LABEL,    IDC_RA_VOICE_MODE,
-    IDC_RA_VOICE_PICK_LABEL,   IDC_RA_VOICE_PICK,          IDC_RA_PREVIEW,
-    IDC_RA_OFFLINE_VOICES,     IDC_GROUP_RA_HIGHLIGHT,     IDC_RA_HIGHLIGHT_COLOR_LABEL,
-    IDC_RA_HIGHLIGHT_COLOR,    IDC_RA_HIGHLIGHT_RESET,     IDC_RA_AUTO_FOLLOW,
-    IDC_GROUP_RA_NARRATION,    IDC_RA_NARRATION_USE_AUDIO, IDC_RA_NARRATION_HINT,
-    IDC_RA_NARRATION_USE_COLOR};
+    IDC_GROUP_RA_VOICE,           IDC_RA_VOICE_MODE_LABEL,   IDC_RA_VOICE_MODE,
+    IDC_RA_VOICE_PICK_LABEL,      IDC_RA_VOICE_PICK,         IDC_RA_PREVIEW,
+    IDC_RA_OFFLINE_VOICES,        IDC_RA_ONLINE_CONFIG,      IDC_GROUP_RA_HIGHLIGHT,
+    IDC_RA_HIGHLIGHT_COLOR_LABEL, IDC_RA_HIGHLIGHT_COLOR,    IDC_RA_HIGHLIGHT_RESET,
+    IDC_RA_AUTO_FOLLOW,           IDC_GROUP_RA_NARRATION,    IDC_RA_NARRATION_USE_AUDIO,
+    IDC_RA_NARRATION_HINT,        IDC_RA_NARRATION_USE_COLOR};
 static const int gSettingsOcrControls[] = {IDC_GROUP_OCR,      IDC_AUTO_OCR,         IDC_OCR_DESCRIPTION,
                                            IDC_OCR_AUTO_SAVE,  IDC_OCR_SAVE_WARNING, IDC_GROUP_SMART_TOC,
                                            IDC_TOC_MODE_LABEL, IDC_TOC_MODE,         IDC_TOC_MODE_DESCRIPTION};
@@ -1084,8 +1084,9 @@ static void FitSettingsOcrLabels(HWND hDlg) {
 
 static void FitSettingsReadAloudLabels(HWND hDlg) {
     static const int labelIds[] = {IDC_RA_VOICE_MODE_LABEL, IDC_RA_VOICE_PICK_LABEL, IDC_RA_HIGHLIGHT_COLOR_LABEL};
-    static const int fieldIds[] = {IDC_RA_VOICE_MODE,     IDC_RA_VOICE_PICK,      IDC_RA_PREVIEW,
-                                   IDC_RA_OFFLINE_VOICES, IDC_RA_HIGHLIGHT_COLOR, IDC_RA_HIGHLIGHT_RESET};
+    static const int fieldIds[] = {IDC_RA_VOICE_MODE,     IDC_RA_VOICE_PICK,    IDC_RA_PREVIEW,
+                                   IDC_RA_OFFLINE_VOICES, IDC_RA_ONLINE_CONFIG, IDC_RA_HIGHLIGHT_COLOR,
+                                   IDC_RA_HIGHLIGHT_RESET};
     FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_RA_VOICE_MODE);
 }
 
@@ -2536,6 +2537,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_RA_VOICE_PICK_LABEL, _TRA("&Voice:"));
             HwndSetDlgItemText(hDlg, IDC_RA_PREVIEW, _TRA("&Preview"));
             HwndSetDlgItemText(hDlg, IDC_RA_OFFLINE_VOICES, _TRA("Offline &voices..."));
+            HwndSetDlgItemText(hDlg, IDC_RA_ONLINE_CONFIG, _TRA("Online &setup..."));
             HwndSetDlgItemText(hDlg, IDC_GROUP_RA_HIGHLIGHT, _TRA("Highlight and follow"));
             HwndSetDlgItemText(hDlg, IDC_RA_HIGHLIGHT_COLOR_LABEL, _TRA("Highlight co&lor:"));
             HwndSetDlgItemText(hDlg, IDC_RA_HIGHLIGHT_RESET, _TRA("&Reset"));
@@ -3248,6 +3250,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 case IDC_RA_VOICE_PICK:
                 case IDC_RA_PREVIEW:
                 case IDC_RA_OFFLINE_VOICES:
+                case IDC_RA_ONLINE_CONFIG:
                 case IDC_RA_HIGHLIGHT_COLOR:
                 case IDC_RA_HIGHLIGHT_RESET:
                     ReadAloudSettingsPageOnCommand(hDlg, LOWORD(wp), HIWORD(wp));

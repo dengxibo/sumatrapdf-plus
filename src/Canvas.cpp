@@ -1187,12 +1187,14 @@ static void AddFullscreenExitRoundRect(Gdiplus::GraphicsPath& path, float x, flo
     path.CloseFigure();
 }
 
-static void DrawFullscreenExitAffordance(MainWindow* win, HDC hdc) {
+static void DrawFullscreenExitAffordance(MainWindow* win, HDC hdc, const RECT& dirty) {
     if (!win->fullscreenExitHot || !FullscreenNeedsMouseExit(win)) {
         return;
     }
     Rect btn = GetFullscreenExitButtonRect(win);
-    if (btn.IsEmpty()) {
+    RECT bounds = ToRECT(btn);
+    RECT clip;
+    if (!IntersectRect(&clip, &bounds, &dirty)) {
         return;
     }
     // Match toolbar chrome for all four themes. Draw with Gdiplus only — DrawSvgIcon
@@ -1217,6 +1219,7 @@ static void DrawFullscreenExitAffordance(MainWindow* win, HDC hdc) {
     float h = (float)btn.dy;
 
     Gdiplus::Graphics g(hdc);
+    g.SetClip(Gdiplus::Rect(clip.left, clip.top, clip.right - clip.left, clip.bottom - clip.top));
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 
@@ -4055,22 +4058,21 @@ static void OnPaintDocument(MainWindow* win) {
         return;
     }
 
-    switch (win->presentation) {
-        case PM_BLACK_SCREEN:
-            FillRect(hdc, &ps.rcPaint, GetStockBrush(BLACK_BRUSH));
-            DrawFullscreenExitAffordance(win, hdc);
-            break;
-        case PM_WHITE_SCREEN:
-            FillRect(hdc, &ps.rcPaint, GetStockBrush(WHITE_BRUSH));
-            DrawFullscreenExitAffordance(win, hdc);
-            break;
-        default: {
-            bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint, &viewportRendered, &viewportFailed);
-            if (!gNoFlickerRender || shouldPaint) {
-                win->buffer->Flush(hdc, &ps.rcPaint);
-            }
-            DrawFullscreenExitAffordance(win, hdc);
-        }
+    HDC buffer = win->buffer->GetDC();
+    bool shouldPaint = true;
+    if (win->presentation == PM_BLACK_SCREEN || win->presentation == PM_WHITE_SCREEN) {
+        int brush = win->presentation == PM_BLACK_SCREEN ? BLACK_BRUSH : WHITE_BRUSH;
+        FillRect(buffer, &ps.rcPaint, GetStockBrush(brush));
+    } else {
+        shouldPaint = DrawDocument(win, buffer, &ps.rcPaint, &viewportRendered, &viewportFailed);
+    }
+    if (!gNoFlickerRender || shouldPaint) {
+        // Present the page, read-aloud highlight and exit button together.
+        DrawFullscreenExitAffordance(win, buffer, ps.rcPaint);
+        win->buffer->Flush(hdc, &ps.rcPaint);
+    } else {
+        // Keep the last rendered page while new tiles are unavailable.
+        DrawFullscreenExitAffordance(win, hdc, ps.rcPaint);
     }
 
     EndPaint(win->hwndCanvas, &ps);

@@ -47998,6 +47998,114 @@ tw:系統語音
 :Offline speech
 cn:离线语音
 tw:離線語音
+:Online &setup...
+cn:在线配置(&U)...
+tw:線上設定(&U)...
+ja:オンライン設定(&U)...
+kr:온라인 설정(&U)...
+de:Online-&Einstellungen...
+fr:Réglages en &ligne...
+es:Ajustes en &línea...
+ru:Настройка &онлайн...
+:Online speech setup
+cn:在线语音配置
+tw:線上語音設定
+ja:オンライン音声の設定
+kr:온라인 음성 설정
+de:Online-Sprachausgabe einrichten
+fr:Configuration de la voix en ligne
+es:Configuración de voz en línea
+ru:Настройка сетевого озвучивания
+:JoyInside · Mature uncle
+cn:JoyInside · 成熟大叔
+tw:JoyInside · 成熟大叔
+ja:JoyInside · 落ち着いた男性
+kr:JoyInside · 중년 남성
+de:JoyInside · Reife Männerstimme
+fr:JoyInside · Voix masculine mûre
+es:JoyInside · Voz masculina madura
+ru:JoyInside · Зрелый мужской голос
+:JoyInside AccessKey:
+cn:JoyInside 访问密钥：
+tw:JoyInside 存取金鑰：
+:JoyInside SecretKey:
+cn:JoyInside 签名密钥：
+tw:JoyInside 簽署金鑰：
+:Registered device (botId):
+cn:已注册设备（botId）：
+tw:已註冊裝置（botId）：
+ja:登録済みデバイス (botId):
+kr:등록된 기기 (botId):
+de:Registriertes Gerät (botId):
+fr:Appareil enregistré (botId) :
+es:Dispositivo registrado (botId):
+ru:Зарегистрированное устройство (botId):
+:Vendor ID (voice list):
+cn:企业 ID（音色列表）：
+tw:企業 ID（音色列表）：
+ja:企業 ID（音声一覧）:
+kr:기업 ID(음성 목록):
+de:Unternehmens-ID (Stimmenliste):
+fr:ID entreprise (liste des voix) :
+es:ID de empresa (lista de voces):
+ru:ID компании (список голосов):
+:Enter all three JoyInside fields or leave them blank.
+cn:请填写全部三项 JoyInside 设置，或全部留空。
+tw:請填寫全部三項 JoyInside 設定，或全部留空。
+:Azure and JoyInside connect directly. Configure only the services you use.
+cn:Azure 和 JoyInside 均可直连。只需配置你使用的服务。
+tw:Azure 和 JoyInside 皆可直接連線。只需設定你使用的服務。
+ja:Azure と JoyInside は直接接続します。使用するサービスだけを設定してください。
+kr:Azure와 JoyInside는 직접 연결됩니다. 사용하는 서비스만 설정하세요.
+de:Azure und JoyInside verbinden sich direkt. Richten Sie nur die benötigten Dienste ein.
+fr:Azure et JoyInside se connectent directement. Configurez uniquement les services utilisés.
+es:Azure y JoyInside se conectan directamente. Configure solo los servicios que utilice.
+ru:Azure и JoyInside подключаются напрямую. Настройте только используемые службы.
+:Azure &region:
+cn:Azure 区域(&R)：
+tw:Azure 區域(&R)：
+ja:Azure リージョン(&R):
+kr:Azure 지역(&R):
+de:Azure-&Region:
+fr:&Région Azure :
+es:&Región de Azure:
+ru:&Регион Azure:
+:Azure resource &key:
+cn:Azure 资源密钥(&K)：
+tw:Azure 資源金鑰(&K)：
+ja:Azure リソースキー(&K):
+kr:Azure 리소스 키(&K):
+de:Azure-Ressourcen&schlüssel:
+fr:&Clé de ressource Azure :
+es:&Clave de recurso de Azure:
+ru:&Ключ ресурса Azure:
+:Azure &voice:
+cn:Azure 音色(&V)：
+tw:Azure 語音(&V)：
+ja:Azure 音声(&V):
+kr:Azure 음성(&V):
+de:Azure-&Stimme:
+fr:&Voix Azure :
+es:&Voz de Azure:
+ru:&Голос Azure:
+:Enter all three Azure fields or leave them blank.
+cn:请填写全部三项 Azure 设置，或全部留空。
+tw:請填寫全部三項 Azure 設定，或全部留空。
+ja:Azure の 3 項目をすべて入力するか、すべて空欄にしてください。
+kr:Azure 항목 세 개를 모두 입력하거나 모두 비워 두세요.
+de:Alle drei Azure-Felder ausfüllen oder leer lassen.
+fr:Renseignez les trois champs Azure ou laissez-les vides.
+es:Rellene los tres campos de Azure o déjelos vacíos.
+ru:Заполните все три поля Azure или оставьте их пустыми.
+:Could not save the online speech settings.
+cn:无法保存在线语音设置。
+tw:無法儲存線上語音設定。
+ja:オンライン音声設定を保存できませんでした。
+kr:온라인 음성 설정을 저장하지 못했습니다.
+de:Die Einstellungen konnten nicht gespeichert werden.
+fr:Impossible d’enregistrer les paramètres de voix en ligne.
+es:No se pudo guardar la configuración de voz en línea.
+ru:Не удалось сохранить настройки сетевого озвучивания.
 :Online speech
 cn:在线语音
 tw:線上語音

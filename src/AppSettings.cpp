@@ -59,15 +59,23 @@ static bool ApplyReadAloudVoiceFromSettings() {
     }
 
     // Keep saved online selections on the online source when a voice is removed from the catalog.
-    if (str::StartsWith(gGlobalPrefs->readAloudEdgeVoiceId, "edge:") &&
-        !FindEdgeReadAloudVoice(gGlobalPrefs->readAloudEdgeVoiceId)) {
-        str::ReplaceWithCopy(&gGlobalPrefs->readAloudEdgeVoiceId, gEdgeReadAloudVoices[0].id);
+    auto removedOnlineVoice = [](const char* id) {
+        return str::Eq(id, "bridge:configured") || (str::StartsWith(id, "edge:") && !FindEdgeReadAloudVoice(id));
+    };
+    const char* fallback = gEdgeReadAloudVoices[0].id;
+    if (str::Eq(gGlobalPrefs->readAloudVoiceId, "bridge:configured") ||
+        str::Eq(gGlobalPrefs->readAloudEdgeVoiceId, "bridge:configured")) {
+        if (const auto* joy = ConfiguredCloudSpeechVoice(1)) {
+            fallback = joy->id;
+        }
     }
-    if (str::StartsWith(gGlobalPrefs->readAloudVoiceId, "edge:") &&
-        !FindEdgeReadAloudVoice(gGlobalPrefs->readAloudVoiceId)) {
+    if (removedOnlineVoice(gGlobalPrefs->readAloudEdgeVoiceId)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->readAloudEdgeVoiceId, fallback);
+    }
+    if (removedOnlineVoice(gGlobalPrefs->readAloudVoiceId)) {
         const char* replacement = gGlobalPrefs->readAloudEdgeVoiceId;
         if (!FindEdgeReadAloudVoice(replacement)) {
-            replacement = gEdgeReadAloudVoices[0].id;
+            replacement = fallback;
         }
         str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, replacement);
     }

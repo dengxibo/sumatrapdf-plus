@@ -15288,10 +15288,8 @@ static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab) {
     }
 
     TtsProcessEvents();
-    int posInChunk = TtsGetSpokenPosUtf8();
-    if (posInChunk < 0) {
-        posInChunk = 0;
-    }
+    int chunkLen = std::max(0, tab->readAloudChunkEnd - tab->readAloudChunkStart);
+    int posInChunk = std::clamp(TtsGetSpokenPosUtf8(), 0, chunkLen);
     tab->readAloudChunkEnd = tab->readAloudChunkStart + posInChunk;
     TtsStop();
     TtsProcessEvents();
@@ -15385,11 +15383,7 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
     str::ReplaceWithCopy(&ReadAloudRememberedVoice(newSource), ReadAloudVoiceChoice(gGlobalPrefs->readAloudVoiceId));
     SaveSettings();
 
-    if (ReadAloudUsesEdge()) {
-        ReadAloudStopRememberPos();
-    } else {
-        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
-    }
+    ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
 }
 
 // WinRT speech synthesis is too slow for whole-document requests; speak in chunks.
@@ -15837,6 +15831,7 @@ static constexpr COLORREF kReadAloudDefaultHighlight = RGB(255, 255, 0);
 
 // Changes are kept here and applied on OK; combo item data points into ownedIds.
 struct ReadAloudSettingsPage {
+    HWND dialog = nullptr;
     Vec<char*> ownedIds;
     char* choices[3]{};
     ReadAloudVoiceSource source = ReadAloudVoiceSource::System;
@@ -15935,6 +15930,18 @@ static void ReadAloudPageClearVoiceIds(ReadAloudSettingsPage* page) {
     page->ownedIds.Reset();
 }
 
+static void ReadAloudPagePopulateVoices(HWND hDlg);
+
+static void RefreshJoyCatalogOnUi() {
+    if (gReadAloudPage && gReadAloudPage->source == ReadAloudVoiceSource::Edge) {
+        ReadAloudPagePopulateVoices(gReadAloudPage->dialog);
+    }
+}
+
+static void OnJoyCatalogChanged() {
+    uitask::Post(MkFunc0Void(RefreshJoyCatalogOnUi), "JoySpeechVoiceCatalog");
+}
+
 static void ReadAloudPagePopulateVoices(HWND hDlg) {
     ReadAloudSettingsPage* p = gReadAloudPage;
     HWND combo = GetDlgItem(hDlg, IDC_RA_VOICE_PICK);
@@ -15962,12 +15969,26 @@ static void ReadAloudPagePopulateVoices(HWND hDlg) {
     } else if (HasPermission(Perm::InternetAccess)) {
         TtsPrepareGeneratedPlayback();
         EdgeSpeechPrepare();
+        RefreshJoySpeechVoices(OnJoyCatalogChanged);
+        if (const auto* joy = ConfiguredCloudSpeechVoice(1)) {
+            Vec<const EdgeReadAloudVoice*> voices;
+            GetJoySpeechVoices(voices);
+            ReadAloudPageComboAdd(combo, _TRA("JoyInside · Mature uncle"), joy->id);
+            for (const auto* voice : voices) {
+                if (!str::Eq(voice->id, joy->id)) {
+                    ReadAloudPageComboAdd(combo, str::FormatTemp("JoyInside · %s", voice->name), voice->id);
+                }
+            }
+        }
         for (int i = 0; i < gEdgeReadAloudVoiceCount; i++) {
             const auto& voice = gEdgeReadAloudVoices[i];
             const char* language = voice.language == EdgeVoiceLanguage::Multilingual ? _TRA("Multilingual")
                                    : voice.language == EdgeVoiceLanguage::Chinese    ? _TRA("Chinese")
                                                                                      : _TRA("English");
             ReadAloudPageComboAdd(combo, str::FormatTemp("%s · %s", language, voice.name), voice.id);
+        }
+        if (const auto* voice = ConfiguredCloudSpeechVoice(0)) {
+            ReadAloudPageComboAdd(combo, voice->name, voice->id);
         }
     }
     bool available = ReadAloudPageComboCount(combo) > 0;
@@ -16001,6 +16022,7 @@ void ReadAloudSettingsPageInit(HWND hDlg) {
     }
     gReadAloudPage = new ReadAloudSettingsPage();
     ReadAloudSettingsPage* p = gReadAloudPage;
+    p->dialog = hDlg;
     NormalizeMultilingualVoicePref();
     const char* activeVoice = gGlobalPrefs->readAloudVoiceId;
     auto activeSource = ReadAloudSourceForVoice(activeVoice);
@@ -16368,6 +16390,66 @@ static void ShowOfflineVoiceDialog(HWND owner) {
     }
 }
 
+static INT_PTR CALLBACK OnlineSpeechSetupProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
+    static constexpr int controls[] = {IDC_RA_AZURE_REGION,   IDC_RA_AZURE_KEY,  IDC_RA_AZURE_VOICE,
+                                       IDC_RA_JOY_ACCESS_KEY, IDC_RA_JOY_SECRET, IDC_RA_JOY_BOT_ID,
+                                       IDC_RA_JOY_VENDOR_ID};
+    WCHAR region[64] = {}, key[256] = {}, voice[128] = {};
+    WCHAR accessKey[128] = {}, secret[256] = {}, botId[128] = {}, vendorId[128] = {};
+    WCHAR* values[] = {region, key, voice, accessKey, secret, botId, vendorId};
+    const DWORD capacities[] = {dimof(region), dimof(key),   dimof(voice),   dimof(accessKey),
+                                dimof(secret), dimof(botId), dimof(vendorId)};
+    defer {
+        SecureZeroMemory(key, sizeof(key));
+        SecureZeroMemory(secret, sizeof(secret));
+    };
+    if (msg == WM_INITDIALOG) {
+        HwndSetText(dlg, _TRA("Online speech setup"));
+        HwndSetDlgItemText(dlg, IDC_RA_AZURE_REGION_LABEL, _TRA("Azure &region:"));
+        HwndSetDlgItemText(dlg, IDC_RA_AZURE_KEY_LABEL, _TRA("Azure resource &key:"));
+        HwndSetDlgItemText(dlg, IDC_RA_AZURE_VOICE_LABEL, _TRA("Azure &voice:"));
+        HwndSetDlgItemText(dlg, IDC_RA_JOY_ACCESS_LABEL, _TRA("JoyInside AccessKey:"));
+        HwndSetDlgItemText(dlg, IDC_RA_JOY_SECRET_LABEL, _TRA("JoyInside SecretKey:"));
+        HwndSetDlgItemText(dlg, IDC_RA_JOY_BOT_LABEL, _TRA("Registered device (botId):"));
+        HwndSetDlgItemText(dlg, IDC_RA_JOY_VENDOR_LABEL, _TRA("Vendor ID (voice list):"));
+        HwndSetDlgItemText(dlg, IDC_RA_ONLINE_HINT,
+                           _TRA("Azure and JoyInside connect directly. Configure only the services you use."));
+        HwndSetDlgItemText(dlg, IDOK, _TRA("OK"));
+        HwndSetDlgItemText(dlg, IDCANCEL, _TRA("Cancel"));
+        for (int i = 0; i < (int)dimof(controls); i++) {
+            SendDlgItemMessageW(dlg, controls[i], EM_SETLIMITTEXT, capacities[i] - 1, 0);
+            if (ReadCloudSpeechSetting(i, values[i], capacities[i])) SetDlgItemTextW(dlg, controls[i], values[i]);
+        }
+        return TRUE;
+    }
+    if (msg != WM_COMMAND) return FALSE;
+    if (LOWORD(wp) == IDCANCEL) {
+        EndDialog(dlg, IDCANCEL);
+        return TRUE;
+    }
+    if (LOWORD(wp) != IDOK) return FALSE;
+    for (int i = 0; i < (int)dimof(controls); i++) {
+        GetDlgItemTextW(dlg, controls[i], values[i], capacities[i]);
+    }
+    if ((region[0] || key[0] || voice[0]) && !(region[0] && key[0] && voice[0])) {
+        AppMessageBoxW(dlg, ToWStrTemp(_TRA("Enter all three Azure fields or leave them blank.")),
+                       ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+    if ((accessKey[0] || secret[0] || botId[0]) && !(accessKey[0] && secret[0] && botId[0])) {
+        AppMessageBoxW(dlg, ToWStrTemp(_TRA("Enter all three JoyInside fields or leave them blank.")),
+                       ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+    if (!SaveCloudSpeechSettings(region, key, voice, accessKey, secret, botId, vendorId)) {
+        AppMessageBoxW(dlg, ToWStrTemp(_TRA("Could not save the online speech settings.")),
+                       ToWStrTemp(_TRA("Online speech setup")), MB_OK | MB_ICONERROR);
+        return TRUE;
+    }
+    EndDialog(dlg, IDOK);
+    return TRUE;
+}
+
 void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
     if (!gReadAloudPage) {
         return;
@@ -16403,6 +16485,14 @@ void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
         case IDC_RA_OFFLINE_VOICES:
             if (code == BN_CLICKED) {
                 ShowOfflineVoiceDialog(hDlg);
+            }
+            break;
+        case IDC_RA_ONLINE_CONFIG:
+            if (code == BN_CLICKED && HasPermission(Perm::InternetAccess)) {
+                ReadAloudPageStopPreview();
+                if (CreateAppDialogBox(IDD_RA_ONLINE_CONFIG, hDlg, OnlineSpeechSetupProc, 0) == IDOK) {
+                    ReadAloudPagePopulateVoices(hDlg);
+                }
             }
             break;
         case IDC_RA_HIGHLIGHT_COLOR:

@@ -3,6 +3,11 @@
 
 #include "utils/BaseUtil.h"
 #include "utils/Log.h"
+#include "utils/CryptoUtil.h"
+#include "utils/WinUtil.h"
+#include "utils/JsonParser.h"
+#include <bcrypt.h>
+#include <wincrypt.h>
 #include "EdgeSpeechResponse.h"
 #include "EdgeSpeechTransport.h"
 #include "../ext/edge-gec/EdgeGec.h"
@@ -15,6 +20,8 @@
 #pragma pop_macro("_WIN32_WINNT")
 
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "crypt32.lib")
 
 struct EdgeWebSocketApi {
     decltype(&WinHttpWebSocketCompleteUpgrade) upgrade = nullptr;
@@ -114,13 +121,14 @@ struct EdgeConnection {
     }
 };
 
-static EdgeSpeechTransportResult OpenEdgeConnection(const EdgeSpeechTurn& turn, HANDLE cancel, EdgeConnection& out) {
+static EdgeSpeechTransportResult OpenEdgeConnection(const EdgeSpeechTurn& turn, HANDLE cancel, EdgeConnection& out,
+                                                    const WCHAR* host = L"speech.platform.bing.com") {
     ULONGLONG started = GetTickCount64();
     const auto api = GetEdgeWebSocketApi();
     if (!api.upgrade || !api.send || !api.receive) return {ERROR_NOT_SUPPORTED};
     HINTERNET session = EdgeHttpSession();
     if (!session) return {GetLastError()};
-    out.connection = WinHttpConnect(session, L"speech.platform.bing.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
+    out.connection = WinHttpConnect(session, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (!out.connection) return {GetLastError()};
     HINTERNET request = WinHttpOpenRequest(out.connection, L"GET", turn.resource, nullptr, WINHTTP_NO_REFERER,
                                            WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
@@ -406,7 +414,87 @@ const EdgeReadAloudVoice gEdgeReadAloudVoices[] = {
 };
 const int gEdgeReadAloudVoiceCount = (int)dimof(gEdgeReadAloudVoices);
 
+static const EdgeReadAloudVoice kCloudVoices[] = {
+    {"azure:configured", "Microsoft Azure Speech", "azure:configured", EdgeVoiceLanguage::Multilingual},
+    {"joyinside:40486", "JoyInside · Mature uncle", "joyinside:40486", EdgeVoiceLanguage::Chinese},
+};
+
+static constexpr const char* kSpeechRegistry = "Software\\SumatraPDF-Plus\\OnlineSpeech";
+static volatile LONG gJoySettingsVersion = 0;
+static constexpr const char* kSpeechValues[] = {"AzureRegion", "AzureKey", "AzureVoice", "JoyAccessKey",
+                                                "JoySecret",   "JoyBotId", "JoyVendorId"};
+static constexpr const WCHAR* kSpeechEnvironment[] = {
+    L"SUMATRA_AZURE_REGION", L"SUMATRA_AZURE_KEY",  L"SUMATRA_AZURE_VOICE",   L"SUMATRA_JOY_ACCESS_KEY",
+    L"SUMATRA_JOY_SECRET",   L"SUMATRA_JOY_BOT_ID", L"SUMATRA_JOY_VENDOR_ID",
+};
+static SRWLOCK gJoyCatalogLock = SRWLOCK_INIT;
+static Vec<const EdgeReadAloudVoice*> gJoyCatalog, gJoyKnownVoices;
+static LONG gJoyCatalogVersion = -1, gJoyFetchingVersion = -1;
+
+bool ReadCloudSpeechSetting(int index, WCHAR* value, DWORD capacity) {
+    value[0] = 0;
+    if (const char* stored = ReadRegStrTemp(HKEY_CURRENT_USER, kSpeechRegistry, kSpeechValues[index])) {
+        bool encrypted = index == 1 || index == 4;
+        AutoFree plain(encrypted ? UnprotectStringDpapi(stored) : nullptr);
+        const char* data = encrypted ? plain.Get() : stored;
+        if (str::IsEmpty(data)) return false;
+        return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, data, -1, value, capacity) > 0;
+    }
+    DWORD length = GetEnvironmentVariableW(kSpeechEnvironment[index], value, capacity);
+    return length > 0 && length < capacity;
+}
+
+bool SaveCloudSpeechSettings(const WCHAR* region, const WCHAR* key, const WCHAR* voice, const WCHAR* accessKey,
+                             const WCHAR* secret, const WCHAR* botId, const WCHAR* vendorId) {
+    AutoFree protectedKey(ProtectStringDpapi(ToUtf8Temp(key)));
+    AutoFree protectedSecret(ProtectStringDpapi(ToUtf8Temp(secret)));
+    if (!protectedKey.Get() || !protectedSecret.Get()) return false;
+    const char* values[] = {ToUtf8Temp(region),    protectedKey.Get(), ToUtf8Temp(voice),   ToUtf8Temp(accessKey),
+                            protectedSecret.Get(), ToUtf8Temp(botId),  ToUtf8Temp(vendorId)};
+    for (int i = 0; i < (int)dimof(values); i++) {
+        if (!WriteRegStr(HKEY_CURRENT_USER, kSpeechRegistry, kSpeechValues[i], values[i])) return false;
+    }
+    InterlockedIncrement(&gJoySettingsVersion);
+    return true;
+}
+
+const EdgeReadAloudVoice* ConfiguredCloudSpeechVoice(int index) {
+    WCHAR region[64], voice[128], key[256];
+    if (index == 0 && ReadCloudSpeechSetting(0, region, dimof(region)) && ReadCloudSpeechSetting(1, key, dimof(key)) &&
+        ReadCloudSpeechSetting(2, voice, dimof(voice))) {
+        return &kCloudVoices[0];
+    }
+    WCHAR accessKey[128], secret[256], botId[128];
+    if (index == 1 && ReadCloudSpeechSetting(3, accessKey, dimof(accessKey)) &&
+        ReadCloudSpeechSetting(4, secret, dimof(secret)) && ReadCloudSpeechSetting(5, botId, dimof(botId))) {
+        return &kCloudVoices[1];
+    }
+    return nullptr;
+}
+
+static bool JoySafeId(const char* text, bool bearer = false);
+
 const EdgeReadAloudVoice* FindEdgeReadAloudVoice(const char* id) {
+    if (str::StartsWith(id, "joyinside:") && !str::Eq(id, kCloudVoices[1].id) && strlen(id) < 128 &&
+        JoySafeId(id + 10) && ConfiguredCloudSpeechVoice(1)) {
+        AcquireSRWLockExclusive(&gJoyCatalogLock);
+        defer {
+            ReleaseSRWLockExclusive(&gJoyCatalogLock);
+        };
+        for (const auto* voice : gJoyCatalog) {
+            if (str::Eq(id, voice->id)) return voice;
+        }
+        for (const auto* voice : gJoyKnownVoices) {
+            if (str::Eq(id, voice->id)) return voice;
+        }
+        char* storedId = str::Dup(id);
+        auto* voice = new EdgeReadAloudVoice{storedId, storedId + 10, storedId, EdgeVoiceLanguage::Multilingual};
+        gJoyKnownVoices.Append(voice);
+        return voice;
+    }
+    for (const auto& voice : kCloudVoices) {
+        if (str::Eq(id, voice.id)) return &voice;
+    }
     for (const auto& voice : gEdgeReadAloudVoices) {
         if (str::Eq(id, voice.id)) {
             return &voice;
@@ -450,9 +538,453 @@ static bool BuildEdgeRequest(WStrBuilder& target, WStrBuilder& headers) {
     return true;
 }
 
+static EdgeSpeechTransportResult PostSpeech(const WCHAR* host, const WCHAR* path, const WCHAR* headers,
+                                            StrBuilder& body, HANDLE cancel, StrBuilder& output) {
+    if (EdgeTurnCancelled(cancel)) return {ERROR_CANCELLED};
+    HINTERNET session = EdgeHttpSession();
+    if (!session) return {GetLastError()};
+    HINTERNET connection = WinHttpConnect(session, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
+    if (!connection) return {GetLastError()};
+    defer {
+        WinHttpCloseHandle(connection);
+    };
+    HINTERNET request = WinHttpOpenRequest(connection, L"POST", path, nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE);
+    if (!request) return {GetLastError()};
+    defer {
+        WinHttpCloseHandle(request);
+    };
+    DWORD redirects = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    DWORD length = (DWORD)body.Size();
+    if (!WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirects, sizeof(redirects)) ||
+        !WinHttpSendRequest(request, headers, (DWORD)-1, (void*)body.Get(), length, length, 0) ||
+        !WinHttpReceiveResponse(request, nullptr)) {
+        return {GetLastError()};
+    }
+    DWORD status = 0, size = sizeof(status);
+    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &size,
+                             nullptr)) {
+        return {GetLastError()};
+    }
+    if (status != 200) return {ERROR_WINHTTP_INVALID_SERVER_RESPONSE, status};
+    char buffer[8192];
+    while (!EdgeTurnCancelled(cancel)) {
+        DWORD read = 0;
+        if (!WinHttpReadData(request, buffer, sizeof(buffer), &read)) return {GetLastError(), status};
+        if (read == 0) {
+            return {output.Size() ? DWORD(ERROR_SUCCESS) : DWORD(ERROR_INVALID_DATA), status};
+        }
+        if (output.Size() + read > 8 * 1024 * 1024 || !output.Append(buffer, read)) {
+            return {ERROR_INVALID_DATA, status};
+        }
+    }
+    return {ERROR_CANCELLED, status};
+}
+
+static EdgeSpeechTransportResult SynthesizeAzure(const char* text, float rate, HANDLE cancel,
+                                                 EdgeSpeechResponse& response) {
+    WCHAR region[64], voice[128], key[256];
+    if (!ReadCloudSpeechSetting(0, region, dimof(region)) || !ReadCloudSpeechSetting(1, key, dimof(key)) ||
+        !ReadCloudSpeechSetting(2, voice, dimof(voice))) {
+        return {ERROR_INVALID_PARAMETER};
+    }
+    for (const WCHAR* p = region; *p; p++) {
+        if (!(*p >= L'a' && *p <= L'z') && !(*p >= L'0' && *p <= L'9')) return {ERROR_INVALID_PARAMETER};
+    }
+    for (const WCHAR* p = key; *p; p++) {
+        if (*p <= L' ' || *p > L'~') return {ERROR_INVALID_PARAMETER};
+    }
+    const char* name = ToUtf8Temp(voice);
+    if (!IsEdgeVoiceName(name)) return {ERROR_INVALID_PARAMETER};
+    const char* dash = strchr(name, '-');
+    const char* end = dash ? strchr(dash + 1, '-') : nullptr;
+    const char* locale = end ? str::DupTemp(name, end - name) : "en-US";
+    StrBuilder body;
+    body.AppendFmt(
+        "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"%s\">"
+        "<voice name=\"%s\"><prosody rate=\"%+d%%\">",
+        locale, name, (int)(rate * 100 + 0.5f) - 100);
+    if (!AppendEdgeSsmlText(body, text)) return {ERROR_INVALID_PARAMETER};
+    body.Append("</prosody></voice></speak>");
+    WStrBuilder host, headers;
+    host.Append(region);
+    host.Append(L".tts.speech.microsoft.com");
+    headers.Append(
+        L"Content-Type: application/ssml+xml\r\n"
+        L"X-Microsoft-OutputFormat: audio-24khz-48kbitrate-mono-mp3\r\n"
+        L"Ocp-Apim-Subscription-Key: ");
+    headers.Append(key);
+    return PostSpeech(host.Get(), L"/cognitiveservices/v1", headers.Get(), body, cancel, response.mp3);
+}
+
+struct JoySpeechJson : json::ValueVisitor {
+    StrBuilder token, type, event, audio, codec;
+    bool failed = false;
+
+    bool Visit(const char* path, const char* value, json::Type kind) override {
+        if (kind == json::Type::Number && str::Eq(path, "/code")) {
+            failed = !str::Eq(value, "200") && !str::Eq(value, "0");
+        }
+        if (kind != json::Type::String) return true;
+        if (str::Eq(path, "/data/accessToken") || str::Eq(path, "/result/accessToken") || str::Eq(path, "/accessToken"))
+            token.Set(value);
+        if (str::Eq(path, "/contentType")) type.Set(value);
+        if (str::Eq(path, "/content/eventType")) event.Set(value);
+        if (str::Eq(path, "/content/audioBase64")) audio.Set(value);
+        if (str::Eq(path, "/content/audioAue")) codec.Set(value);
+        return true;
+    }
+};
+
+static bool JoySafeId(const char* text, bool bearer) {
+    if (str::IsEmpty(text)) return false;
+    for (; *text; text++) {
+        if (!strchr("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~", *text) &&
+            !(bearer && strchr("+/=", *text)))
+            return false;
+    }
+    return true;
+}
+
+static TempStr JoyRequestId() {
+    GUID id;
+    WCHAR text[40];
+    if (FAILED(CoCreateGuid(&id)) || !StringFromGUID2(id, text, dimof(text))) return nullptr;
+    text[37] = 0;
+    return ToUtf8Temp(text + 1);
+}
+
+static bool JoyRequestToken(const char* accessKey, const char* secret, const char* identity, HANDLE cancel,
+                            JoySpeechJson& reply, bool vendor = false) {
+    auto nonce = JoyRequestId();
+    if (!nonce) return false;
+    FILETIME time;
+    GetSystemTimeAsFileTime(&time);
+    ULARGE_INTEGER ticks;
+    ticks.LowPart = time.dwLowDateTime;
+    ticks.HighPart = time.dwHighDateTime;
+    auto stamp = str::FormatTemp("%llu", ticks.QuadPart / 10000 - 11644473600000ULL);
+    auto input =
+        str::FormatTemp("accesskeyid=%s&accessnonce=%s&accesstimestamp=%s&accessversion=V2", accessKey, nonce, stamp);
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_MD5_ALGORITHM, nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG) < 0)
+        return false;
+    defer {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+    };
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    if (BCryptCreateHash(algorithm, &hash, nullptr, 0, (PUCHAR)secret, (ULONG)strlen(secret), 0) < 0) return false;
+    defer {
+        BCryptDestroyHash(hash);
+    };
+    BYTE digest[16];
+    if (BCryptHashData(hash, (PUCHAR)input, (ULONG)strlen(input), 0) < 0 ||
+        BCryptFinishHash(hash, digest, sizeof(digest), 0) < 0)
+        return false;
+    char signature[33] = {};
+    constexpr char hex[] = "0123456789abcdef";
+    for (int i = 0; i < 16; i++) {
+        signature[i * 2] = hex[digest[i] >> 4];
+        signature[i * 2 + 1] = hex[digest[i] & 15];
+    }
+    StrBuilder body, output;
+    body.AppendFmt(R"({"accessVersion":"V2","accessTimestamp":"%s","accessNonce":"%s",)"
+                   R"("accessKeyId":"%s","accessSign":"%s","%s":"%s"})",
+                   stamp, nonce, accessKey, signature, vendor ? "vendorId" : "botId", identity);
+    auto result =
+        PostSpeech(L"api.joyinside.com", L"/auth/getToken", L"Content-Type: application/json", body, cancel, output);
+    return result.error == ERROR_SUCCESS && json::Parse(output.Get(), &reply) && !reply.failed &&
+           JoySafeId(reply.token.Get(), true);
+}
+
+struct JoyVoiceList : json::ValueVisitor {
+    struct Item {
+        char* id = nullptr;
+        char* name = nullptr;
+    };
+    Vec<Item> items;
+    ~JoyVoiceList() override {
+        for (auto& item : items) {
+            free(item.id);
+            free(item.name);
+        }
+    }
+    bool Visit(const char* path, const char* value, json::Type type) override {
+        if (!str::StartsWith(path, "/data[")) return true;
+        const char* index = path + 6;
+        char* end = nullptr;
+        unsigned long i = strtoul(index, &end, 10);
+        if (index == end || i >= 4096 || *end != ']') return false;
+        bool id = str::Eq(end + 1, "/timbreId") && (type == json::Type::String || type == json::Type::Number);
+        bool name = str::Eq(end + 1, "/voiceName") && type == json::Type::String;
+        if (!id && !name) return true;
+        while ((unsigned long)items.Size() <= i) items.Append(Item{});
+        str::ReplaceWithCopy(id ? &items[i].id : &items[i].name, value);
+        return true;
+    }
+};
+
+static bool IsJoyReadingVoice(const char* id) {
+    // Character and novelty voices, plus voices excluded by editorial preference.
+    // Use catalog IDs so renamed voices remain filtered. Keep 40486 for long-form reading.
+    static constexpr const char* excluded[] = {
+        "40186", "40231", "40230", "40283", "40280", "40351", "40252", "40408", "40033", "40030", "40094", "40027",
+        "40407", "40409", "40309", "40210", "40212", "40418", "40421", "40422", "40424", "40427", "40469", "40484",
+        "40488", "40489", "40490", "40491", "40261", "40565", "40577", "40578", "40594", "40229", "40596", "40614",
+        "40258", "40665", "32094", "40677", "40680", "40682", "40683", "40684", "40685", "40686", "40687", "40228",
+        "40621", "40620", "40618", "40566", "40198", "40366", "40420", "40619", "40678", "40246", "40503", "40200",
+    };
+    for (const char* candidate : excluded) {
+        if (str::Eq(id, candidate)) return false;
+    }
+    return true;
+}
+
+void GetJoySpeechVoices(Vec<const EdgeReadAloudVoice*>& voices) {
+    AcquireSRWLockShared(&gJoyCatalogLock);
+    defer {
+        ReleaseSRWLockShared(&gJoyCatalogLock);
+    };
+    if (gJoyCatalogVersion == InterlockedCompareExchange(&gJoySettingsVersion, 0, 0))
+        for (const auto* voice : gJoyCatalog) voices.Append(voice);
+}
+
+struct JoyCatalogFetch {
+    LONG version;
+    void (*onChanged)();
+};
+
+static DWORD WINAPI FetchJoyCatalog(void* arg) {
+    auto* work = (JoyCatalogFetch*)arg;
+    defer {
+        delete work;
+        DestroyTempAllocator();
+    };
+    JoyVoiceList list;
+    bool success = false;
+    WCHAR accessKey[128], secret[256], vendorId[128];
+    defer {
+        SecureZeroMemory(secret, sizeof(secret));
+    };
+    if (ReadCloudSpeechSetting(3, accessKey, dimof(accessKey)) && ReadCloudSpeechSetting(4, secret, dimof(secret)) &&
+        ReadCloudSpeechSetting(6, vendorId, dimof(vendorId))) {
+        const char* access = ToUtf8Temp(accessKey);
+        const char* vendor = ToUtf8Temp(vendorId);
+        auto id = JoyRequestId();
+        JoySpeechJson token;
+        if (id && JoySafeId(access) && JoySafeId(vendor) &&
+            JoyRequestToken(access, ToUtf8Temp(secret), vendor, nullptr, token, true)) {
+            StrBuilder request, output;
+            request.AppendFmt(R"({"requestId":"%s","vendorId":"%s"})", id, vendor);
+            auto headers = ToWStrTemp(
+                str::FormatTemp("Content-Type: application/json\r\nAuthorization: Bearer %s", token.token.Get()));
+            auto http = PostSpeech(L"api.joyinside.com", L"/soulmate/timbre/findAllByVendorId", headers, request,
+                                   nullptr, output);
+            success = http.error == ERROR_SUCCESS && json::Parse(output.Get(), &list) && !list.items.IsEmpty();
+        }
+    }
+    AcquireSRWLockExclusive(&gJoyCatalogLock);
+    if (work->version == gJoyFetchingVersion) gJoyFetchingVersion = -1;
+    success = success && work->version == InterlockedCompareExchange(&gJoySettingsVersion, 0, 0);
+    if (success) {
+        gJoyCatalog.Reset();
+        for (const auto& item : list.items) {
+            if (!JoySafeId(item.id) || str::IsEmpty(item.name) || !IsJoyReadingVoice(item.id)) continue;
+            const char* id = str::FormatTemp("joyinside:%s", item.id);
+            const EdgeReadAloudVoice* voice = nullptr;
+            for (const auto* known : gJoyKnownVoices) {
+                if (str::Eq(known->id, id) && str::Eq(known->name, item.name)) {
+                    voice = known;
+                    break;
+                }
+            }
+            if (!voice) {
+                // Synthesis jobs retain these pointers across configuration changes.
+                char* storedId = str::Dup(id);
+                voice =
+                    new EdgeReadAloudVoice{storedId, str::Dup(item.name), storedId, EdgeVoiceLanguage::Multilingual};
+                gJoyKnownVoices.Append(voice);
+            }
+            if (!gJoyCatalog.Contains(voice)) gJoyCatalog.Append(voice);
+        }
+        gJoyCatalogVersion = work->version;
+    }
+    ReleaseSRWLockExclusive(&gJoyCatalogLock);
+    if (success && work->onChanged) work->onChanged();
+    return 0;
+}
+
+void RefreshJoySpeechVoices(void (*onChanged)()) {
+    WCHAR vendorId[128];
+    if (!ConfiguredCloudSpeechVoice(1) || !ReadCloudSpeechSetting(6, vendorId, dimof(vendorId))) return;
+    LONG version = InterlockedCompareExchange(&gJoySettingsVersion, 0, 0);
+    AcquireSRWLockExclusive(&gJoyCatalogLock);
+    if (gJoyCatalogVersion != version && gJoyFetchingVersion != version) {
+        auto* work = new JoyCatalogFetch{version, onChanged};
+        if (HANDLE thread = CreateThread(nullptr, 0, FetchJoyCatalog, work, 0, nullptr)) {
+            gJoyFetchingVersion = version;
+            CloseHandle(thread);
+        } else {
+            delete work;
+        }
+    }
+    ReleaseSRWLockExclusive(&gJoyCatalogLock);
+}
+
+static DWORD SendJoyFrame(const EdgeWebSocketApi& api, HINTERNET socket, StrBuilder& frame) {
+    return api.send(socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (void*)frame.Get(), (DWORD)frame.Size());
+}
+
+static DWORD ReceiveJoySpeech(const EdgeWebSocketApi& api, HINTERNET socket, HANDLE cancel, StrBuilder& request,
+                              EdgeSpeechResponse& response, bool submitted) {
+    auto& mp3 = response.mp3;
+    StrBuilder message;
+    char buffer[8192];
+    ULONGLONG start = GetTickCount64();
+    while (!EdgeTurnCancelled(cancel) && GetTickCount64() - start < 30000) {
+        DWORD count = 0;
+        WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
+        DWORD error = api.receive(socket, buffer, sizeof(buffer), &count, &type);
+        if (error != ERROR_SUCCESS) return error;
+        if (type != WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE && type != WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE)
+            return ERROR_INVALID_DATA;
+        if (message.Size() + count > 2 * 1024 * 1024 || !message.Append(buffer, count)) return ERROR_INVALID_DATA;
+        if (type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) continue;
+        JoySpeechJson reply;
+        if (!json::Parse(message.Get(), &reply) || reply.failed) return ERROR_INVALID_DATA;
+        message.Reset();
+        if (!submitted) {
+            if (str::Eq(reply.event.Get(), "SERVER_VOICE_CHAT_UPDATED")) {
+                error = SendJoyFrame(api, socket, request);
+                if (error != ERROR_SUCCESS) return error;
+                submitted = true;
+            }
+            continue;
+        }
+        if (str::Eq(reply.type.Get(), "TTS") && !reply.audio.IsEmpty()) {
+            DWORD bytes = 0;
+            if (!str::Eq(reply.codec.Get(), "mp3") ||
+                !CryptStringToBinaryA(reply.audio.Get(), 0, CRYPT_STRING_BASE64, nullptr, &bytes, nullptr, nullptr) ||
+                mp3.Size() + bytes > 8 * 1024 * 1024)
+                return ERROR_INVALID_DATA;
+            AutoFree data((char*)malloc(bytes));
+            if (!data.Get() ||
+                !CryptStringToBinaryA(reply.audio.Get(), 0, CRYPT_STRING_BASE64, (BYTE*)data.Get(), &bytes, nullptr,
+                                      nullptr) ||
+                !mp3.Append(data.Get(), bytes))
+                return ERROR_INVALID_DATA;
+            if (response.audioReceived) response.audioReceived(response.audioContext, response);
+        }
+        if (str::Eq(reply.event.Get(), "TTS_COMPLETE") || str::Eq(reply.type.Get(), "TTS_COMPLETE")) {
+            return mp3.IsEmpty() ? ERROR_NO_DATA : ERROR_SUCCESS;
+        }
+    }
+    return EdgeTurnCancelled(cancel) ? ERROR_CANCELLED : ERROR_TIMEOUT;
+}
+
+static EdgeSpeechTransportResult SynthesizeJoySpeech(const char* text, const char* voiceId, float rate, HANDLE cancel,
+                                                     EdgeSpeechResponse& response) {
+    static SRWLOCK lock = SRWLOCK_INIT;
+    while (!TryAcquireSRWLockExclusive(&lock)) {
+        if (cancel && WaitForSingleObject(cancel, 25) == WAIT_OBJECT_0) return {ERROR_CANCELLED};
+        if (!cancel) Sleep(25);
+    }
+    defer {
+        ReleaseSRWLockExclusive(&lock);
+    };
+    WCHAR accessKey[128], secret[256], botId[128];
+    defer {
+        SecureZeroMemory(secret, sizeof(secret));
+    };
+    if (str::IsEmpty(text) || strlen(text) >= 1000 || !ReadCloudSpeechSetting(3, accessKey, dimof(accessKey)) ||
+        !ReadCloudSpeechSetting(4, secret, dimof(secret)) || !ReadCloudSpeechSetting(5, botId, dimof(botId))) {
+        return {ERROR_INVALID_PARAMETER};
+    }
+    const char* access = ToUtf8Temp(accessKey);
+    const char* bot = ToUtf8Temp(botId);
+    if (!JoySafeId(access) || !JoySafeId(bot)) return {ERROR_INVALID_PARAMETER};
+    auto id = JoyRequestId();
+    auto speechId = JoyRequestId();
+    if (!id || !speechId) return {ERROR_GEN_FAILURE};
+    auto target =
+        str::FormatTemp("/soulmate/voiceChat/v1?botId=%s&sessionId=%s-%s&requestId=%s&uid=%s", bot, bot, id, id, bot);
+    StrBuilder config, request;
+    int speed = (int)(rate * 100.0f + 0.5f);
+    speed = speed < 80 ? 80 : speed > 120 ? 120 : speed;
+    config.AppendFmt(
+        R"({"mid":"%s","contentType":"EVENT","content":{"eventType":"CLIENT_VOICE_CHAT_UPDATE",)"
+        R"("eventData":{"audio":{"binary":false,"output":{"codec":"mp3","sampleRate":"24000","stream":true},)"
+        R"("timbre":{"voiceId":"%s","voiceSpeed":%d.%02d}}}}})",
+        id, voiceId, speed / 100, speed % 100);
+    request.AppendFmt(R"({"mid":"%s","contentType":"EVENT","content":{"eventType":"CLIENT_INPUT_TEXT_TO_SPEECH",)"
+                      R"("eventData":{"text":")",
+                      speechId);
+    for (const char* p = text; *p; p++) {
+        if (*p == '"' || *p == '\\') request.AppendChar('\\');
+        if ((u8)*p < 32)
+            request.AppendFmt("\\u%04x", (unsigned)(u8)*p);
+        else
+            request.AppendChar(*p);
+    }
+    request.Append("\"}}}");
+    static EdgeConnection connection;
+    static StrBuilder activeVoice, cachedToken;
+    static int activeSpeed = 0;
+    static LONG version = -1;
+    static ULONGLONG lastUsed = 0, tokenAt = 0;
+    LONG currentVersion = InterlockedCompareExchange(&gJoySettingsVersion, 0, 0);
+    ULONGLONG now = GetTickCount64();
+    if (version != currentVersion) {
+        connection.Reset();
+        cachedToken.Reset();
+        version = currentVersion;
+    }
+    if (now - lastUsed > 15000 || !str::Eq(activeVoice.Get(), voiceId) || speed != activeSpeed) connection.Reset();
+    auto api = GetEdgeWebSocketApi();
+    EdgeSpeechTransportResult result{ERROR_GEN_FAILURE};
+    for (int attempt = 0; attempt < 2 && !EdgeTurnCancelled(cancel); attempt++) {
+        bool reused = connection.socket != nullptr;
+        if (!reused) {
+            if (cachedToken.IsEmpty() || now - tokenAt > 60000) {
+                JoySpeechJson token;
+                if (!JoyRequestToken(access, ToUtf8Temp(secret), bot, cancel, token)) {
+                    return {EdgeTurnCancelled(cancel) ? DWORD(ERROR_CANCELLED) : DWORD(ERROR_ACCESS_DENIED)};
+                }
+                cachedToken.Set(token.token.Get());
+                tokenAt = GetTickCount64();
+            }
+            auto headers = str::FormatTemp("Authorization: Bearer %s", cachedToken.Get());
+            EdgeSpeechTurn turn{ToWStrTemp(target), ToWStrTemp(headers), nullptr, nullptr, false};
+            result = OpenEdgeConnection(turn, cancel, connection, L"ws.joyinside.com");
+            if (result.error != ERROR_SUCCESS) {
+                connection.Reset();
+                cachedToken.Reset();
+                return result;
+            }
+        }
+        result.httpStatus = 101;
+        result.error = SendJoyFrame(api, connection.socket, reused ? request : config);
+        if (result.error == ERROR_SUCCESS) {
+            result.error = ReceiveJoySpeech(api, connection.socket, cancel, request, response, reused);
+        }
+        if (result.error == ERROR_SUCCESS) {
+            activeVoice.Set(voiceId);
+            activeSpeed = speed;
+            lastUsed = GetTickCount64();
+            return result;
+        }
+        connection.Reset();
+        if (!reused || !response.mp3.IsEmpty()) break;
+    }
+    if (EdgeTurnCancelled(cancel)) result.error = ERROR_CANCELLED;
+    return result;
+}
+
 EdgeSpeechTransportResult EdgeSpeechSynthesizeOnline(const char* text, const char* voice, float rate,
                                                      HANDLE cancelEvent, EdgeSpeechResponse& response,
                                                      bool usePrepared) {
+    if (str::Eq(voice, kCloudVoices[0].shortName)) return SynthesizeAzure(text, rate, cancelEvent, response);
+    if (str::StartsWith(voice, "joyinside:") && JoySafeId(voice + 10))
+        return SynthesizeJoySpeech(text, voice + 10, rate, cancelEvent, response);
     WStrBuilder target, headers;
     if (!BuildEdgeRequest(target, headers)) return {ERROR_GEN_FAILURE};
     return EdgeSpeechSynthesize(target.Get(), headers.Get(), text, voice, rate, cancelEvent, response, usePrepared);

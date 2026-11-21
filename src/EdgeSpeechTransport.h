@@ -21,6 +21,12 @@ struct EdgeReadAloudVoice {
 extern const EdgeReadAloudVoice gEdgeReadAloudVoices[];
 extern const int gEdgeReadAloudVoiceCount;
 const EdgeReadAloudVoice* FindEdgeReadAloudVoice(const char* id);
+const EdgeReadAloudVoice* ConfiguredCloudSpeechVoice(int index);
+bool ReadCloudSpeechSetting(int index, WCHAR* value, DWORD capacity);
+void RefreshJoySpeechVoices(void (*onChanged)());
+void GetJoySpeechVoices(Vec<const EdgeReadAloudVoice*>& voices);
+bool SaveCloudSpeechSettings(const WCHAR* region, const WCHAR* key, const WCHAR* voice, const WCHAR* accessKey,
+                             const WCHAR* secret, const WCHAR* botId, const WCHAR* vendorId);
 void EdgeSpeechPrepare();
 void EdgeSpeechRefreshPreparation();
 
