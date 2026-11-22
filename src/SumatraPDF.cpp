@@ -1622,9 +1622,6 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
         // Windows or hidden scrollbars.
         OverlayScrollbarShow(win->overlayScrollV, false);
     }
-    // Showing or hiding the bar changes the page's right edge. The search
-    // field tracks that inner edge.
-    ToolbarFindLayout(win);
 }
 
 static TempStr BuildZoomString(float zoomLevel) {
@@ -9272,7 +9269,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
             UpdateToolbarFindText(win);
         }
     }
-    // Canvas and the vertical scrollbar are in place. Line the search field up.
+    // The frame and toolbar have their final bounds.
     if (win->hwndToolbarFind) {
         ToolbarFindLayout(win);
     }

@@ -35,7 +35,6 @@
 #include "Translations.h"
 #include "Theme.h"
 #include "FloatingPopupStyle.h"
-#include "OverlayScrollbar.h"
 
 #include "utils/Log.h"
 
@@ -1569,86 +1568,6 @@ void CreateToolbarFind(MainWindow* win) {
     ToolbarFindLayout(win);
 }
 
-// Canvas window's right edge, in toolbar client pixels.
-static int ToolbarFindCanvasRight(HWND toolbar, HWND canvas) {
-    RECT canvasWnd{};
-    if (!toolbar || !canvas || !GetWindowRect(canvas, &canvasWnd) || canvasWnd.right <= canvasWnd.left) {
-        return -1;
-    }
-    POINT pt{canvasWnd.right, canvasWnd.top};
-    if (!ScreenToClient(toolbar, &pt)) {
-        return -1;
-    }
-    return pt.x;
-}
-
-// Right edge of the search field, in toolbar client pixels. When a vertical
-// scrollbar takes a column, that edge is the bar's inner side. Otherwise keep
-// a small gap off the window edge.
-//
-// Sidebar toggle lays this out while RelayoutFrame has WM_SETREDRAW off.
-// IsWindowVisible is false then, so the old path used the fallback, which
-// sits 6px to the right of the real scrollbar. The pass after redraw snapped
-// the field left by that 6px. Do not treat the canvas as missing, and never
-// inset by more than one scrollbar: a bad rect must not walk the field left
-// on every click.
-static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int margin) {
-    int fallback = tbW - margin - DpiScale(toolbar, 12);
-    if (fallback < 1) {
-        fallback = tbW;
-    }
-    // The canvas and toolbar can use different mirrored coordinate systems.
-    // Keep the search field inside the toolbar instead of treating a physical
-    // canvas edge as a logical right edge in RTL layout.
-    if (IsUIRtl()) return fallback;
-    if (!win || !toolbar || tbW <= 0 || !win->hwndCanvas) {
-        return fallback;
-    }
-    int canvasRight = ToolbarFindCanvasRight(toolbar, win->hwndCanvas);
-    if (canvasRight <= 0) {
-        return fallback;
-    }
-    int sysScroll = GetSystemMetrics(SM_CXVSCROLL);
-    if (sysScroll < 1) {
-        sysScroll = DpiScale(toolbar, 16);
-    }
-    int inset = 0;
-    if (!ScrollbarsAreHidden() && !ScrollbarsUseOverlay()) {
-        // The client already stops at the native bar. Measure that column
-        // from the window, not from GetScrollBarInfo, which is a few pixels
-        // off while the canvas is moving.
-        RECT page{};
-        if (GetClientRect(win->hwndCanvas, &page) && page.right > page.left) {
-            MapWindowPoints(win->hwndCanvas, toolbar, (LPPOINT)&page, 2);
-            if (page.right > 0 && page.right < canvasRight) {
-                inset = canvasRight - page.right;
-            }
-        }
-    } else if (ScrollbarsUseOverlay() && IsOverlayScrollbarVisible(win->overlayScrollV)) {
-        OverlayScrollbar* sb = win->overlayScrollV;
-        bool thick =
-            sb->state == OverlayScrollbar::State::SmartThick || sb->state == OverlayScrollbar::State::AlwaysThick;
-        inset = thick ? sb->thickWidth : sb->thinWidth;
-    }
-    // A bad rect must not walk the field left on every sidebar click.
-    int maxInset = sysScroll + DpiScale(toolbar, 4);
-    if (inset > maxInset) {
-        inset = maxInset;
-    }
-    if (inset < 0) {
-        inset = 0;
-    }
-    int limit = canvasRight - inset - 2;
-    int minLimit = tbW - maxInset - 2;
-    if (limit < minLimit) {
-        limit = minLimit;
-    }
-    if (limit > 0 && limit <= tbW) {
-        return limit;
-    }
-    return fallback;
-}
-
 void ToolbarFindLayout(MainWindow* win) {
     if (!win || !win->hwndToolbar || !win->hwndToolbarFind || win->toolbarLayoutBusy) {
         return;
@@ -1712,7 +1631,21 @@ void ToolbarFindLayout(MainWindow* win) {
         st->iconSlot = slot;
     }
     int margin = DpiScale(box, 4);
-    int rightLimit = ToolbarFindRightLimit(win, win->hwndToolbar, tbW, margin);
+    int visibleRight = tbW;
+    // During document loading the rebar can clip its toolbar child before
+    // the toolbar's own client width catches up with the frame.
+    if (!IsUIRtl()) {
+        for (HWND ancestor : {win->hwndReBar, win->hwndFrame}) {
+            RECT client{};
+            if (!ancestor || !GetClientRect(ancestor, &client) || client.right <= client.left) {
+                continue;
+            }
+            MapWindowPoints(ancestor, win->hwndToolbar, (LPPOINT)&client, 2);
+            visibleRight = std::min(visibleRight, (int)client.right);
+        }
+    }
+    // Keep the gap independent of document and scrollbar geometry.
+    int rightLimit = visibleRight - DpiScale(box, 16);
     HFONT font = GetWindowFont(win->hwndToolbar);
     int cue = HwndMeasureText(box, _TRA("Find in document..."), font).dx;
     int status = HwndMeasureText(box, "0000 / 0000", font).dx + edge * 2;
@@ -1747,7 +1680,7 @@ void ToolbarFindLayout(MainWindow* win) {
         return;
     }
     ShowWindow(box, SW_SHOW);
-    SetWindowPos(box, HWND_TOP, x, y, width, fieldH, SWP_NOACTIVATE);
+    SetWindowPos(box, HWND_TOP, x, y, width, fieldH, SWP_NOACTIVATE | SWP_NOCOPYBITS);
 }
 
 void ToolbarFindUpdateTheme(MainWindow* win) {

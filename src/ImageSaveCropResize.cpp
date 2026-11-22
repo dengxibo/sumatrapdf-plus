@@ -959,10 +959,15 @@ static int LayoutImageActions(ImageEditWindow* ew, int x, int y, int width, bool
         left += sz.dx + gap;
         rowH = std::max(rowH, sz.dy);
     };
-    Button* buttons[] = {ew->btnRotateLeft, ew->btnRotateRight, ew->btnCrop, ew->btnResize};
-    for (Button* button : buttons) {
-        if (button) add(button->hwnd, button->GetIdealSize());
-    }
+    auto addPair = [&](Button* first, Button* second) {
+        int firstWidth = first ? first->GetIdealSize().dx : 0;
+        int secondWidth = second ? second->GetIdealSize().dx : 0;
+        Size size{std::max(firstWidth, secondWidth), controlH};
+        if (first) add(first->hwnd, size);
+        if (second) add(second->hwnd, size);
+    };
+    addPair(ew->btnRotateLeft, ew->btnRotateRight);
+    addPair(ew->btnCrop, ew->btnResize);
     if (ew->dropFormat) {
         HWND combo = ew->dropFormat->hwnd;
         if (place) {
