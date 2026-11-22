@@ -3372,9 +3372,9 @@ static HWND CreateImageEditWindow(HWND owner, MainWindow* win, ImageEditMode mod
 
     CenterDialog(hwnd, owner);
     HwndEnsureVisible(hwnd);
-    ew->brushes.Create();
-    AppDialogApplyChrome(hwnd);
-    ImageEditApplyFieldTheme(ew);
+    // Applying the combo theme can reset the native selection field height.
+    // Match the toolbar heights again before the window is first shown.
+    ImageEditThemeRefreshCb(hwnd, ew);
     RegisterAppDialogForTheme(hwnd, ImageEditThemeRefreshCb, ew);
     if (show) ShowWindow(hwnd, SW_SHOW);
     return hwnd;
@@ -3476,7 +3476,10 @@ bool TestImageEditWindow() {
                                               nullptr, false);
             ImageEditWindow* ew = FindImageEditWindowByHwnd(hwnd);
             if (!ew) return false;
-            bool valid = ew->hintRc.Bottom() <= ClientRect(hwnd).dy;
+            RECT initialFace{};
+            AppDialogComboClosedFaceRect(ew->dropFormat->hwnd, &initialFace);
+            bool valid = ew->hintRc.Bottom() <= ClientRect(hwnd).dy &&
+                         initialFace.bottom - initialFace.top == WindowRect(ew->btnResize->hwnd).dy;
             for (int dpi : dpis) {
                 RECT suggested{0, 0, MulDiv(800, dpi, 96), MulDiv(900, dpi, 96)};
                 SendMessageW(hwnd, WM_DPICHANGED, MAKELONG(dpi, dpi), (LPARAM)&suggested);
