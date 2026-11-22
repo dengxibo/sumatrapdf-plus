@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.108
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.108/SumatraPDF-Plus.exe
-Notes: Independent single/facing ebook font sizes and facing view for new ebooks; thinner native text highlights with separate OCR compensation. New users: download a complete package from 3.7.107 first, then update the EXE.
-NotesZh: 新电子书默认双页，单／双页字号按书分别保存；普通文字高亮变薄，OCR 保留补偿。新用户请先在 3.7.107 下载完整包，再更新 EXE。
+Latest: 3.7.109
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.109/SumatraPDF-Plus.exe
+Notes: Align the image format selector and action buttons, with consistent DPI-aware layout. New users: download a complete package from 3.7.107 first, then update to this EXE.
+NotesZh: 修复保存图像窗口格式框与按钮高度不一致，协调各控件布局。完整包在 3.7.107，新用户下载解压后，再更新到本版 EXE。
