@@ -933,12 +933,23 @@ static const char* ImageCropHint() {
     return _TRA("Crop: drag to draw a selection; drag handles to resize; hold Space and drag to move.");
 }
 
+static int ImageControlHeight(ImageEditWindow* ew) {
+    int height = ImgPx(ew, 26);
+    Button* buttons[] = {ew->btnRotateLeft, ew->btnRotateRight, ew->btnCrop, ew->btnResize, ew->btnCopy, ew->btnSave};
+    for (Button* button : buttons) {
+        if (button) height = std::max(height, button->GetIdealSize().dy);
+    }
+    return height;
+}
+
 static int LayoutImageActions(ImageEditWindow* ew, int x, int y, int width, bool place) {
     int left = x, rowH = 0;
     int gap = ImgPx(ew, 6);
+    int controlH = ImageControlHeight(ew);
     bool rtl = trans::IsCurrLangRtl();
     auto add = [&](HWND hwnd, Size sz) {
         if (!hwnd) return;
+        sz.dy = controlH;
         if (left > x && left + sz.dx > x + width) {
             y += rowH + gap;
             left = x;
@@ -952,8 +963,22 @@ static int LayoutImageActions(ImageEditWindow* ew, int x, int y, int width, bool
     for (Button* button : buttons) {
         if (button) add(button->hwnd, button->GetIdealSize());
     }
-    if (ew->dropFormat) add(ew->dropFormat->hwnd, ew->dropFormat->GetIdealSize());
-    return y + std::max(rowH, ImgPx(ew, 26));
+    if (ew->dropFormat) {
+        HWND combo = ew->dropFormat->hwnd;
+        if (place) {
+            // A native ComboBox determines its closed height from the selection
+            // field, independently of MoveWindow's dropdown-window height.
+            RECT face{};
+            AppDialogComboClosedFaceRect(combo, &face);
+            int selectionH = (int)SendMessageW(combo, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+            int delta = controlH - (face.bottom - face.top);
+            if (selectionH != CB_ERR && delta != 0) {
+                SendMessageW(combo, CB_SETITEMHEIGHT, (WPARAM)-1, std::max(1, selectionH + delta));
+            }
+        }
+        add(combo, ew->dropFormat->GetIdealSize());
+    }
+    return y + std::max(rowH, controlH);
 }
 
 static int ImageHintHeight(ImageEditWindow* ew, int width) {
@@ -967,14 +992,14 @@ static int ImageHintHeight(ImageEditWindow* ew, int width) {
 }
 
 static int ImageFooterHeight(ImageEditWindow* ew) {
-    return std::max(ew->btnSave ? ew->btnSave->GetIdealSize().dy : 0, ImgPx(ew, 26));
+    return ImageControlHeight(ew);
 }
 
 static int GetControlAreaDy(ImageEditWindow* ew) {
     int pad = ImgPx(ew, kRowPadding);
     int width = ew->hwnd ? ClientRect(ew->hwnd).dx - ImgPx(ew, kButtonPadding * 2) : ImgPx(ew, kMinWindowWidth);
     int height = ew->fromRenderedBitmap ? 0 : ImgPx(ew, 18) + pad;
-    height += ImgPx(ew, 24) + pad;
+    height += ImageControlHeight(ew) + pad;
     height += LayoutImageActions(ew, 0, 0, width, false) + pad;
     height += ImgPx(ew, 20) + pad;
     return height + ImageHintHeight(ew, width) + ImageFooterHeight(ew) + pad * 3;
@@ -1403,7 +1428,7 @@ static void LayoutControls(ImageEditWindow* ew) {
     int rowPad = ImgPx(ew, kRowPadding);
     int btnPad = ImgPx(ew, kButtonPadding);
     int labelH = ImgPx(ew, 18);
-    int editH = ImgPx(ew, 24);
+    int editH = ImageControlHeight(ew);
     int y = ew->imgAreaH + rowPad;
     int x = btnPad;
     int w = cRc.dx - 2 * btnPad;
@@ -3456,6 +3481,9 @@ bool TestImageEditWindow() {
                 RECT suggested{0, 0, MulDiv(800, dpi, 96), MulDiv(900, dpi, 96)};
                 SendMessageW(hwnd, WM_DPICHANGED, MAKELONG(dpi, dpi), (LPARAM)&suggested);
                 valid = valid && ew->dpi == dpi && ew->hintRc.Bottom() <= ClientRect(hwnd).dy;
+                RECT formatFace{};
+                AppDialogComboClosedFaceRect(ew->dropFormat->hwnd, &formatFace);
+                valid = valid && abs((formatFace.bottom - formatFace.top) - ImageControlHeight(ew)) <= 1;
                 HWND controls[] = {ew->hwndDestEdit,    ew->hwndBrowseBtn,       ew->hwndOpenAfterSave,
                                    ew->btnSave->hwnd,   ew->btnCopy->hwnd,       ew->btnCrop->hwnd,
                                    ew->btnResize->hwnd, ew->btnRotateLeft->hwnd, ew->btnRotateRight->hwnd,
