@@ -348,10 +348,15 @@ FixedPageUI [
     ; opacity (introduced in version 2.4)
     SelectionColor = #99c1da
 
-    ; height of the selection, find, and read-aloud highlight relative to the
-    ; glyph band; 0.5-1.5, default 1.35; smaller values make the band thinner;
-    ; out of range uses 1.35
-    SelectionHeightRatio = 1.35
+    ; height of native text selection, find, read-aloud, and new highlights
+    ; relative to the glyph band; 0.5-1.5, default 1.0; OCR uses
+    ; OcrSelectionHeightRatio
+    SelectionHeightRatio = 1
+
+    ; height of OCR selection, find, read-aloud, and new highlights relative to
+    ; the glyph band; 0.5-1.5, default 1.35; applies to cached OCR and scanned
+    ; PDFs with hidden text
+    OcrSelectionHeightRatio = 1.35
 
     ; top, right, bottom and left margin (in that order) between window and
     ; document
@@ -387,9 +392,15 @@ FixedPageUI [
 
 ; customization options for eBookUI
 EBookUI [
-    ; ebook body font size in points; 0 uses built-in default (~11 pt), 6-26
-    ; forces this size (out of range ignored)
+    ; legacy ebook body font size in points; 0 uses built-in default; 8-32
+    ; forces this size for other reflow documents
     FontSize = 0
+
+    ; default font size for single-page ebooks, 8-32 pt
+    SinglePageFontSize = 11
+
+    ; default font size for facing and book-view ebooks, 8-32 pt
+    FacingFontSize = 17
 
     ; default Latin/serif body font for reflowable ebooks (EPUB, MOBI). Empty
     ; uses Literata (introduced in version 3.7.21)
@@ -844,6 +855,14 @@ FileStates [
 
     ; ebook font size for this file; 0 inherits the reading options default
     EbookFontSize = 0
+
+    ; single-page ebook font size for this file; 0 inherits
+    ; EBookUI.SinglePageFontSize
+    EbookSinglePageFontSize = 0
+
+    ; facing and book-view ebook font size for this file; 0 inherits
+    ; EBookUI.FacingFontSize
+    EbookFacingFontSize = 0
 
     ; if true, the document is displayed right-to-left in facing and book view
     ; modes (only used for comic book documents)

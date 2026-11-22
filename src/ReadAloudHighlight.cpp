@@ -949,7 +949,8 @@ static const ReadAloudLineMetrics* ReadAloudFindLineMetrics(const Vec<ReadAloudL
     return nullptr;
 }
 
-static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadAloudLineMetrics& line, bool cachedOcr) {
+static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadAloudLineMetrics& line, bool cachedOcr,
+                                            float bandRatio) {
     if (horizontal.dx <= 0 || line.dy <= 0) {
         return RectF();
     }
@@ -963,11 +964,11 @@ static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadA
             rf.dy = capDy;
         }
     }
-    return ScaleHighlightBandRect(rf, HighlightBandRatio());
+    return ScaleHighlightBandRect(rf, bandRatio);
 }
 
 static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>& wordGlyphs,
-                                         const Vec<ReadAloudLineMetrics>& pageLines, bool cachedOcr) {
+                                         const Vec<ReadAloudLineMetrics>& pageLines, bool cachedOcr, float bandRatio) {
     Vec<RectF> groupHorizontal;
     Vec<RectF> groupSample;
     Vec<ReadAloudLineMetrics> groupMetrics;
@@ -1024,7 +1025,7 @@ static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>
         if (lineMetrics.dy <= 0) {
             continue;
         }
-        RectF rf = ReadAloudSnapRectToLineMetrics(horizontal, lineMetrics, cachedOcr);
+        RectF rf = ReadAloudSnapRectToLineMetrics(horizontal, lineMetrics, cachedOcr, bandRatio);
         if (rf.IsEmpty()) {
             continue;
         }
@@ -1089,7 +1090,8 @@ static bool ReadAloudCollectWordHighlightScreenRects(MainWindow* win, WindowTab*
         ReadAloudBuildPageLineMetrics(map, pageNo, pageLines);
 
         Vec<RectF> lineRects;
-        ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines, dm->GetEngine()->HasCachedOcrText(pageNo));
+        ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines, dm->GetEngine()->HasCachedOcrText(pageNo),
+                                     HighlightBandRatio(dm->GetEngine(), pageNo));
 
         for (RectF& u : lineRects) {
             Rect sr = dm->CvtToScreen(pageNo, u);
@@ -1230,7 +1232,8 @@ static bool ReadAloudCollectAnchorPageRect(WindowTab* tab, int wordStartAbs, int
     Vec<RectF> lineRects;
     DisplayModel* dm = tab->AsFixed();
     bool cachedOcr = dm && dm->GetEngine()->HasCachedOcrText(pageNo);
-    ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines, cachedOcr);
+    ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines, cachedOcr,
+                                 HighlightBandRatio(dm ? dm->GetEngine() : nullptr, pageNo));
 
     if (lineRects.size() == 0) {
         return false;

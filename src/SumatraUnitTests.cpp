@@ -375,11 +375,14 @@ static bool FloatNear(float a, float b) {
 
 static void SelectionHeightSettingsTest() {
     auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
-    utassert(FloatNear(prefs->fixedPageUI.selectionHeightRatio, 1.35f));
+    utassert(FloatNear(prefs->fixedPageUI.selectionHeightRatio, 1.0f));
+    utassert(FloatNear(prefs->fixedPageUI.ocrSelectionHeightRatio, 1.35f));
     prefs->fixedPageUI.selectionHeightRatio = 0.85f;
+    prefs->fixedPageUI.ocrSelectionHeightRatio = 1.25f;
     AutoFree saved((char*)SerializeStruct(&gGlobalPrefsInfo, prefs).data());
     auto* restored = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, saved.data);
     utassert(FloatNear(restored->fixedPageUI.selectionHeightRatio, 0.85f));
+    utassert(FloatNear(restored->fixedPageUI.ocrSelectionHeightRatio, 1.25f));
     FreeStruct(&gGlobalPrefsInfo, restored);
     FreeStruct(&gGlobalPrefsInfo, prefs);
 }

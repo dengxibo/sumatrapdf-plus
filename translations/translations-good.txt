@@ -48136,3 +48136,15 @@ tw:線上語音無法使用
 :Download an offline voice before choosing this source.
 cn:请先下载一个离线音色，再使用此语音来源。
 tw:請先下載一個離線音色，再使用此語音來源。
+
+:Single (8-32 pt):
+cn:单页（8–32 磅）：
+tw:單頁（8–32 磅）：
+
+:Facing (8-32 pt):
+cn:双页（8–32 磅）：
+tw:雙頁（8–32 磅）：
+
+:Ebook font sizes must be between 8 and 32 pt.
+cn:电子书字号须在 8–32 磅之间。
+tw:電子書字號須在 8–32 磅之間。

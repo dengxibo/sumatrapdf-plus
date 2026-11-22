@@ -1583,7 +1583,7 @@ static int FindEbookAnnotationAt(WindowTab* tab, DisplayModel* dm, Point canvasP
             continue;
         }
         for (RectF rect : rects) {
-            rect = ScaleHighlightBandRect(rect, kSelectionHighlightBandRatio);
+            rect = ScaleHighlightBandRect(rect, kEbookAnnotationHitBandRatio);
             Rect hitRect = dm->CvtToScreen(pageNo, rect);
             if (annotation->type == AnnotationType::Underline) {
                 // The EPUB underline is painted just below the text box.

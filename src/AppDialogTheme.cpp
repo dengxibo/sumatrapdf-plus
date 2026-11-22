@@ -334,6 +334,12 @@ static void InstallWarmEdit(HWND hwnd) {
     if (!IsSingleLineEdit(hwnd)) {
         return;
     }
+    // Center the native editing strip, so text, selection and caret share
+    // one layout inside the custom frame. Preserve explicit opt-outs when
+    // reapplying the theme to an already styled control.
+    if (!GetPropW(hwnd, L"SumatraWarmEdit")) {
+        SetPropW(hwnd, kCenteredEditProp, (HANDLE)1);
+    }
     // Our non-client painter owns the frame, including after theme refresh.
     DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(hwnd);
     SetWindowTheme(hwnd, L"", L"");
@@ -358,8 +364,13 @@ static void InstallWarmEdit(HWND hwnd) {
 }
 
 void AppDialogStyleEdit(HWND hwnd, bool verticallyCenter) {
-    if (verticallyCenter) SetPropW(hwnd, kCenteredEditProp, (HANDLE)1);
     InstallWarmEdit(hwnd);
+    if (!IsSingleLineEdit(hwnd)) return;
+    if (verticallyCenter)
+        SetPropW(hwnd, kCenteredEditProp, (HANDLE)1);
+    else
+        RemovePropW(hwnd, kCenteredEditProp);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
 static BOOL CALLBACK SyncWarmPushButton(HWND child, LPARAM warm) {

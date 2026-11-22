@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "utils/ScopedWin.h"
 #include "wingui/DialogSizer.h"
 #include "utils/WinUtil.h"
 #include "utils/Dpi.h"
@@ -939,6 +940,8 @@ static const int gSettingsReadingControls[] = {IDC_GROUP_DEFAULT_VIEW,
                                                IDC_EBOOK_CJK_FONT,
                                                IDC_EBOOK_FONT_SIZE_LABEL,
                                                IDC_EBOOK_FONT_SIZE,
+                                               IDC_EBOOK_FACING_SIZE_LABEL,
+                                               IDC_EBOOK_FACING_SIZE,
                                                IDC_GROUP_FULLSCREEN,
                                                IDC_PREVENT_SLEEP_FULLSCREEN};
 static const int gSettingsReadAloudControls[] = {
@@ -1069,10 +1072,9 @@ static void FitSettingsInterfaceLabels(HWND hDlg) {
 
 static void FitSettingsReadingLabels(HWND hDlg) {
     static const int labelIds[] = {IDC_DEFAULT_LAYOUT_LABEL,   IDC_DEFAULT_ZOOM_LABEL,   IDC_DICTIONARY_PATH_LABEL,
-                                   IDC_EBOOK_LATIN_FONT_LABEL, IDC_EBOOK_CJK_FONT_LABEL, IDC_EBOOK_FONT_SIZE_LABEL,
-                                   IDC_DEFAULT_AUTHOR_LABEL};
+                                   IDC_EBOOK_LATIN_FONT_LABEL, IDC_EBOOK_CJK_FONT_LABEL, IDC_DEFAULT_AUTHOR_LABEL};
     static const int fieldIds[] = {IDC_DEFAULT_LAYOUT,   IDC_DEFAULT_ZOOM,   IDC_DICTIONARY_PATH, IDC_DICTIONARY_BROWSE,
-                                   IDC_EBOOK_LATIN_FONT, IDC_EBOOK_CJK_FONT, IDC_EBOOK_FONT_SIZE, IDC_DEFAULT_AUTHOR};
+                                   IDC_EBOOK_LATIN_FONT, IDC_EBOOK_CJK_FONT, IDC_DEFAULT_AUTHOR};
     FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_DEFAULT_LAYOUT);
 }
 
@@ -2079,6 +2081,8 @@ static void ClearSettingsComboEditSelections(HWND hDlg) {
     }
 }
 
+static void SettingsCategoryRefreshChrome(HWND category);
+
 static void SettingsDialogThemeRefresh(HWND hwnd, void*) {
     if (!hwnd || !IsWindow(hwnd)) {
         return;
@@ -2086,6 +2090,7 @@ static void SettingsDialogThemeRefresh(HWND hwnd, void*) {
     gSettingsDialogBrushes.Destroy();
     gSettingsDialogBrushes.Create();
     AppDialogApplyChrome(hwnd);
+    SettingsCategoryRefreshChrome(GetDlgItem(hwnd, IDC_SETTINGS_CATEGORY));
     EnumChildWindows(hwnd, SoftenSettingsInputTheme, 0);
     SyncSettingsThemeCombo(hwnd);
     HWND heightRef = GetDlgItem(hwnd, IDC_DEFAULT_LAYOUT);
@@ -2102,7 +2107,7 @@ static int gSettingsCategoryHover = -1;
 
 // Extra pixels around the label so rows are not packed against each other.
 static int SettingsCategoryRowExtra(HWND hwnd) {
-    return DpiScale(hwnd, 8);
+    return DpiScale(hwnd, 14);
 }
 
 static int SettingsCategoryItemHeight(HWND hwnd, HFONT font) {
@@ -2125,7 +2130,25 @@ static int SettingsCategoryItemHeight(HWND hwnd, HFONT font) {
     if (h < 1) {
         h = DpiScale(hwnd, 22);
     }
-    return h;
+    return std::max(h, DpiScale(hwnd, 32));
+}
+
+static COLORREF SettingsCategoryBlend(COLORREF bg, COLORREF foreground, int percent) {
+    int rest = 100 - percent;
+    return RGB((GetRValue(bg) * rest + GetRValue(foreground) * percent) / 100,
+               (GetGValue(bg) * rest + GetGValue(foreground) * percent) / 100,
+               (GetBValue(bg) * rest + GetBValue(foreground) * percent) / 100);
+}
+
+static void SettingsCategoryRefreshChrome(HWND category) {
+    if (!category) return;
+    DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(category);
+    SetWindowTheme(category, L"", L"");
+    SetWindowLongPtrW(category, GWL_STYLE, GetWindowLongPtrW(category, GWL_STYLE) & ~WS_BORDER);
+    SetWindowLongPtrW(category, GWL_EXSTYLE, GetWindowLongPtrW(category, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
+    SetWindowPos(category, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    InvalidateRect(category, nullptr, TRUE);
 }
 
 static void SettingsCategoryListSetItemHeight(HWND category) {
@@ -2162,6 +2185,27 @@ static int SettingsCategoryItemFromPoint(HWND category, POINTS pts) {
 static LRESULT CALLBACK SettingsCategorySubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
                                                      DWORD_PTR) {
     switch (msg) {
+        case WM_PAINT: {
+            LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+            HDC dc = GetDC(hwnd);
+            if (dc) {
+                RECT rc{};
+                GetClientRect(hwnd, &rc);
+                rc.left = std::max(rc.left, rc.right - 1);
+                COLORREF col = SettingsCategoryBlend(AppDialogPanelBackgroundColor(), ThemeWindowTextColor(), 12);
+                ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(col));
+                FillRect(dc, &rc, brush);
+                ReleaseDC(hwnd, dc);
+            }
+            return result;
+        }
+        case WM_UPDATEUISTATE:
+        case WM_SETFOCUS:
+        case WM_KILLFOCUS: {
+            LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return result;
+        }
         case WM_MOUSEMOVE: {
             POINTS pts = MAKEPOINTS(lp);
             int idx = SettingsCategoryItemFromPoint(hwnd, pts);
@@ -2188,9 +2232,7 @@ static LRESULT CALLBACK SettingsCategorySubclassProc(HWND hwnd, UINT msg, WPARAM
         case WM_ERASEBKGND: {
             RECT rc{};
             GetClientRect(hwnd, &rc);
-            COLORREF bg{};
-            COLORREF text{};
-            ThemeSidebarColors(bg, text);
+            COLORREF bg = AppDialogPanelBackgroundColor();
             HBRUSH br = CreateSolidBrush(bg);
             FillRect((HDC)wp, &rc, br);
             DeleteObject(br);
@@ -2211,9 +2253,10 @@ static void SettingsCategoryListInstallHover(HWND category) {
     gSettingsCategoryHover = -1;
     RemoveWindowSubclass(category, SettingsCategorySubclassProc, kSettingsCategorySubclassId);
     SetWindowSubclass(category, SettingsCategorySubclassProc, kSettingsCategorySubclassId, 0);
+    SettingsCategoryRefreshChrome(category);
 }
 
-// TOC-matched colors: sidebar bg/text, AccentColor selection/hover (no system blue invert).
+// Settings navigation follows the dialog palette in all four themes.
 static void SettingsCategoryDrawItem(HWND category, DRAWITEMSTRUCT* dis) {
     if (!dis || dis->itemID == (UINT)-1) {
         return;
@@ -2223,36 +2266,45 @@ static void SettingsCategoryDrawItem(HWND category, DRAWITEMSTRUCT* dis) {
     bool selected = (dis->itemState & ODS_SELECTED) != 0;
     bool hovered = ((int)dis->itemID == gSettingsCategoryHover) && !selected;
 
-    COLORREF rowBg{};
-    COLORREF text{};
-    ThemeSidebarColors(rowBg, text);
+    COLORREF rowBg = AppDialogPanelBackgroundColor();
+    COLORREF text = ThemeWindowTextColor();
     HBRUSH rowBr = CreateSolidBrush(rowBg);
     FillRect(hdc, &rc, rowBr);
     DeleteObject(rowBr);
 
     // Leave a gap between rows. The highlight sits inside that gap so it does not touch the next label.
-    int gap = DpiScale(category, 2);
+    int gap = DpiScale(category, 3);
     RECT box = rc;
+    box.left += DpiScale(category, 4);
+    box.right -= DpiScale(category, 6);
     box.top += gap;
     box.bottom -= gap;
     if (box.bottom <= box.top) {
         box = rc;
     }
     if (selected || hovered) {
-        COLORREF boxBg = AccentColor(ThemeWindowControlBackgroundColor(), selected ? 25 : 12);
-        HBRUSH boxBr = CreateSolidBrush(boxBg);
-        FillRect(hdc, &box, boxBr);
-        DeleteObject(boxBr);
+        COLORREF tint = selected ? ThemeWindowLinkColor() : text;
+        int amount = selected ? (ThemeUsesDarkChrome() ? 18 : 10) : 6;
+        COLORREF boxBg = SettingsCategoryBlend(rowBg, tint, amount);
+        ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(boxBg));
+        ScopedSelectObject selectBrush(hdc, brush);
+        ScopedSelectObject selectPen(hdc, GetStockObject(NULL_PEN));
+        int radius = DpiScale(category, 6);
+        RoundRect(hdc, box.left, box.top, box.right, box.bottom, radius, radius);
     }
-    if (ThemeUsesDarkChrome() && selected) {
-        COLORREF frame = AccentColor(ThemeWindowLinkColor(), -20);
-        HPEN pen = CreatePen(PS_SOLID, 1, frame);
-        HPEN oldPen = (HPEN)SelectObject(hdc, pen);
-        HBRUSH oldBr = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
-        Rectangle(hdc, box.left, box.top, box.right, box.bottom);
-        SelectObject(hdc, oldBr);
-        SelectObject(hdc, oldPen);
-        DeleteObject(pen);
+    if (selected) {
+        RECT marker = box;
+        marker.right = marker.left + std::max(2, DpiScale(category, 3));
+        marker.top += DpiScale(category, 5);
+        marker.bottom -= DpiScale(category, 5);
+        ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(ThemeWindowLinkColor()));
+        FillRect(hdc, &marker, brush);
+    }
+    if ((dis->itemState & ODS_FOCUS) && !(dis->itemState & ODS_NOFOCUSRECT) &&
+        !(SendMessageW(category, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
+        RECT focus = box;
+        InflateRect(&focus, -DpiScale(category, 2), -DpiScale(category, 2));
+        DrawFocusRect(hdc, &focus);
     }
 
     WCHAR buf[256]{};
@@ -2268,7 +2320,7 @@ static void SettingsCategoryDrawItem(HWND category, DRAWITEMSTRUCT* dis) {
     TEXTMETRICW tm{};
     GetTextMetricsW(hdc, &tm);
     RECT textRc = box;
-    int padX = DpiScale(category, 8);
+    int padX = DpiScale(category, 12);
     textRc.left += padX;
     textRc.right -= padX;
     // DT_VCENTER centers the em box. Internal leading sits above the glyphs, so the
@@ -2375,7 +2427,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, prefs->treeFontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_TAB_FONT_SIZE, prefs->tabFontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, prefs->tabBarHeight, FALSE);
-            SetDlgItemInt(hDlg, IDC_EBOOK_FONT_SIZE, (int)prefs->eBookUI.fontSize, FALSE);
+            SetDlgItemInt(hDlg, IDC_EBOOK_FONT_SIZE, (int)prefs->eBookUI.singlePageFontSize, FALSE);
+            SetDlgItemInt(hDlg, IDC_EBOOK_FACING_SIZE, (int)prefs->eBookUI.facingFontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_AUTHOR, prefs->annotations.defaultAuthor);
@@ -2573,7 +2626,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_GROUP_EBOOK_FONTS, _TRA("Ebook fonts"));
             HwndSetDlgItemText(hDlg, IDC_EBOOK_LATIN_FONT_LABEL, _TRA("&Western body font:"));
             HwndSetDlgItemText(hDlg, IDC_EBOOK_CJK_FONT_LABEL, _TRA("&CJK body font:"));
-            HwndSetDlgItemText(hDlg, IDC_EBOOK_FONT_SIZE_LABEL, _TRA("Si&ze (0 = auto, 6-26):"));
+            HwndSetDlgItemText(hDlg, IDC_EBOOK_FONT_SIZE_LABEL, _TRA("Single (8-32 pt):"));
+            HwndSetDlgItemText(hDlg, IDC_EBOOK_FACING_SIZE_LABEL, _TRA("Facing (8-32 pt):"));
             HwndSetDlgItemText(hDlg, IDC_ENABLE_WORD_LOOKUP, _TRA("Look up words on &double-click"));
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH_LABEL, _TRA("Offline dictionary:"));
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_BROWSE, _TRA("&Browse..."));
@@ -2842,6 +2896,11 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         case WM_CTLCOLORBTN:
         case WM_CTLCOLOREDIT:
         case WM_CTLCOLORLISTBOX: {
+            if (msg == WM_CTLCOLORLISTBOX && (HWND)lp == GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY)) {
+                SetTextColor((HDC)wp, ThemeWindowTextColor());
+                SetBkColor((HDC)wp, AppDialogPanelBackgroundColor());
+                return (INT_PTR)gSettingsDialogBrushes.background;
+            }
             HBRUSH br =
                 AppDialogCtlColorBrush(msg, wp, lp, gSettingsDialogBrushes.background, gSettingsDialogBrushes.control);
             if (br) {
@@ -2910,6 +2969,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     int tabBarHeight = (int)GetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, &tabBarHeightOk, FALSE);
                     BOOL ebookFontSizeOk = FALSE;
                     int ebookFontSize = (int)GetDlgItemInt(hDlg, IDC_EBOOK_FONT_SIZE, &ebookFontSizeOk, FALSE);
+                    BOOL ebookFacingSizeOk = FALSE;
+                    int ebookFacingSize = (int)GetDlgItemInt(hDlg, IDC_EBOOK_FACING_SIZE, &ebookFacingSizeOk, FALSE);
                     BOOL dpiOk = FALSE;
                     int customDpi = (int)GetDlgItemInt(hDlg, IDC_CUSTOM_DPI, &dpiOk, FALSE);
                     if (!treeSizeOk || (treeFontSize != 0 && (treeFontSize < 6 || treeFontSize > 72))) {
@@ -2930,9 +2991,10 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                         HwndSetFocus(GetDlgItem(hDlg, IDC_TAB_BAR_HEIGHT));
                         return TRUE;
                     }
-                    if (!ebookFontSizeOk || (ebookFontSize != 0 && (ebookFontSize < kEbookFontSizeMinPt ||
-                                                                    ebookFontSize > kEbookFontSizeMaxPt))) {
-                        MessageBoxWarning(hDlg, _TRA("Ebook font size must be 0 (automatic) or between 6 and 26."),
+                    if (!ebookFontSizeOk || ebookFontSize < kEbookFontSizeMinPt ||
+                        ebookFontSize > kEbookFontSizeMaxPt || !ebookFacingSizeOk ||
+                        ebookFacingSize < kEbookFontSizeMinPt || ebookFacingSize > kEbookFontSizeMaxPt) {
+                        MessageBoxWarning(hDlg, _TRA("Ebook font sizes must be between 8 and 32 pt."),
                                           _TRA("Invalid value"));
                         HwndSetFocus(GetDlgItem(hDlg, IDC_EBOOK_FONT_SIZE));
                         return TRUE;
@@ -3008,7 +3070,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->treeFontSize = treeFontSize;
                     prefs->tabFontSize = tabFontSize;
                     prefs->tabBarHeight = tabBarHeight;
-                    prefs->eBookUI.fontSize = (float)ebookFontSize;
+                    prefs->eBookUI.singlePageFontSize = (float)ebookFontSize;
+                    prefs->eBookUI.facingFontSize = (float)ebookFacingSize;
                     prefs->customScreenDPI = customDpi;
 
                     int themeIdx = (int)SendDlgItemMessage(hDlg, IDC_THEME, CB_GETCURSEL, 0, 0);

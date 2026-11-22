@@ -5,6 +5,8 @@
 
 #include "EbookTypography.h"
 
+enum class DisplayMode;
+
 constexpr const char* kDefaultEbookLatinFontFamily = "Literata";
 constexpr const char* kDefaultEbookCjkFontFamily = "Source Han Serif SC";
 constexpr const char* kBundledEbookLatinFontSourceSerif = "Source Serif 4";
@@ -46,11 +48,17 @@ bool EbookCjkFontFamiliesEquivalent(const char* a, const char* b);
 bool UsesCustomInstalledEbookFonts();
 bool UsesNonDefaultEbookReaderFonts();
 
-// EBookUI.FontSize: 0 = built-in default; otherwise 6–26 pt (out of range ignored).
-constexpr float kEbookFontSizeMinPt = 6.f;
-constexpr float kEbookFontSizeMaxPt = 26.f;
+// Reader limits keep font sizes useful for reading.
+constexpr float kEbookFontSizeMinPt = 8.f;
+constexpr float kEbookFontSizeMaxPt = 32.f;
 constexpr float kEbookFontSizeBuiltinPt = 11.f;
+constexpr float kEbookFacingFontSizeBuiltinPt = 17.f;
 constexpr float kEbookFontSizeStepPt = 2.f;
+
+bool UsesEbookDisplayModeFontSizes(const char* filePath);
+DisplayMode GetDefaultEbookDisplayMode(const char* filePath);
+// Call on the UI thread when switching layouts, before rebuilding the engine.
+void SetEbookFontDisplayMode(const char* filePath, DisplayMode mode);
 
 float GetEbookReaderFontSizePt(const char* filePath = nullptr);
 float GetEffectiveEbookFontSizePt(const char* filePath = nullptr);

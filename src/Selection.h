@@ -9,6 +9,7 @@ struct DisplayModel;
 struct MainWindow;
 struct WindowTab;
 struct TextSel;
+class EngineBase;
 
 /* Represents selected area on given page */
 struct SelectionOnPage {
@@ -27,15 +28,16 @@ struct SelectionOnPage {
     static Vec<SelectionOnPage>* FromTextSelect(TextSel* textSel);
 };
 
-// Highlight band height as a fraction of font size (engine stores coords at kHighlightBandBaseRatio).
+// Highlight band height relative to the engine's glyph band.
 constexpr float kHighlightBandBaseRatio = 1.0f;
-// Leave a modest vertical margin around glyph ink. Selection, find, and
-// read-aloud paint with HighlightBandRatio() so they stay the same height.
-// These three defaults match. Ebook annotation hit-testing keeps
-// kSelectionHighlightBandRatio and does not follow the setting.
-constexpr float kSelectionHighlightBandRatio = 1.35f;
-constexpr float kReadAloudHighlightBandRatio = 1.35f;
-constexpr float kFindHighlightBandRatio = 1.35f;
+// Native text follows glyph ink. OCR retains extra room for tight text boxes.
+// Selection, find, and read-aloud share the same page-specific ratio.
+constexpr float kSelectionHighlightBandRatio = 1.0f;
+constexpr float kOcrSelectionHighlightBandRatio = 1.35f;
+constexpr float kReadAloudHighlightBandRatio = 1.0f;
+constexpr float kFindHighlightBandRatio = 1.0f;
+// Preserve the hit area for existing ebook annotations, independently of paint.
+constexpr float kEbookAnnotationHitBandRatio = 1.35f;
 static_assert(kSelectionHighlightBandRatio == kReadAloudHighlightBandRatio);
 static_assert(kSelectionHighlightBandRatio == kFindHighlightBandRatio);
 // OCR cells tend to sit slightly above the visible glyph baseline. Shift the
@@ -53,13 +55,13 @@ COLORREF GetFindMatchHighlightColor();
 // Scale a highlight rect to the given band ratio (page coordinates).
 RectF ScaleHighlightBandRect(RectF r, float bandRatio);
 
-// FixedPageUI.SelectionHeightRatio, clamped to 0.5–1.5. Out of range is 1.35.
-// Selection, find, and read-aloud all use this.
-float HighlightBandRatio();
+// Use the independent OCR ratio for cached OCR and scanned PDF text layers.
+// Both settings accept 0.5–1.5; invalid values use their respective defaults.
+float HighlightBandRatio(EngineBase* engine, int pageNo);
 
 // Raw PDF text selection -> final highlight quads. Apply only before creating
 // a new highlight; saved annotation quads are already in their final geometry.
-void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical = false);
+void PreparePdfHighlightRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical = false);
 enum class AnnotationType;
 // Convert native glyph bands to MuPDF's line-markup appearance coordinates.
 void PreparePdfNativeLineRects(Vec<RectF>& rects, AnnotationType type, EngineBase* engine, int pageNo);

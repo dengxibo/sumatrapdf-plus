@@ -514,12 +514,16 @@ bool OpenFileExternally(const char* path) {
     return LaunchFileShell(path);
 }
 
+static bool SwitchEbookDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepContinuous);
+
 void SwitchToDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepContinuous) {
     if (!win->IsDocLoaded()) {
         return;
     }
 
-    win->ctrl->SetDisplayMode(displayMode, keepContinuous);
+    if (!SwitchEbookDisplayMode(win, displayMode, keepContinuous)) {
+        win->ctrl->SetDisplayMode(displayMode, keepContinuous);
+    }
     UpdateToolbarState(win);
 }
 
@@ -2045,6 +2049,9 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     ScrollState ss(1, -1, -1);
     int rotation = 0;
     const char* path = args->FilePath();
+    if (!fs && !args->tabState && !tab->tabState && UsesEbookDisplayModeFontSizes(path)) {
+        displayMode = GetDefaultEbookDisplayMode(path);
+    }
     // Async font reload has already detached win->ctrl. Preserve the live
     // sidebar even when it differs from the last saved file state.
     bool preserveSidebar = tab->reloadForEbookFontChange;
@@ -2148,6 +2155,9 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         tab->reloadForEbookFontChange && !tab->reloadOnFocus && IsValidZoom(tab->restoreZoomAfterFontReload);
     if (restoreFontView) {
         displayMode = tab->restoreDisplayModeAfterFontReload;
+    }
+    if (UsesEbookDisplayModeFontSizes(path) && displayMode == DisplayMode::Automatic) {
+        displayMode = GetDefaultEbookDisplayMode(path);
     }
 
     // ToC items might hold a reference to an Engine, so make sure to
@@ -4494,6 +4504,10 @@ static void EnsureDisplayModelPagesInfo(MainWindow* win, WindowTab* tab) {
     if (engine && engine->kind == kindEngineImage && gGlobalPrefs->imageUI.defaultZoomFloat != 0) {
         zoomVirtual = gGlobalPrefs->imageUI.defaultZoomFloat;
     }
+    if (UsesEbookDisplayModeFontSizes(tab->filePath) &&
+        ((!tab->tabState && !gFileHistory.FindByPath(tab->filePath)) || displayMode == DisplayMode::Automatic)) {
+        displayMode = GetDefaultEbookDisplayMode(tab->filePath);
+    }
     if (!tab->tabState && zoomVirtual == kZoomFitPage && EngineMupdfFirstPageLooksFixedLayout(engine)) {
         zoomVirtual = kZoomFitWidth;
     }
@@ -5440,6 +5454,9 @@ void StartLoadDocument(LoadArgs* argsIn) {
     MainWindow* win = argsIn->win;
     bool failEarly = AdjustPathForMaybeMovedFile(argsIn);
     const char* path = argsIn->FilePath();
+    if (argsIn->tabState) {
+        SetEbookFontDisplayMode(path, DisplayModeFromString(argsIn->tabState->displayMode, DisplayMode::Automatic));
+    }
     if (failEarly) {
         ShowFileNotFound(win, path, argsIn->noSavePrefs);
         return;
@@ -5542,6 +5559,9 @@ MainWindow* LoadDocument(LoadArgs* args) {
     if (ShouldLoadDocumentAsync(path, args)) {
         StartLoadDocument(args);
         return args->win;
+    }
+    if (args->tabState) {
+        SetEbookFontDisplayMode(path, DisplayModeFromString(args->tabState->displayMode, DisplayMode::Automatic));
     }
 
     win = MaybeCreateWindowForFileLoad(args);
@@ -6209,6 +6229,37 @@ static void ApplyPendingEbookFontSizeChange() {
     ToolbarUpdateStateForWindow(win, false);
     gEbookFontSizeTaskPosted = false;
     ScheduleEbookFontSizeChangeIfNeeded();
+}
+
+static bool SwitchEbookDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepContinuous) {
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !SupportsEbookFontSizeChange(tab) || !UsesEbookDisplayModeFontSizes(tab->filePath)) return false;
+
+    // Finish queued size adjustments in the old mode before selecting the new
+    // mode's independent override. Rebuild only once, after the mode is known.
+    bool pendingSize = gEbookFontSizeTask.tab == tab && gEbookFontSizeTask.pendingSteps != 0;
+    if (pendingSize) {
+        if (gEbookFontSizeTask.timerHwnd && IsWindow(gEbookFontSizeTask.timerHwnd)) {
+            KillTimer(gEbookFontSizeTask.timerHwnd, kEbookFontSizeDebounceTimerId);
+        }
+        int steps = gEbookFontSizeTask.pendingSteps;
+        while (steps != 0) {
+            int dir = steps > 0 ? 1 : -1;
+            if (!AdjustEbookFontSize(dir, tab->filePath)) break;
+            steps -= dir;
+        }
+        gEbookFontSizeTask = {};
+        gEbookFontSizeTaskPosted = false;
+    }
+    FontReloadScrollAnchor anchor = CaptureFontReloadScroll(tab);
+    float oldSize = GetEffectiveEbookFontSizePt(tab->filePath);
+    win->ctrl->SetDisplayMode(displayMode, keepContinuous);
+    anchor.displayMode = win->ctrl->GetDisplayMode();
+    SetEbookFontDisplayMode(tab->filePath, anchor.displayMode);
+    float newSize = GetEffectiveEbookFontSizePt(tab->filePath);
+    SaveSettings();
+    if (pendingSize || oldSize != newSize) ApplyEbookFontSizeChangeToTab(win, tab, &anchor);
+    return true;
 }
 
 void RequestEbookFontSizeChange(MainWindow* win, int direction) {
@@ -9464,6 +9515,8 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
     AutoFreeStr ebookLatinFontBefore(str::Dup(gGlobalPrefs->eBookUI.fontFamily));
     AutoFreeStr ebookCjkFontBefore(str::Dup(gGlobalPrefs->eBookUI.cjkFontFamily));
     float ebookFontSizeBefore = gGlobalPrefs->eBookUI.fontSize;
+    float ebookSingleSizeBefore = gGlobalPrefs->eBookUI.singlePageFontSize;
+    float ebookFacingSizeBefore = gGlobalPrefs->eBookUI.facingFontSize;
     int treeFontSizeBefore = gGlobalPrefs->treeFontSize;
     int tabFontSizeBefore = gGlobalPrefs->tabFontSize;
     int tabBarHeightBefore = gGlobalPrefs->tabBarHeight;
@@ -9509,6 +9562,8 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
         UpdateDocumentColors();
     }
     bool ebookFontChanged = ebookFontSizeBefore != gGlobalPrefs->eBookUI.fontSize ||
+                            ebookSingleSizeBefore != gGlobalPrefs->eBookUI.singlePageFontSize ||
+                            ebookFacingSizeBefore != gGlobalPrefs->eBookUI.facingFontSize ||
                             !EbookLatinFontFamiliesEquivalent(ebookLatinFontBefore, gGlobalPrefs->eBookUI.fontFamily) ||
                             !EbookCjkFontFamiliesEquivalent(ebookCjkFontBefore, gGlobalPrefs->eBookUI.cjkFontFamily);
     if (ebookFontChanged) {
@@ -10392,7 +10447,7 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
             rects.Append(sel.rect);
         }
         if (args->annotType == AnnotationType::Highlight && dm->textSelection->result.len > 0) {
-            PreparePdfHighlightRects(rects, PageHasVerticalGlyphLayout(engine, pageNo));
+            PreparePdfHighlightRects(rects, engine, pageNo, PageHasVerticalGlyphLayout(engine, pageNo));
         }
         if (dm->textSelection->result.len > 0 && !EngineMupdfPageUsesOcrText(engine, pageNo) &&
             !PageHasVerticalGlyphLayout(engine, pageNo)) {

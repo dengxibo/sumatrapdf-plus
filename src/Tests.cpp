@@ -15,6 +15,7 @@
 #include "wingui/LabelWithCloseWnd.h"
 
 #include "Settings.h"
+#include "AppSettings.h"
 #include "DocProperties.h"
 #include "DocController.h"
 #include "EngineBase.h"
@@ -51,6 +52,8 @@
 #include "DisplayMode.h"
 #include "CommandAvailability.h"
 #include "Canvas.h"
+#include "EbookFontConfig.h"
+#include "FileHistory.h"
 
 #include "utils/Log.h"
 
@@ -501,7 +504,7 @@ static bool TestPdfAnnotationGeometry(const Flags& flags) {
     fprintf(report, "layout vertical=%d ocr=%d cached=%d\n", PageHasVerticalGlyphLayout(engine, pageNo),
             EngineMupdfPageUsesOcrText(engine, pageNo), engine->HasCachedOcrText(pageNo));
     if (testType == AnnotationType::Highlight) {
-        PreparePdfHighlightRects(finalRects, PageHasVerticalGlyphLayout(engine, pageNo));
+        PreparePdfHighlightRects(finalRects, engine, pageNo, PageHasVerticalGlyphLayout(engine, pageNo));
     }
     if (!EngineMupdfPageUsesOcrText(engine, pageNo) && !PageHasVerticalGlyphLayout(engine, pageNo)) {
         PreparePdfNativeLineRects(finalRects, testType, engine, pageNo);
@@ -1121,7 +1124,60 @@ static bool TestOcrImageLinks(const Flags& flags, const char* reportPath) {
     return passed;
 }
 
+static bool TestEbookFontModes(const char* reportPath) {
+    FILE* report = fopen(reportPath, "w");
+    if (!report) return false;
+    defer {
+        fclose(report);
+    };
+    bool ok = true;
+    auto check = [&](bool condition, const char* label) {
+        fprintf(report, "%s: %s\n", label, condition ? "PASS" : "FAIL");
+        ok = condition && ok;
+    };
+    const char* book = "C:\\ebook-font-mode-test.epub";
+    FileState* fs = gFileHistory.MarkFileLoaded(book);
+    check(GetDefaultEbookDisplayMode(book) == DisplayMode::ContinuousFacing, "new ebook defaults to facing");
+    check(GetEffectiveEbookFontSizePt(book) == 17.f, "new facing default 17 pt");
+    SetEbookFontDisplayMode(book, DisplayMode::Continuous);
+    check(GetEffectiveEbookFontSizePt(book) == 11.f, "single default 11 pt");
+    check(AdjustEbookFontSize(1, book) && fs->ebookSinglePageFontSize == 13.f, "single adjustment saved to book");
+    SetEbookFontDisplayMode(book, DisplayMode::Facing);
+    check(GetEffectiveEbookFontSizePt(book) == 17.f, "single adjustment leaves facing default alone");
+    check(AdjustEbookFontSize(1, book) && fs->ebookFacingFontSize == 19.f, "facing adjustment saved to book");
+    SetEbookFontDisplayMode(book, DisplayMode::SinglePage);
+    check(GetEffectiveEbookFontSizePt(book) == 13.f, "switch restores single override");
+    str::ReplaceWithCopy(&fs->displayMode, "continuous");
+    ApplyEbookFontSettingsFromPrefs();
+    check(GetEffectiveEbookFontSizePt(book) == 13.f, "reload restores single override and mode");
+    SetEbookFontDisplayMode(book, DisplayMode::ContinuousBookView);
+    check(GetEffectiveEbookFontSizePt(book) == 19.f, "book view shares facing override");
+    check(ResetEbookFontSize(book) && GetEffectiveEbookFontSizePt(book) == 17.f, "reset facing to facing default");
+    SetEbookFontDisplayMode(book, DisplayMode::Continuous);
+    check(GetEffectiveEbookFontSizePt(book) == 13.f, "reset facing preserves single override");
+    for (int n = 0; n < 30; n++) AdjustEbookFontSize(-1, book);
+    check(GetEffectiveEbookFontSizePt(book) == 8.f && !CanDecreaseEbookFontSize(book),
+          "minimum 8 pt, including partial step");
+    for (int n = 0; n < 30; n++) AdjustEbookFontSize(1, book);
+    check(GetEffectiveEbookFontSizePt(book) == 32.f && !CanIncreaseEbookFontSize(book), "maximum 32 pt");
+    check(GetEffectiveEbookFontSizePt("C:\\another-book.epub") == 17.f, "different book keeps defaults");
+    fs->ebookSinglePageFontSize = 0.f;
+    fs->ebookFacingFontSize = 0.f;
+    fs->ebookFontSize = 15.f;
+    str::ReplaceWithCopy(&fs->displayMode, "continuous facing");
+    ApplyEbookFontSettingsFromPrefs();
+    check(GetEffectiveEbookFontSizePt(book) == 15.f && fs->ebookFontSize == 0.f,
+          "legacy override migrates to saved mode");
+    SetEbookFontDisplayMode(book, DisplayMode::Continuous);
+    check(GetEffectiveEbookFontSizePt(book) == 11.f, "legacy facing override leaves single default alone");
+    SaveSettings();
+    return ok;
+}
+
 void TestRenderPage(const Flags& i) {
+    if (const char* report = getenv("SUMATRA_TEST_EBOOK_FONT_MODES")) {
+        ExitProcess(TestEbookFontModes(report) ? 0 : 1);
+    }
     if (const char* report = getenv("SUMATRA_TEST_OCR_IMAGE_LINKS")) {
         ExitProcess(TestOcrImageLinks(i, report) ? 0 : 1);
     }

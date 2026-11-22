@@ -49,13 +49,16 @@ static bool HighlightSameTextLine(const RectF& a, const RectF& b) {
     return std::abs(centerA - centerB) < lineH * 0.45f;
 }
 
-float HighlightBandRatio() {
-    float ratio = kSelectionHighlightBandRatio;
+float HighlightBandRatio(EngineBase* engine, int pageNo) {
+    bool ocr = EngineMupdfPageUsesOcrText(engine, pageNo);
+    float defaultRatio = ocr ? kOcrSelectionHighlightBandRatio : kSelectionHighlightBandRatio;
+    float ratio = defaultRatio;
     if (gGlobalPrefs) {
-        ratio = gGlobalPrefs->fixedPageUI.selectionHeightRatio;
+        ratio =
+            ocr ? gGlobalPrefs->fixedPageUI.ocrSelectionHeightRatio : gGlobalPrefs->fixedPageUI.selectionHeightRatio;
     }
     if (!(ratio >= 0.5f && ratio <= 1.5f)) {
-        return kSelectionHighlightBandRatio;
+        return defaultRatio;
     }
     return ratio;
 }
@@ -202,13 +205,14 @@ void NormalizeNearbyHighlightHeights(Vec<RectF>& rects) {
     }
 }
 
-void PreparePdfHighlightRects(Vec<RectF>& rects, bool vertical) {
+void PreparePdfHighlightRects(Vec<RectF>& rects, EngineBase* engine, int pageNo, bool vertical) {
     // A vertical selection is a column, not a horizontal text band. Extending
     // its height by a font-size ratio can run past the entire page.
     if (vertical) return;
     NormalizeNearbyHighlightHeights(rects);
+    float ratio = HighlightBandRatio(engine, pageNo);
     for (RectF& rect : rects) {
-        rect = ScaleHighlightBandRect(rect, HighlightBandRatio());
+        rect = ScaleHighlightBandRect(rect, ratio);
     }
 }
 
@@ -778,7 +782,7 @@ void PaintSelection(MainWindow* win, HDC hdc) {
                 }
                 bool verticalPdf = str::EqI(dm->GetEngine()->defaultExt, ".pdf") &&
                                    PageHasVerticalGlyphLayout(dm->GetEngine(), pageNo);
-                PreparePdfHighlightRects(pageRects, verticalPdf);
+                PreparePdfHighlightRects(pageRects, dm->GetEngine(), pageNo, verticalPdf);
                 for (RectF& rf : pageRects) {
                     Rect sr = dm->CvtToScreen(pageNo, rf);
                     if (!sr.IsEmpty()) {

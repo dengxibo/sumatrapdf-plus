@@ -53,10 +53,14 @@ struct FixedPageUI {
     // uses the default opacity
     char* selectionColor;
     ParsedColor selectionColorParsed;
-    // height of the selection, find, and read-aloud highlight relative to
-    // the glyph band; 0.5-1.5, default 1.35; smaller values make the band
-    // thinner; out of range uses 1.35
+    // height of native text selection, find, read-aloud, and new
+    // highlights relative to the glyph band; 0.5-1.5, default 1.0; OCR
+    // uses OcrSelectionHeightRatio
     float selectionHeightRatio;
+    // height of OCR selection, find, read-aloud, and new highlights
+    // relative to the glyph band; 0.5-1.5, default 1.35; applies to cached
+    // OCR and scanned PDFs with hidden text
+    float ocrSelectionHeightRatio;
     // top, right, bottom and left margin (in that order) between window
     // and document
     WindowMargin windowMargin;
@@ -86,9 +90,13 @@ struct FixedPageUI {
 
 // customization options for eBookUI
 struct EBookUI {
-    // ebook body font size in points; 0 uses built-in default (~11 pt),
-    // 6-26 forces this size (out of range ignored)
+    // legacy ebook body font size in points; 0 uses built-in default; 8-32
+    // forces this size for other reflow documents
     float fontSize;
+    // default font size for single-page ebooks, 8-32 pt
+    float singlePageFontSize;
+    // default font size for facing and book-view ebooks, 8-32 pt
+    float facingFontSize;
     // default Latin/serif body font for reflowable ebooks (EPUB, MOBI).
     // Empty uses Literata
     char* fontFamily;
@@ -397,6 +405,12 @@ struct FileState {
     // ebook font size for this file; 0 inherits the reading options
     // default
     float ebookFontSize;
+    // single-page ebook font size for this file; 0 inherits
+    // EBookUI.SinglePageFontSize
+    float ebookSinglePageFontSize;
+    // facing and book-view ebook font size for this file; 0 inherits
+    // EBookUI.FacingFontSize
+    float ebookFacingFontSize;
     // if true, the document is displayed right-to-left in facing and book
     // view modes (only used for comic book documents)
     bool displayR2L;
@@ -864,8 +878,10 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, textColor), SettingType::Color, (intptr_t)"#000000", "文字颜色"},
     {offsetof(FixedPageUI, backgroundColor), SettingType::Color, (intptr_t)"#ffffff", "页面底色"},
     {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#99c1da", "选中高亮色"},
-    {offsetof(FixedPageUI, selectionHeightRatio), SettingType::Float, (intptr_t)"1.35",
-     "选区、查找、朗读高亮高度相对字高的比例，0.5–1.5，默认 1.35，越小越薄"},
+    {offsetof(FixedPageUI, selectionHeightRatio), SettingType::Float, (intptr_t)"1",
+     "普通文字选区、查找、朗读及新建高亮的高度比例，0.5–1.5，默认 1.0"},
+    {offsetof(FixedPageUI, ocrSelectionHeightRatio), SettingType::Float, (intptr_t)"1.35",
+     "OCR 选区、查找、朗读及新建高亮的高度比例，0.5–1.5，默认 1.35，含缓存 OCR 和扫描 PDF 隐藏文字层"},
     {offsetof(FixedPageUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMarginInfo, "页边距 上 右 下 左"},
     {offsetof(FixedPageUI, pageSpacing), SettingType::Compact, (intptr_t)&gSizeInfo, "页面间距 横 纵"},
     {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0, nullptr},
@@ -875,13 +891,14 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, joinSplitPdfImages), SettingType::Bool, true, nullptr},
 };
 static const StructInfo gFixedPageUIInfo = {
-    sizeof(FixedPageUI), 11, gFixedPageUIFields,
-    "TextColor\0BackgroundColor\0SelectionColor\0SelectionHeightRatio\0WindowMargin\0PageSpacing\0GradientColors\0Inver"
-    "tColors\0WindowBgCol\0FindMatchColor\0JoinSplitPdfImages"};
+    sizeof(FixedPageUI), 12, gFixedPageUIFields,
+    "TextColor\0BackgroundColor\0SelectionColor\0SelectionHeightRatio\0OcrSelectionHeightRatio\0WindowMargin\0PageSpaci"
+    "ng\0GradientColors\0InvertColors\0WindowBgCol\0FindMatchColor\0JoinSplitPdfImages"};
 
 static const FieldInfo gEBookUIFields[] = {
-    {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0",
-     "6–26 之间的数字，单位是磅（pt）；0=内置默认；超出范围无效"},
+    {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0", "其他重排文档的旧版字号设置，8–32 pt；0=内置默认"},
+    {offsetof(EBookUI, singlePageFontSize), SettingType::Float, (intptr_t)"11", "电子书单页默认字号，8–32 pt，默认 11"},
+    {offsetof(EBookUI, facingFontSize), SettingType::Float, (intptr_t)"17", "电子书双页默认字号，8–32 pt，默认 17"},
     {offsetof(EBookUI, fontFamily), SettingType::String, (intptr_t)"Literata", "电子书西文/默认衬线字体"},
     {offsetof(EBookUI, cjkFontFamily), SettingType::String, (intptr_t)"Source Han Serif SC", "电子书中文正文字体"},
     {offsetof(EBookUI, cjkFontFile), SettingType::String, 0, nullptr},
@@ -893,9 +910,10 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, epubPerfLog), SettingType::Bool, false, "EPUB 性能日志"},
     {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)"", "电子书画布背景色"},
 };
-static const StructInfo gEBookUIInfo = {sizeof(EBookUI), 11, gEBookUIFields,
-                                        "FontSize\0FontFamily\0CjkFontFamily\0CjkFontFile\0LayoutDx\0LayoutDy\0IgnoreDo"
-                                        "cumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
+static const StructInfo gEBookUIInfo = {
+    sizeof(EBookUI), 13, gEBookUIFields,
+    "FontSize\0SinglePageFontSize\0FacingFontSize\0FontFamily\0CjkFontFamily\0CjkFontFile\0LayoutDx\0LayoutDy\0IgnoreDo"
+    "cumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
 
 static const FieldInfo gWindowMargin_1_Fields[] = {
     {offsetof(WindowMargin, top), SettingType::Int, 0, nullptr},
@@ -1085,6 +1103,8 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, sidebarVisibilityManual), SettingType::Bool, false, nullptr},
     {offsetof(FileState, sidebarDx), SettingType::Int, 0, nullptr},
     {offsetof(FileState, ebookFontSize), SettingType::Float, (intptr_t)"0", nullptr},
+    {offsetof(FileState, ebookSinglePageFontSize), SettingType::Float, (intptr_t)"0", nullptr},
+    {offsetof(FileState, ebookFacingFontSize), SettingType::Float, (intptr_t)"0", nullptr},
     {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
     {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)"", nullptr},
     {offsetof(FileState, tabCol), SettingType::Color, (intptr_t)"", nullptr},
@@ -1098,11 +1118,11 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
-    sizeof(FileState), 29, gFileStateFields,
+    sizeof(FileState), 31, gFileStateFields,
     "FilePath\0Favorites\0IsPinned\0IsMissing\0OpenCount\0DecryptionKey\0UseDefaultState\0DisplayMode\0ScrollPos\0PageN"
     "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarVisibilityManual\0SidebarDx\0EbookFontSize"
-    "\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilter"
-    "Mode\0AutoOcrOn\0ReparseIdx\0TocState"};
+    "\0EbookSinglePageFontSize\0EbookFacingFontSize\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness\0DisplayFilterC"
+    "ontrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseIdx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1163,8 +1183,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-105.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-105.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-108.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-108.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},

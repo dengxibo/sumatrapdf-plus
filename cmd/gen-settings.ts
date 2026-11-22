@@ -153,7 +153,9 @@ function isComment(f: Field): boolean {
 }
 
 const ebookUI: Field[] = [
-  mkField("FontSize", Float, 0, "ebook body font size in points; 0 uses built-in default (~11 pt), 6-26 forces this size (out of range ignored)"),
+  mkField("FontSize", Float, 0, "legacy ebook body font size in points; 0 uses built-in default; 8-32 forces this size for other reflow documents"),
+  mkField("SinglePageFontSize", Float, 11, "default font size for single-page ebooks, 8-32 pt"),
+  mkField("FacingFontSize", Float, 17, "default font size for facing and book-view ebooks, 8-32 pt"),
   setVersion(
     mkField(
       "FontFamily",
@@ -308,8 +310,14 @@ const fixedPageUI: Field[] = [
   mkField(
     "SelectionHeightRatio",
     Float,
+    1.0,
+    "height of native text selection, find, read-aloud, and new highlights relative to the glyph band; 0.5-1.5, default 1.0; OCR uses OcrSelectionHeightRatio",
+  ),
+  mkField(
+    "OcrSelectionHeightRatio",
+    Float,
     1.35,
-    "height of the selection, find, and read-aloud highlight relative to the glyph band; 0.5-1.5, default 1.35; smaller values make the band thinner; out of range uses 1.35",
+    "height of OCR selection, find, read-aloud, and new highlights relative to the glyph band; 0.5-1.5, default 1.35; applies to cached OCR and scanned PDFs with hidden text",
   ),
   mkCompactStruct(
     "WindowMargin",
@@ -618,6 +626,8 @@ const fileSettings: Field[] = [
   mkField("SidebarVisibilityManual", Bool, false, "sidebar visibility was set manually for this file"),
   mkField("SidebarDx", Int, 0, "width of the left sidebar panel containing the table of contents"),
   mkField("EbookFontSize", Float, 0, "ebook font size for this file; 0 inherits the reading options default"),
+  mkField("EbookSinglePageFontSize", Float, 0, "single-page ebook font size for this file; 0 inherits EBookUI.SinglePageFontSize"),
+  mkField("EbookFacingFontSize", Float, 0, "facing and book-view ebook font size for this file; 0 inherits EBookUI.FacingFontSize"),
   mkField(
     "DisplayR2L",
     Bool,

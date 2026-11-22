@@ -3,6 +3,7 @@
 
 #include "utils/BaseUtil.h"
 #include "Settings.h"
+#include "DisplayMode.h"
 #include "FileHistory.h"
 #include "SumatraPDF.h"
 #include "EbookFontConfig.h"
@@ -165,16 +166,59 @@ bool UsesNonDefaultEbookReaderFonts() {
 struct BookFontSize {
     char* path;
     float size;
+    float singleSize;
+    float facingSize;
+    bool facing;
 };
 static SRWLOCK gBookFontSizeLock = SRWLOCK_INIT;
 static Vec<BookFontSize> gBookFontSizes;
+
+bool UsesEbookDisplayModeFontSizes(const char* path) {
+    if (!path) return false;
+    return str::EndsWithI(path, ".epub") || str::EndsWithI(path, ".mobi") || str::EndsWithI(path, ".azw") ||
+           str::EndsWithI(path, ".azw3") || str::EndsWithI(path, ".fb2") || str::EndsWithI(path, ".fb2z") ||
+           str::EndsWithI(path, ".txt");
+}
+
+DisplayMode GetDefaultEbookDisplayMode(const char* path) {
+    return UsesEbookDisplayModeFontSizes(path) ? DisplayMode::ContinuousFacing : DisplayMode::Automatic;
+}
+
+void SetEbookFontDisplayMode(const char* path, DisplayMode mode) {
+    if (!UsesEbookDisplayModeFontSizes(path)) return;
+    bool facing = !IsSingle(mode);
+    AcquireSRWLockExclusive(&gBookFontSizeLock);
+    bool found = false;
+    for (auto& book : gBookFontSizes) {
+        if (!str::EqI(book.path, path)) continue;
+        book.facing = facing;
+        found = true;
+        break;
+    }
+    if (!found) gBookFontSizes.Append({str::Dup(path), 0.f, 0.f, 0.f, facing});
+    ReleaseSRWLockExclusive(&gBookFontSizeLock);
+}
+
+static bool BookUsesFacingFontSize(const char* path) {
+    bool facing = true;
+    AcquireSRWLockShared(&gBookFontSizeLock);
+    for (auto& book : gBookFontSizes) {
+        if (str::EqI(book.path, path)) {
+            facing = book.facing;
+            break;
+        }
+    }
+    ReleaseSRWLockShared(&gBookFontSizeLock);
+    return facing;
+}
+
 static float GetBookFontSize(const char* path) {
     if (!path) return 0.f;
     AcquireSRWLockShared(&gBookFontSizeLock);
     float size = 0.f;
     for (auto& book : gBookFontSizes) {
         if (str::EqI(book.path, path)) {
-            size = book.size;
+            size = UsesEbookDisplayModeFontSizes(path) ? (book.facing ? book.facingSize : book.singleSize) : book.size;
             break;
         }
     }
@@ -184,17 +228,33 @@ static float GetBookFontSize(const char* path) {
 static bool SetBookFontSize(const char* path, float size) {
     if (!path) return false;
     FileState* fs = gFileHistory.FindByPath(path);
-    if (fs) fs->ebookFontSize = size;
+    bool modeSizes = UsesEbookDisplayModeFontSizes(path);
+    bool facing = modeSizes && BookUsesFacingFontSize(path);
+    if (fs) {
+        if (!modeSizes)
+            fs->ebookFontSize = size;
+        else if (facing)
+            fs->ebookFacingFontSize = size;
+        else
+            fs->ebookSinglePageFontSize = size;
+    }
     AcquireSRWLockExclusive(&gBookFontSizeLock);
     bool found = false;
     for (auto& book : gBookFontSizes) {
         if (str::EqI(book.path, path)) {
-            book.size = size;
+            if (!modeSizes)
+                book.size = size;
+            else if (facing)
+                book.facingSize = size;
+            else
+                book.singleSize = size;
             found = true;
             break;
         }
     }
-    if (!found) gBookFontSizes.Append({str::Dup(path), size});
+    if (!found)
+        gBookFontSizes.Append(
+            {str::Dup(path), modeSizes ? 0.f : size, modeSizes && !facing ? size : 0.f, facing ? size : 0.f, facing});
     ReleaseSRWLockExclusive(&gBookFontSizeLock);
     return true;
 }
@@ -203,6 +263,12 @@ float GetEbookReaderFontSizePt(const char* filePath) {
     float bookSize = GetBookFontSize(filePath);
     if (bookSize >= kEbookFontSizeMinPt && bookSize <= kEbookFontSizeMaxPt) return bookSize;
     auto* ui = GetEBookUI();
+    if (UsesEbookDisplayModeFontSizes(filePath)) {
+        bool facing = BookUsesFacingFontSize(filePath);
+        float defaultSize = facing ? kEbookFacingFontSizeBuiltinPt : kEbookFontSizeBuiltinPt;
+        float size = ui ? (facing ? ui->facingFontSize : ui->singlePageFontSize) : defaultSize;
+        return size >= kEbookFontSizeMinPt && size <= kEbookFontSizeMaxPt ? size : defaultSize;
+    }
     if (!ui || ui->fontSize < kEbookFontSizeMinPt || ui->fontSize > kEbookFontSizeMaxPt) {
         return 0.f;
     }
@@ -222,11 +288,11 @@ float GetEffectiveEbookFontSizePt(const char* filePath) {
 }
 
 bool CanIncreaseEbookFontSize(const char* filePath) {
-    return GetEffectiveEbookFontSizePt(filePath) + kEbookFontSizeStepPt <= kEbookFontSizeMaxPt;
+    return GetEffectiveEbookFontSizePt(filePath) < kEbookFontSizeMaxPt;
 }
 
 bool CanDecreaseEbookFontSize(const char* filePath) {
-    return GetEffectiveEbookFontSizePt(filePath) - kEbookFontSizeStepPt >= kEbookFontSizeMinPt;
+    return GetEffectiveEbookFontSizePt(filePath) > kEbookFontSizeMinPt;
 }
 
 bool AdjustEbookFontSize(int direction, const char* filePath) {
@@ -256,7 +322,20 @@ void ApplyEbookFontSettingsFromPrefs() {
     gBookFontSizes.Reset();
     if (gFileHistory.states) {
         for (auto* fs : *gFileHistory.states) {
-            if (fs->ebookFontSize > 0.f) gBookFontSizes.Append({str::Dup(fs->filePath), fs->ebookFontSize});
+            bool facing = !IsSingle(DisplayModeFromString(fs->displayMode, DisplayMode::Automatic));
+            if (UsesEbookDisplayModeFontSizes(fs->filePath)) {
+                // Migrate the old single override only to the remembered mode.
+                // The other mode starts with its independent reading default.
+                if (fs->ebookFontSize > 0.f) {
+                    float& size = facing ? fs->ebookFacingFontSize : fs->ebookSinglePageFontSize;
+                    if (size == 0.f) size = limitValue(fs->ebookFontSize, kEbookFontSizeMinPt, kEbookFontSizeMaxPt);
+                    fs->ebookFontSize = 0.f;
+                }
+                gBookFontSizes.Append(
+                    {str::Dup(fs->filePath), 0.f, fs->ebookSinglePageFontSize, fs->ebookFacingFontSize, facing});
+            } else if (fs->ebookFontSize > 0.f) {
+                gBookFontSizes.Append({str::Dup(fs->filePath), fs->ebookFontSize, 0.f, 0.f, false});
+            }
         }
     }
     ReleaseSRWLockExclusive(&gBookFontSizeLock);

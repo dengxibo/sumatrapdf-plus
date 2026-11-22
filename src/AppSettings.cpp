@@ -624,6 +624,10 @@ bool LoadSettings() {
         if (fs != 0.f && (fs < kEbookFontSizeMinPt || fs > kEbookFontSizeMaxPt)) {
             fs = 0.f;
         }
+        float& single = gprefs->eBookUI.singlePageFontSize;
+        float& facing = gprefs->eBookUI.facingFontSize;
+        if (!(single >= kEbookFontSizeMinPt && single <= kEbookFontSizeMaxPt)) single = kEbookFontSizeBuiltinPt;
+        if (!(facing >= kEbookFontSizeMinPt && facing <= kEbookFontSizeMaxPt)) facing = kEbookFacingFontSizeBuiltinPt;
     }
 
     if (seqstrings::StrToIdxIS(gScrollbarModeNames, gprefs->scrollbars) < 0) {
@@ -882,6 +886,8 @@ static void ReloadSettings() {
     const char* uiLanguage = str::DupTemp(gGlobalPrefs->uiLanguage);
     bool showToolbar = gGlobalPrefs->showToolbar;
     float oldFontSize = gGlobalPrefs->eBookUI.fontSize;
+    float oldSingleSize = gGlobalPrefs->eBookUI.singlePageFontSize;
+    float oldFacingSize = gGlobalPrefs->eBookUI.facingFontSize;
     float oldLayoutDx = gGlobalPrefs->eBookUI.layoutDx;
     float oldLayoutDy = gGlobalPrefs->eBookUI.layoutDy;
 
@@ -911,9 +917,10 @@ static void ReloadSettings() {
         UpdateControlsColors(win);
     }
 
-    bool ebookLayoutChanged = oldFontSize != gGlobalPrefs->eBookUI.fontSize ||
-                              oldLayoutDx != gGlobalPrefs->eBookUI.layoutDx ||
-                              oldLayoutDy != gGlobalPrefs->eBookUI.layoutDy;
+    bool ebookLayoutChanged =
+        oldFontSize != gGlobalPrefs->eBookUI.fontSize || oldSingleSize != gGlobalPrefs->eBookUI.singlePageFontSize ||
+        oldFacingSize != gGlobalPrefs->eBookUI.facingFontSize || oldLayoutDx != gGlobalPrefs->eBookUI.layoutDx ||
+        oldLayoutDy != gGlobalPrefs->eBookUI.layoutDy;
     if (ebookLayoutChanged) {
         UpdateAfterEbookLayoutChange();
     }

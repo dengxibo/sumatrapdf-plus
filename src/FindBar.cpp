@@ -42,18 +42,22 @@
 constexpr UINT_PTR kFindEditSubclassId = 9101;
 constexpr UINT kToolbarFindFitCaret = WM_APP + 0x3f1;
 
-static int ToolbarFindLineHeight(HWND hwnd, HFONT font) {
+static TEXTMETRICW ToolbarFindFontMetrics(HWND hwnd, HFONT font) {
+    TEXTMETRICW metrics{};
     HDC dc = GetDC(hwnd);
     if (!dc) {
-        return 0;
+        return metrics;
     }
-    TEXTMETRICW metrics{};
     {
         ScopedSelectFont selectFont(dc, font);
         GetTextMetricsW(dc, &metrics);
     }
     ReleaseDC(hwnd, dc);
-    return metrics.tmHeight;
+    return metrics;
+}
+
+static int ToolbarFindLineHeight(HWND hwnd, HFONT font) {
+    return ToolbarFindFontMetrics(hwnd, font).tmHeight;
 }
 
 static void ToolbarFindFitCaret(HWND hwnd) {
@@ -73,11 +77,15 @@ static void ToolbarFindFitCaret(HWND hwnd) {
     }
     // Derive the height from the edit font, not the previous native caret:
     // IMEs can leave a shorter caret after the first committed character.
-    int lineHeight = ToolbarFindLineHeight(hwnd, GetWindowFont(hwnd));
-    if (lineHeight <= 0) {
+    TEXTMETRICW metrics = ToolbarFindFontMetrics(hwnd, GetWindowFont(hwnd));
+    // Internal leading belongs to line spacing, not the insertion mark. Keep
+    // the caret at the font's em height with breathing room inside the field.
+    int fontHeight = metrics.tmHeight - metrics.tmInternalLeading;
+    if (fontHeight <= 0) {
         return;
     }
-    int fittedHeight = std::min(lineHeight, height);
+    int padding = DpiScale(hwnd, 2);
+    int fittedHeight = std::min(fontHeight, std::max(1, height - padding * 2));
     int y = (height - fittedHeight) / 2;
     if (fittedHeight == caretHeight) {
         if (info.rcCaret.top != y) {
