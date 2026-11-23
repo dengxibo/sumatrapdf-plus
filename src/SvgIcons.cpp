@@ -54,8 +54,11 @@ static const char* gIconLayoutSinglePage =
 </svg>)";
 
 // Rounded split-page outline, scaled and thinned to match the toolbar icons.
+// The full-canvas rect gets the theme background during toolbar rasterization,
+// keeping antialiased edges from blending against white in dark themes.
 static const char* gIconLayoutFacing =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.9" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <rect x="3" y="3" width="18" height="18" rx="2" />
   <line x1="12" y1="3" x2="12" y2="21" />
 </svg>)";
