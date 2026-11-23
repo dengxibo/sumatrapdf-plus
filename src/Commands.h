@@ -307,7 +307,8 @@ enum {
     CmdReadAloudSystemVoice = 496,
     CmdReadAloudOfflineVoice = 497,
     CmdReadAloudEdgeVoice = 498,
-    CmdNone = 499,
+    CmdToggleSingleFacing = 499,
+    CmdNone = 500,
 
     /* range for file history */
     CmdFileHistoryFirst,

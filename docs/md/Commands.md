@@ -572,6 +572,12 @@ In the crop window, drag to draw a new selection, drag one of the eight handles 
 
 ## Responsive toolbar
 
+`CmdToggleSingleFacing` switches between single-page and facing (double-page)
+layouts while preserving continuous scrolling and the current reading page.
+The toolbar button between Fit a Single Page and Rotate Left uses a fixed split-page
+icon, pressed for double-page layout; its tooltip describes the next action. Book layout switches to single
+page; switching back uses facing layout. CHM documents do not support this command.
+
 `CmdTocLocateCurrentChapter` (**Locate Current Chapter / 定位当前章节**) opens the
 document's bookmark sidebar, clears its search filter, expands only the current
 chapter's ancestor path, and selects and reveals the matching entry without

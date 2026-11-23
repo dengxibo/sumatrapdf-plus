@@ -302,6 +302,7 @@ export const commands = [
     "CmdReadAloudSystemVoice", "System speech",
     "CmdReadAloudOfflineVoice", "Offline speech",
     "CmdReadAloudEdgeVoice", "Online speech",
+    "CmdToggleSingleFacing", "Toggle Single/Double Page View",
     "CmdNone", "Do nothing",
 ];
 

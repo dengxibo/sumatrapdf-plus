@@ -53,6 +53,13 @@ static const char* gIconLayoutSinglePage =
   <rect x="5" y="3" width="14" height="18" rx="2" />
 </svg>)";
 
+// Rounded split-page outline, scaled and thinned to match the toolbar icons.
+static const char* gIconLayoutFacing =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="3" width="18" height="18" rx="2" />
+  <line x1="12" y1="3" x2="12" y2="21" />
+</svg>)";
+
 // https://github.com/tabler/tabler-icons/blob/master/icons/chevron-left.svg
 static const char* gIconSearchPrev =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -718,6 +725,7 @@ static const char* gIcons[] = {
     gIconCapturePageRegion,
     gIconRelatedSearch,
     gIconLocateToc,
+    gIconLayoutFacing,
 };
 // clang-format on
 

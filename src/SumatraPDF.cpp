@@ -12504,6 +12504,13 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             SwitchToDisplayMode(win, DisplayMode::SinglePage, true);
             break;
 
+        case CmdToggleSingleFacing:
+            if (win->IsDocLoaded() && !win->AsChm()) {
+                DisplayMode mode = win->ctrl->GetDisplayMode();
+                SwitchToDisplayMode(win, IsSingle(mode) ? DisplayMode::Facing : DisplayMode::SinglePage, true);
+            }
+            break;
+
         case CmdFacingView:
             SwitchToDisplayMode(win, DisplayMode::Facing, true);
             break;

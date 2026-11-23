@@ -207,6 +207,7 @@ static UINT_PTR removeIfChm[] = {
     CmdFacingView,
     CmdBookView,
     CmdToggleContinuousView,
+    CmdToggleSingleFacing,
     CmdRotateLeft,
     CmdRotateRight,
     CmdDeskewPage,

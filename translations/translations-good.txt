@@ -48148,3 +48148,15 @@ tw:雙頁（8–32 磅）：
 :Ebook font sizes must be between 8 and 32 pt.
 cn:电子书字号须在 8–32 磅之间。
 tw:電子書字號須在 8–32 磅之間。
+
+:Toggle Single/Double Page View
+cn:切换单页／双页显示
+tw:切換單頁／雙頁顯示
+
+:Double page view (click for single page)
+cn:双页显示（点击切换为单页）
+tw:雙頁顯示（點擊切換為單頁）
+
+:Single page view (click for double page)
+cn:单页显示（点击切换为双页）
+tw:單頁顯示（點擊切換為雙頁）

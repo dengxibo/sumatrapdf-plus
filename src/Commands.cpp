@@ -312,6 +312,7 @@ static SeqStrings gCommandNames =
     "CmdReadAloudSystemVoice\0"
     "CmdReadAloudOfflineVoice\0"
     "CmdReadAloudEdgeVoice\0"
+    "CmdToggleSingleFacing\0"
     "CmdNone\0"
     "\0";
 
@@ -614,6 +615,7 @@ static i32 gCommandIds[] = {
     CmdReadAloudSystemVoice,
     CmdReadAloudOfflineVoice,
     CmdReadAloudEdgeVoice,
+    CmdToggleSingleFacing,
     CmdNone,
 };
 
@@ -916,6 +918,7 @@ SeqStrings gCommandDescriptions =
     "System speech\0"
     "Offline speech\0"
     "Online speech\0"
+    "Toggle Single/Double Page View\0"
     "Do nothing\0"
     "\0";
 // clang-format on

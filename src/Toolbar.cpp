@@ -21,6 +21,7 @@ extern "C" {
 #include "EngineBase.h"
 #include "EngineAll.h"
 #include "DisplayModel.h"
+#include "DisplayMode.h"
 #include "FzImgReader.h"
 #include "GlobalPrefs.h"
 #include "ProgressUpdateUI.h"
@@ -106,6 +107,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Bookmark, CmdToggleBookmarks, _TRN("Show Sidebar")},
     {TbIcon::LayoutContinuous, CmdZoomFitWidthAndContinuous, _TRN("Fit Width and Show Pages Continuously")},
     {TbIcon::LayoutSinglePage, CmdZoomFitPageAndSinglePage, _TRN("Fit a Single Page")},
+    {TbIcon::LayoutFacing, CmdToggleSingleFacing, _TRN("Toggle Single/Double Page View")},
     {TbIcon::RotateLeft, CmdRotateLeft, _TRN("Rotate &Left")},
     {TbIcon::RotateRight, CmdRotateRight, _TRN("Rotate &Right")},
     {TbIcon::None, 0, nullptr},
@@ -197,7 +199,7 @@ static int ToolbarOverflowPriority(int idx) {
     if (cmd == CmdOpenFile || cmd == CmdPrint) return 5;
     if (cmd == CmdNavigateBack || cmd == CmdNavigateForward) return 6;
     if (cmd == CmdZoomIn || cmd == CmdZoomOut || cmd == CmdZoomFitWidthAndContinuous ||
-        cmd == CmdZoomFitPageAndSinglePage)
+        cmd == CmdZoomFitPageAndSinglePage || cmd == CmdToggleSingleFacing)
         return 7;
     if (cmd == CmdToggleBookmarks) return 8;
     if (cmd == CmdGoToPrevPage || cmd == CmdGoToNextPage) return 9;
@@ -334,7 +336,8 @@ static HMENU BuildToolbarOverflowMenu(MainWindow* win) {
         const char* label = info.cmdId == PageInfoId
                                 ? _TRA("Go to Page...")
                                 : (idx >= kButtonsCount ? info.toolTip : trans::GetTranslation(info.toolTip));
-        if ((cmd == CmdReadAloud || cmd == CmdPauseReadAloud) && caption[0]) label = ToUtf8Temp(caption);
+        if ((cmd == CmdReadAloud || cmd == CmdPauseReadAloud || cmd == CmdToggleSingleFacing) && caption[0])
+            label = ToUtf8Temp(caption);
         label = AppendAccelKeyToMenuStringTemp(str::DupTemp(label), cmd);
         AppendMenuW(groups[group], state, cmd, ToWStrTemp(label));
         if (cmd == CmdReadAloud || cmd == CmdPauseReadAloud) {
@@ -658,6 +661,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
     switch (cmdId) {
         case CmdZoomFitWidthAndContinuous:
         case CmdZoomFitPageAndSinglePage:
+        case CmdToggleSingleFacing:
             return !win->AsChm();
         case CmdRotateLeft:
         case CmdRotateRight:
@@ -818,7 +822,7 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
         bi.cmdId == CmdToggleBookmarks || bi.cmdId == CmdZoomFitWidthAndContinuous ||
         bi.cmdId == CmdZoomFitPageAndSinglePage || bi.cmdId == CmdSetPdfDocumentColorModeAuto ||
         bi.cmdId == CmdSetPdfDocumentColorModeBlack || bi.cmdId == CmdSetPdfDocumentColorModeLight ||
-        bi.cmdId == CmdToggleFullscreen || bi.cmdId == CmdDisplayFilter) {
+        bi.cmdId == CmdToggleFullscreen || bi.cmdId == CmdDisplayFilter || bi.cmdId == CmdToggleSingleFacing) {
         b.fsStyle = BTNS_CHECK;
     }
     if (bi.cmdId == CmdToggleAutoOcr || bi.cmdId == CmdSetPdfDocumentColorModeBlack) {
@@ -2165,6 +2169,18 @@ void UpdateToolbarState(MainWindow* win) {
     UpdateDoubleClickWordLookupToolbarButton(win);
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
+    bool doublePage = win->IsDocLoaded() && !IsSingle(win->ctrl->GetDisplayMode());
+    SetToolbarButtonCheckedState(win, CmdToggleSingleFacing, doublePage);
+    int layoutButtons[4];
+    int nLayoutButtons = GetToolbarButtonsByID(CmdToggleSingleFacing, layoutButtons);
+    TBBUTTONINFOW layoutInfo{};
+    layoutInfo.cbSize = sizeof(layoutInfo);
+    layoutInfo.dwMask = TBIF_BYINDEX | TBIF_TEXT;
+    layoutInfo.pszText = ToWStrTemp(doublePage ? _TRA("Double page view (click for single page)")
+                                               : _TRA("Single page view (click for double page)"));
+    for (int i = 0; i < nLayoutButtons; i++) {
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, layoutButtons[i], (LPARAM)&layoutInfo);
+    }
     if (!win->IsDocLoaded()) {
         return;
     }
