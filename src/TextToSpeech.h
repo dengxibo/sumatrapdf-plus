@@ -11,7 +11,10 @@ struct TtsVoiceInfo {
 bool TtsSpeakUtf8(const char* text);
 struct OfflineVoice;
 struct EdgeReadAloudVoice;
-bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const EdgeReadAloudVoice* edge = nullptr);
+// Short dictionary utterances can wait for the complete response to avoid
+// gaps between streamed audio blocks. Document reading streams by default.
+bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const EdgeReadAloudVoice* edge = nullptr,
+                           bool bufferUntilComplete = false);
 void TtsPrepareGeneratedPlayback();
 void TtsQueueNextGeneratedUtf8(const char* text);
 bool TtsConsumeSynthesisFailure();

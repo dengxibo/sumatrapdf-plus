@@ -3,9 +3,23 @@
 
 #include "utils/BaseUtil.h"
 #include "LookupTtsVoice.h"
+#include "LookupSpeechTail.h"
 #include "utils/UtAssert.h"
 
 void LookupTtsVoice_UnitTests() {
+    short stereo[2000];
+    for (int i = 0; i < dimof(stereo); i++) stereo[i] = i % 2 ? -12000 : 12000;
+    int kept = TrimLookupFemaleSpeechTail(stereo, 1000, 2, 1000);
+    utassert(kept == 920);
+    utassert(stereo[0] == 12000 && stereo[1] == -12000);
+    utassert(stereo[(kept - 12) * 2] == 12000);
+    utassert(stereo[(kept - 2) * 2] > 0 && stereo[(kept - 2) * 2] < 12000);
+    utassert(stereo[(kept - 2) * 2 + 1] == -stereo[(kept - 2) * 2]);
+    utassert(stereo[(kept - 1) * 2] == 0 && stereo[(kept - 1) * 2 + 1] == 0);
+    utassert(stereo[kept * 2] == 12000); // Samples beyond the clip are untouched.
+    short shortClip[120]{};
+    utassert(TrimLookupFemaleSpeechTail(shortClip, 120, 1, 1000) == 110);
+    utassert(TrimLookupFemaleSpeechTail(nullptr, 120, 1, 1000) == 120);
     LookupTtsVoicePrefs p;
     p.multilingual = "brian-multi";
     p.localZh = "xiaoxiao";

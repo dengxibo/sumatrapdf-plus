@@ -31,6 +31,8 @@
 #include "Selection.h"
 #include "SelectionToolbar.h"
 #include "TextToSpeech.h"
+#include "OfflineSpeech.h"
+#include "EdgeSpeechTransport.h"
 #include "MediaOverlayPlayer.h"
 #include "PdfPageAudio.h"
 #include "Toolbar.h"
@@ -1760,7 +1762,7 @@ static bool LookupShowsSpeaker(WordLookupWnd* wnd, DictSense* sense) {
 // Speak with the voice Read Aloud is actually using. Do not scan for "any Chinese"
 // or "any English" voice: that replaces the synthesizer voice, and the next read-aloud
 // chunk keeps it.
-static bool LookupApplyReadAloudVoice(bool chinese) {
+static bool SpeakLookupWithReadAloudVoice(const char* text, bool chinese, const char* pinyin = nullptr) {
     if (!gGlobalPrefs) {
         return false;
     }
@@ -1773,12 +1775,27 @@ static bool LookupApplyReadAloudVoice(bool chinese) {
     prefs.onlineEn = gGlobalPrefs->readAloudSmartOnlineVoiceEn;
     const char* id = LookupPickVoiceId(prefs, chinese);
     if (!id) {
-        logf("Lookup TTS: mode has no %s voice; leaving synthesizer unchanged\n", chinese ? "Chinese" : "English");
+        logf("Lookup TTS: mode has no %s voice\n", chinese ? "Chinese" : "English");
         return false;
+    }
+    TtsSetSpeakingRate(chinese ? gGlobalPrefs->readAloudSpeakingRateZh : gGlobalPrefs->readAloudSpeakingRateEn);
+    // Generated online/offline voices are not WinRT or SAPI voice IDs. Use the
+    // same synthesis path as Read Aloud instead of silently keeping a stale voice.
+    if (const auto* offline = FindOfflineVoice(id)) {
+        return OfflineSpeechAvailable(*offline) && TtsSpeakGeneratedUtf8(text, offline);
+    }
+    if (const auto* online = FindEdgeReadAloudVoice(id)) {
+        // JoyInside may send the two characters of a short word in separate
+        // audio bursts. Play its complete clip so network gaps cannot split it.
+        bool bufferUntilComplete = str::StartsWith(online->shortName, "joyinside:");
+        return HasPermission(Perm::InternetAccess) && TtsSpeakGeneratedUtf8(text, nullptr, online, bufferUntilComplete);
     }
     bool ok = TtsSetVoiceById(id);
     logf("Lookup TTS %s voice id='%s' ok=%d\n", chinese ? "Chinese" : "English", id, (int)ok);
-    return ok;
+    if (!ok) {
+        return false;
+    }
+    return chinese && !str::IsEmpty(pinyin) ? TtsSpeakUtf8WithChinesePinyin(text, pinyin) : TtsSpeakUtf8(text);
 }
 
 static bool SpeakLookupChineseWithTts(WordLookupWnd* wnd) {
@@ -1792,18 +1809,8 @@ static bool SpeakLookupChineseWithTts(WordLookupWnd* wnd) {
     }
     // Prefer the selected sense pinyin so polyphone tabs (qiào / shāo) speak differently.
     LookupAudioStop();
-    LookupApplyReadAloudVoice(true);
-    if (gGlobalPrefs) {
-        TtsSetSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
-    }
     const char* py = LookupChinesePinyin(sense);
-    bool ok = false;
-    if (!str::IsEmpty(py)) {
-        ok = TtsSpeakUtf8WithChinesePinyin(text, py);
-    } else {
-        ok = TtsSpeakUtf8(text);
-    }
-    if (!ok) {
+    if (!SpeakLookupWithReadAloudVoice(text, true, py)) {
         return false;
     }
     wnd->speakerPlaying = true;
@@ -1824,11 +1831,7 @@ static bool SpeakLookupEnglishWithTts(WordLookupWnd* wnd) {
         return false;
     }
     LookupAudioStop();
-    LookupApplyReadAloudVoice(false);
-    if (gGlobalPrefs) {
-        TtsSetSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
-    }
-    if (!TtsSpeakUtf8(text)) {
+    if (!SpeakLookupWithReadAloudVoice(text, false)) {
         return false;
     }
     wnd->speakerPlaying = true;

@@ -26,6 +26,7 @@
 #include "EdgeSpeechResponse.h"
 #include "EdgeSpeechTransport.h"
 #include "LookupAudio.h"
+#include "LookupSpeechTail.h"
 #include "OfflineSpeech.h"
 
 #pragma comment(lib, "sapi.lib")
@@ -447,6 +448,7 @@ struct SpeechSynthesisJob {
     HANDLE firstAudio = nullptr;
     HANDLE predecessorAudio = nullptr;
     bool lookahead = false;
+    bool bufferUntilComplete = false;
     HWND hwnd = nullptr;
     UINT msg = 0;
     char* text = nullptr;
@@ -611,7 +613,7 @@ static DWORD WINAPI RunSynthesisJob(void* arg) {
     } else if (mayStart) {
         HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         EdgeSpeechResponse response(job->text);
-        if (SUCCEEDED(com)) {
+        if (SUCCEEDED(com) && !job->bufferUntilComplete) {
             response.audioContext = job;
             response.audioReceived = PublishEdgePrefix;
         }
@@ -628,6 +630,18 @@ static DWORD WINAPI RunSynthesisJob(void* arg) {
             DWORD pcmSize = 0;
             if (job->wav && WinTtsParseWav(job->wav, job->wavSize, &format, &pcm, &pcmSize) &&
                 pcmSize >= job->earlyPcmBytes) {
+                // Only dictionary clips opt into complete buffering. Keep this
+                // voice-specific cutoff away from document reading and other voices.
+                if (job->bufferUntilComplete && str::Eq(job->edge->shortName, "joyinside:40245") &&
+                    format.wFormatTag == WAVE_FORMAT_PCM && format.wBitsPerSample == 16 && format.nChannels > 0 &&
+                    format.nBlockAlign == format.nChannels * sizeof(short) && format.nSamplesPerSec <= 192000 &&
+                    pcmSize <= INT_MAX) {
+                    int frames = (int)(pcmSize / format.nBlockAlign);
+                    int kept = TrimLookupFemaleSpeechTail((short*)const_cast<char*>(pcm), frames, format.nChannels,
+                                                          (int)format.nSamplesPerSec);
+                    logf("Lookup Joy female tail: trimmed %d frames at %lu Hz\n", frames - kept, format.nSamplesPerSec);
+                    pcmSize = kept * format.nBlockAlign;
+                }
                 {
                     ScopedCritSec guard(&job->lock);
                     job->format = format;
@@ -2034,13 +2048,15 @@ bool TtsIsSpeaking() {
     return false;
 }
 
-bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const EdgeReadAloudVoice* edge) {
+bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const EdgeReadAloudVoice* edge,
+                           bool bufferUntilComplete) {
     if (str::IsEmpty(text) || (!offline && !edge)) {
         return false;
     }
     SpeechSynthesisJob* job = nullptr;
     // The queued block can finish while its predecessor is synthesizing or playing.
-    if (gNextSynthesisJob && !gSynthesisJob && !gWinWaveOut && gNextSynthesisJob->rate == gTtsSpeakingRate &&
+    if (gNextSynthesisJob && !gSynthesisJob && !gWinWaveOut &&
+        gNextSynthesisJob->bufferUntilComplete == bufferUntilComplete && gNextSynthesisJob->rate == gTtsSpeakingRate &&
         gNextSynthesisJob->offline == offline && gNextSynthesisJob->edge == edge &&
         str::Eq(text, gNextSynthesisJob->text)) {
         bool ready = InterlockedCompareExchange(&gNextSynthesisJob->done, 0, 0) != 0;
@@ -2057,6 +2073,7 @@ bool TtsSpeakGeneratedUtf8(const char* text, const OfflineVoice* offline, const 
         if (!job) {
             return false;
         }
+        job->bufferUntilComplete = bufferUntilComplete;
         job->playRequested = GetTickCount64();
         if (!StartSynthesisJob(job)) {
             ReleaseSynthesisJob(job);
