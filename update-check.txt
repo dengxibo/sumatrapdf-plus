@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.113
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.113/SumatraPDF-Plus.exe
-Notes: Fix overly bright edges on the single/double-page toolbar icon in dark themes. Complete packages are available in 3.7.107.
-NotesZh: 修复单页／双页图标在深色主题下过亮、显粗的问题。新用户先从 3.7.107 下载完整包，再更新 EXE。
+Latest: 3.7.114
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.114/SumatraPDF-Plus.exe
+Notes: Restore dictionary online/offline voice fallback and improve JoyInside dictionary playback. Complete packages are available in 3.7.107.
+NotesZh: 修复字典在线／离线发音回退，改善 JoyInside 词语播放停顿与女声尾音。新用户先从 3.7.107 下载完整包，再更新 EXE。
