@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.111
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.111/SumatraPDF-Plus.exe
-Notes: Keep the search box steady while documents load and align related image editing buttons. Complete packages are available in 3.7.107.
-NotesZh: 修复 DOC 加载时搜索框跳动，调整保存图像窗口的按钮宽度。新用户先从 3.7.107 下载完整包，再更新 EXE。
+Latest: 3.7.112
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.112/SumatraPDF-Plus.exe
+Notes: Add a single/double-page toolbar toggle and fix Mermaid linking in Actions. Complete packages are available in 3.7.107.
+NotesZh: 工具栏新增单页／双页切换按钮，按下态表示双页；修复 Actions 链接失败。新用户先从 3.7.107 下载完整包，再更新 EXE。
