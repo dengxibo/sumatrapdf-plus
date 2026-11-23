@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.112
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.112/SumatraPDF-Plus.exe
-Notes: Add a single/double-page toolbar toggle and fix Mermaid linking in Actions. Complete packages are available in 3.7.107.
-NotesZh: 工具栏新增单页／双页切换按钮，按下态表示双页；修复 Actions 链接失败。新用户先从 3.7.107 下载完整包，再更新 EXE。
+Latest: 3.7.113
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.113/SumatraPDF-Plus.exe
+Notes: Fix overly bright edges on the single/double-page toolbar icon in dark themes. Complete packages are available in 3.7.107.
+NotesZh: 修复单页／双页图标在深色主题下过亮、显粗的问题。新用户先从 3.7.107 下载完整包，再更新 EXE。
