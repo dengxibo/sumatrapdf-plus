@@ -613,9 +613,33 @@ match_an_plus_b_microsyntax(fz_xml *node, const char *val, int (*callback)(fz_xm
 	return 0;
 }
 
+static int match_sumatra_body_paragraph(fz_xml* node) {
+    static const char* excluded_tags[] = {"blockquote", "figure", "figcaption", "aside", "li",
+                                          "dl",         "table",  "pre",        "nav",   NULL};
+    static const char* excluded_classes[] = {"caption",  "picture",  "picture1", "image",    "poem", "verse",
+                                             "epigraph", "footnote", "title",    "subtitle", NULL};
+    fz_xml* element;
+    for (element = node; element; element = fz_xml_up(element)) {
+        const char* tag = fz_xml_tag(element);
+        int i;
+        if (tag && !strcmp(tag, "body")) break;
+        for (i = 0; tag && excluded_tags[i]; ++i)
+            if (!strcmp(tag, excluded_tags[i])) return 0;
+        for (i = 0; excluded_classes[i]; ++i)
+            if (match_att_has_condition(element, "class", excluded_classes[i])) return 0;
+    }
+    for (element = fz_xml_down(node); element; element = fz_xml_next(element)) {
+        const char* tag = fz_xml_tag(element);
+        if (tag && (!strcmp(tag, "img") || !strcmp(tag, "svg"))) return 0;
+    }
+    return 1;
+}
+
 static int
 match_pseudo_condition(fz_xml *node, const char *key, const char *val, int pseudo)
 {
+	if (!strcmp(key, "sumatra-body-paragraph"))
+		return match_sumatra_body_paragraph(node);
 	if (!strcmp(key, "link"))
 		return fz_xml_att(node, "href") != NULL;
 
@@ -1325,6 +1349,7 @@ is_inheritable_property(int name)
 {
 	return
 		name == PRO_COLOR ||
+		name == PRO_SUMATRA_DARK_PAPER ||
 		name == PRO_DIRECTION ||
 		name == PRO_FONT_FAMILY ||
 		name == PRO_FONT_STYLE ||
@@ -1933,6 +1958,33 @@ select_css_font(fz_context *ctx, fz_html_font_set *set, const char *family, int 
 	return font;
 }
 
+static float linear_srgb(unsigned char channel) {
+    float v = channel / 255.0f;
+    return v <= 0.04045f ? v / 12.92f : powf((v + 0.055f) / 1.055f, 2.4f);
+}
+
+static float color_luminance(fz_css_color c) {
+    return 0.2126f * linear_srgb(c.r) + 0.7152f * linear_srgb(c.g) + 0.0722f * linear_srgb(c.b);
+}
+
+static fz_css_color color_on_dark_paper(fz_css_color ink, fz_css_color paper) {
+    if (!ink.a || !paper.a) return ink;
+    int lo = fz_mini(ink.r, fz_mini(ink.g, ink.b));
+    int hi = fz_maxi(ink.r, fz_maxi(ink.g, ink.b));
+    if (hi - lo <= 12 && hi < 96) return make_color(230, 225, 216, ink.a);
+
+    float target = 4.5f * (color_luminance(paper) + 0.05f) - 0.05f;
+    if (color_luminance(ink) >= target) return ink;
+
+    /* Lighten low-contrast accents toward white while retaining their hue. */
+    for (int step = 1; step <= 16; ++step) {
+        fz_css_color lighter = make_color(ink.r + (255 - ink.r) * step / 16, ink.g + (255 - ink.g) * step / 16,
+                                          ink.b + (255 - ink.b) * step / 16, ink.a);
+        if (step == 16 || color_luminance(lighter) >= target) return lighter;
+    }
+    return ink;
+}
+
 void fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *style, fz_css_match *match)
 {
 	fz_css_value *value;
@@ -2094,8 +2146,12 @@ void fz_apply_css_style(fz_context *ctx, fz_html_font_set *set, fz_css_style *st
 	style->text_fill_color = color_from_properties(match, PRO_TEXT_FILL_COLOR, PRO_COLOR, black);
 	style->text_stroke_color = color_from_property(match, PRO_TEXT_STROKE_COLOR, transparent);
 	style->background_color = color_from_property(match, PRO_BACKGROUND_COLOR, transparent);
+        fz_css_color dark_paper = color_from_property(match, PRO_SUMATRA_DARK_PAPER, transparent);
+        style->color = color_on_dark_paper(style->color, dark_paper);
+        style->text_fill_color = color_on_dark_paper(style->text_fill_color, dark_paper);
+        style->text_stroke_color = color_on_dark_paper(style->text_stroke_color, dark_paper);
 
-	style->border_spacing = number_from_property(match, PRO_BORDER_SPACING, 0, N_LENGTH);
+        style->border_spacing = number_from_property(match, PRO_BORDER_SPACING, 0, N_LENGTH);
         fz_css_value* radius = value_from_property(match, PRO_BORDER_RADIUS);
         if (radius && !radius->next) style->border_radius = number_from_value(radius, 0, N_LENGTH);
 

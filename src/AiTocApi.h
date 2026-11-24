@@ -4,6 +4,7 @@
 #pragma once
 
 class EngineBase;
+struct RenderedBitmap;
 
 // Connection settings for AI TOC recognition (an OpenAI-compatible vision
 // model API). Strings are borrowed; the caller owns them.
@@ -73,12 +74,16 @@ bool AiTocApiDetectTocPages(EngineBase* engine, const AiTocApiConfig& cfg, AiToc
 bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* model, char** msgOut,
                             bool vision = false);
 
-// Text-only OpenAI-compatible chat/completions. Blocking; call from a worker.
+// OpenAI-compatible chat/completions. Blocking; call from a worker.
 // roles: "system" / "user" / "assistant". On success *contentOut is newly allocated.
 struct AiTocChatMessage {
     const char* role = nullptr;
     const char* content = nullptr;
+    const char* const* images = nullptr; // JPEG base64 payloads
+    int imageCount = 0;
 };
+char* AiChatEncodeImage(HBITMAP bitmap);
+bool AiChatAppendThumbnailRtf(RenderedBitmap* bitmap, StrBuilder& out);
 // Optional streaming callback: accumulated UTF-8 reply, borrowed, on the worker thread.
 typedef void (*AiTocChatProgressFn)(void* ctx, const char* content);
 bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,

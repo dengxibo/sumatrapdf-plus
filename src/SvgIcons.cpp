@@ -439,6 +439,13 @@ static const char* gIconEbookFontSizeIncrease =
   </g>
 </svg>)FONTINC";
 
+// Center the strokes on pixel rows at the default 18 px toolbar size.
+static const char* gIconEpubParagraphLayout =
+    R"EPUBLAYOUT(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M8.6 7.333h10.2M5.2 12.667h13.6M5.2 18h13.6"/>
+</svg>)EPUBLAYOUT";
+
 static const char* gIconAnnotText =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
@@ -729,6 +736,7 @@ static const char* gIcons[] = {
     gIconRelatedSearch,
     gIconLocateToc,
     gIconLayoutFacing,
+    gIconEpubParagraphLayout,
 };
 // clang-format on
 

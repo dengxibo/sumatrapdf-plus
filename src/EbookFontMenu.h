@@ -25,6 +25,7 @@ bool IsReflowableEbookTabForFontMenu(WindowTab* tab);
 // True when A+/A- font-size commands apply. Word/Office keep author sizes;
 // MuPDF user CSS does not override them.
 bool SupportsEbookFontSizeChange(WindowTab* tab);
+bool SupportsEpubParagraphLayout(WindowTab* tab);
 
 void UpdateAfterEbookFontChange();
 void ShowEbookFontPicker(HWND owner, bool cjk);

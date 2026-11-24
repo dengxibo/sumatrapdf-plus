@@ -308,7 +308,9 @@ enum {
     CmdReadAloudOfflineVoice = 497,
     CmdReadAloudEdgeVoice = 498,
     CmdToggleSingleFacing = 499,
-    CmdNone = 500,
+    CmdEpubParagraphLayout = 500,
+    CmdCaptureRegionForAskAi = 501,
+    CmdNone = 502,
 
     /* range for file history */
     CmdFileHistoryFirst,

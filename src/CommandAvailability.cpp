@@ -434,6 +434,12 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return ctx.tab && ctx.tab->AsFixed() && HasPermission(Perm::CopySelection) ? CommandVisibility::Show
                                                                                    : CommandVisibility::Disable;
     }
+    if (origCmdId == CmdCaptureRegionForAskAi) {
+        return gGlobalPrefs->enableAskAI && ctx.tab && ctx.tab->AsFixed() && HasPermission(Perm::CopySelection) &&
+                       HasPermission(Perm::InternetAccess)
+                   ? CommandVisibility::Show
+                   : CommandVisibility::Hide;
+    }
     if (origCmdId == CmdSetTheme) {
         return CommandVisibility::Show;
     }
@@ -444,6 +450,9 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
             return CommandVisibility::Hide;
         }
         return CommandVisibility::Show;
+    }
+    if (origCmdId == CmdEpubParagraphLayout) {
+        return SupportsEpubParagraphLayout(ctx.tab) ? CommandVisibility::Show : CommandVisibility::Hide;
     }
     if (origCmdId == CmdEbookFontSizeIncrease) {
         if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {

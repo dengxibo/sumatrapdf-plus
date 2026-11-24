@@ -77,6 +77,7 @@ enum class TbIcon {
     RelatedSearch,
     LocateToc,
     LayoutFacing,
+    EpubParagraphLayout,
     kMax
 };
 

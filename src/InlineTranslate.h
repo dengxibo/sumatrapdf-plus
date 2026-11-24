@@ -6,6 +6,7 @@
 struct MainWindow;
 struct WindowTab;
 struct GlobalPrefs;
+struct RenderedBitmap;
 
 bool InlineTranslateVolcIsConfigured();
 bool InlineTranslateAiApiIsConfigured();
@@ -19,6 +20,7 @@ void AskAiSelectionInTab(MainWindow* win, WindowTab* tab, const char* selection,
 
 // Page context menu / command: show the AI sidebar without sending a question.
 void OpenEmptyAskAi(MainWindow* win);
+bool AddAskAiRegionImage(MainWindow* win, WindowTab* tab, RenderedBitmap* bitmap);
 
 // Sidebar page. Conversation stays on the tab for this session only.
 void EnsureAskAiSidebar(MainWindow* win);

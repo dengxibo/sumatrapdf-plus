@@ -1096,6 +1096,54 @@ static bool EncodeHBitmapAsJpeg(HBITMAP hbmp, int quality, StrBuilder& out, char
 }
 
 // Renders a page and produces the base64 JPEG used in the API request bodies.
+char* AiChatEncodeImage(HBITMAP bitmap) {
+    StrBuilder jpeg;
+    char* error = nullptr;
+    bool encoded = EncodeHBitmapAsJpeg(bitmap, 88, jpeg, &error);
+    str::Free(error);
+    if (!encoded || jpeg.size() > 2 * 1024 * 1024) {
+        return nullptr;
+    }
+    StrBuilder b64;
+    Base64Encode((const u8*)jpeg.Get(), jpeg.size(), b64);
+    return b64.StealData();
+}
+
+bool AiChatAppendThumbnailRtf(RenderedBitmap* bitmap, StrBuilder& out) {
+    Size source = bitmap->GetSize();
+    float scale = std::min(64.f / source.dx, 64.f / source.dy);
+    Size size{std::max(1, (int)(source.dx * scale)), std::max(1, (int)(source.dy * scale))};
+    HBITMAP thumbnail = CreateMemoryBitmap(size);
+    if (!thumbnail) return false;
+    defer {
+        DeleteObject(thumbnail);
+    };
+    HDC dc = CreateCompatibleDC(nullptr);
+    if (!dc) return false;
+    HGDIOBJ old = SelectObject(dc, thumbnail);
+    bool drawn = bitmap->Blit(dc, Rect(0, 0, size.dx, size.dy));
+    SelectObject(dc, old);
+    defer {
+        DeleteDC(dc);
+    };
+    StrBuilder jpeg;
+    char* error = nullptr;
+    bool encoded = drawn && EncodeHBitmapAsJpeg(thumbnail, 88, jpeg, &error);
+    str::Free(error);
+    if (!encoded) return false;
+
+    out.AppendFmt("{\\pict\\jpegblip\\picw%d\\pich%d\\picwgoal%d\\pichgoal%d ", size.dx, size.dy, size.dx * 15,
+                  size.dy * 15);
+    constexpr char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < jpeg.size(); i++) {
+        u8 byte = (u8)jpeg.Get()[i];
+        out.AppendChar(hex[byte >> 4]);
+        out.AppendChar(hex[byte & 15]);
+    }
+    out.AppendChar('}');
+    return true;
+}
+
 static bool RenderPageJpegBase64(EngineBase* engine, int pageNo, float longEdge, int quality, char** b64Out,
                                  StrBuilder* bytesOut, char** errOut) {
     *b64Out = nullptr;
@@ -2659,7 +2707,20 @@ static void BuildTextChatBody(const AiTocApiConfig& cfg, const AiTocChatMessage*
         out.Append("{\"role\": ");
         AppendJsonEscaped(out, msgs[i].role ? msgs[i].role : "user");
         out.Append(", \"content\": ");
-        AppendJsonEscaped(out, msgs[i].content ? msgs[i].content : "");
+        const char* content = msgs[i].content ? msgs[i].content : "";
+        if (msgs[i].imageCount > 0) {
+            out.Append("[{\"type\":\"text\",\"text\":");
+            AppendJsonEscaped(out, content);
+            out.AppendChar('}');
+            for (int j = 0; j < msgs[i].imageCount; j++) {
+                out.Append(",{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,");
+                out.Append(msgs[i].images[j]);
+                out.Append("\"}}");
+            }
+            out.AppendChar(']');
+        } else {
+            AppendJsonEscaped(out, content);
+        }
         out.AppendChar('}');
     }
     out.Append("], \"temperature\": 0.3");

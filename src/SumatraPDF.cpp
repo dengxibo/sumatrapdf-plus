@@ -6211,6 +6211,112 @@ static void ApplyEbookFontSizeChangeToTab(MainWindow* win, WindowTab* tab, const
 
 static void ApplyPendingEbookFontSizeChange();
 
+bool SupportsEpubParagraphLayout(WindowTab* tab) {
+    return tab && tab->filePath && str::EndsWithI(tab->filePath, ".epub") &&
+           IsReflowableMupdfForTheme(tab->GetEngine());
+}
+
+static void ShowEpubParagraphLayoutMenu(MainWindow* win) {
+    WindowTab* tab = win->CurrentTab();
+    if (!SupportsEpubParagraphLayout(tab) || tab->asyncLoadPending || tab->holdPaintForFontReload) {
+        return;
+    }
+    EpubParagraphLayout layout = GetEpubParagraphLayout(tab->filePath);
+    const auto defaults = gGlobalPrefs->eBookUI;
+    struct Section {
+        const char* name;
+        int* value;
+        int EBookUI::* defaultValue;
+        const char* choices[4];
+    };
+    const Section sections[] = {
+        {_TRA("Paragraph spacing"),
+         &layout.paragraphSpacing,
+         &EBookUI::defaultEpubParagraphSpacing,
+         {_TRA("Default"), _TRA("Compact"), _TRA("Medium"), _TRA("Loose")}},
+        {_TRA("Line spacing"),
+         &layout.lineSpacing,
+         &EBookUI::defaultEpubLineSpacing,
+         {_TRA("Default"), _TRA("Compact"), _TRA("Medium"), _TRA("Loose")}},
+        {_TRA("First-line indent"),
+         &layout.firstLineIndent,
+         &EBookUI::defaultEpubFirstLineIndent,
+         {_TRA("Default"), _TRA("No indent"), _TRA("Two-character indent")}},
+        {_TRA("Text alignment"),
+         &layout.alignment,
+         &EBookUI::defaultEpubTextAlignment,
+         {_TRA("Default"), _TRA("Align left"), _TRA("Justified")}},
+    };
+    HMENU menu = CreatePopupMenu();
+    if (!menu) {
+        return;
+    }
+    constexpr int kChoices = 4;
+    constexpr int kSectionCommands = kChoices + 2;
+    constexpr UINT kReset = dimofi(sections) * kSectionCommands + 1;
+    for (int i = 0; i < dimofi(sections); i++) {
+        HMENU submenu = CreatePopupMenu();
+        if (!submenu) {
+            DestroyMenu(menu);
+            return;
+        }
+        const Section& section = sections[i];
+        int first = i * kSectionCommands + 1;
+        int preset = defaults.*section.defaultValue;
+        const char* defaultLabel = preset > 0 && preset < kChoices && section.choices[preset] ? section.choices[preset]
+                                                                                              : _TRA("Original layout");
+        for (int j = 0; j < kChoices && section.choices[j]; j++) {
+            const char* label =
+                j == 0 ? str::FormatTemp(_TRA("Follow default (%s)"), defaultLabel) : section.choices[j];
+            AppendMenuW(submenu, MF_STRING | (j == *section.value ? MF_CHECKED : MF_UNCHECKED), first + j,
+                        ToWStrTemp(label));
+        }
+        AppendMenuW(submenu, MF_SEPARATOR, 0, nullptr);
+        bool canSetDefault = *section.value > 0 && *section.value < kChoices && section.choices[*section.value] &&
+                             *section.value != preset;
+        AppendMenuW(submenu, MF_STRING | (canSetDefault ? MF_ENABLED : MF_GRAYED), first + kChoices,
+                    ToWStrTemp(_TRA("Set current value as default")));
+        if (preset != 0) {
+            AppendMenuW(submenu, MF_STRING, first + kChoices + 1, ToWStrTemp(_TRA("Clear global default")));
+        }
+        AppendMenuW(menu, MF_POPUP, (UINT_PTR)submenu, ToWStrTemp(section.name));
+    }
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    bool hasOverrides = layout.paragraphSpacing || layout.lineSpacing || layout.firstLineIndent || layout.alignment;
+    AppendMenuW(menu, MF_STRING | (hasOverrides ? MF_ENABLED : MF_GRAYED), kReset,
+                ToWStrTemp(_TRA("Reset paragraph layout")));
+    Rect button = GetToolbarButtonScreenRect(win, CmdEpubParagraphLayout);
+    POINT point{button.x, button.y + button.dy};
+    if (button.IsEmpty()) {
+        GetCursorPos(&point);
+    }
+    UINT flags = TPM_RETURNCMD | TPM_TOPALIGN | (IsUIRtl() ? TPM_RIGHTALIGN | TPM_LAYOUTRTL : TPM_LEFTALIGN);
+    UINT selected = TrackPopupMenu(menu, flags, point.x, point.y, 0, win->hwndFrame, nullptr);
+    DestroyMenu(menu);
+    if (!selected || selected > kReset || !IsMainWindowValid(win) || win->CurrentTab() != tab) {
+        return;
+    }
+    if (selected == kReset) {
+        layout = {};
+    } else {
+        int index = (int)selected - 1;
+        const Section& section = sections[index / kSectionCommands];
+        int& value = *section.value;
+        int next = index % kSectionCommands;
+        if (next >= kChoices) {
+            gGlobalPrefs->eBookUI.*section.defaultValue = next == kChoices ? value : 0;
+        } else {
+            if (value == next) {
+                return;
+            }
+            value = next;
+        }
+    }
+    SetEpubParagraphLayout(tab->filePath, layout);
+    ApplyEbookFontSizeChangeToTab(win, tab);
+    SaveSettings();
+}
+
 static void ScheduleEbookFontSizeChangeIfNeeded() {
     if (gEbookFontSizeTask.pendingSteps == 0 || !gEbookFontSizeTask.win) {
         return;
@@ -12250,6 +12356,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             RequestEbookFontSizeReset(win);
             return 0;
 
+        case CmdEpubParagraphLayout:
+            ShowEpubParagraphLayoutMenu(win);
+            return 0;
+
         case CmdSelectionHandler: {
             // TODO: handle kCmdArgExe
             auto url = GetCommandStringArg(cmd, kCmdArgURL, nullptr);
@@ -12361,15 +12471,20 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             ShowLogFileSmart();
             break;
 
-        case CmdCapturePageRegion:
-            if (win->AsFixed() && HasPermission(Perm::CopySelection)) {
+        case CmdCaptureRegionForAskAi:
+        case CmdCapturePageRegion: {
+            bool askAi = cmdId == CmdCaptureRegionForAskAi;
+            if (win->AsFixed() && HasPermission(Perm::CopySelection) &&
+                (!askAi || (gGlobalPrefs->enableAskAI && HasPermission(Perm::InternetAccess)))) {
                 SetAnnotCreateTool(win, 0);
                 CancelDrag(win);
                 win->imageRegionPending = true;
+                win->imageRegionForAskAi = askAi;
                 HwndSetFocus(win->hwndFrame);
                 SetCursorCached(IDC_CROSS);
             }
             break;
+        }
 
         case CmdScreenshot:
             TakeScreenshots();

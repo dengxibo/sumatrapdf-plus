@@ -1049,6 +1049,7 @@ UINT_PTR removeIfNoInternetPerms[] = {
     CmdTranslateSelection,
     CmdAnalyzeSelectionWithDoubao,
     CmdOpenAskAi,
+    CmdCaptureRegionForAskAi,
     CmdHelpVisitWebsite,
     CmdHelpOpenManualOnWebsite,
     CmdHelpOpenKeyboardShortcuts,

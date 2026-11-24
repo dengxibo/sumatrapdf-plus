@@ -108,6 +108,8 @@ CmdToggleDoubleClickWordLookup,,Toggle Double-Click Word Lookup,"Toolbar button 
 CmdEbookFontSizeDecrease,,Ebook Font Size: Decrease,"Toolbar button and command palette; decreases reflowable ebook font size and reloads the document, ver 3.7+"
 CmdEbookFontSizeIncrease,,Ebook Font Size: Increase,"Toolbar button and command palette; increases reflowable ebook font size and reloads the document, ver 3.7+"
 CmdEbookFontSizeReset,,Ebook Font Size: Reset to Default,"Reading Font menu and command palette; restores the built-in document-aware ebook font size and reloads the document, ver 3.7+"
+CmdEpubParagraphLayout,,EPUB Paragraph Layout,"Opens the EPUB toolbar's per-book paragraph spacing, line spacing, first-line indent, and text alignment menu"
+CmdCaptureRegionForAskAi,,Add Page Region to AI Chat,"Capture an image from a document page and attach it to the AI chat draft"
 CmdToggleLinks,,Toggle Show Links,"Toggle drawing blue rectangle around links, ver 3.6+"
 ```
 

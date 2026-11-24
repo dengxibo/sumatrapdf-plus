@@ -170,9 +170,71 @@ struct BookFontSize {
     float singleSize;
     float facingSize;
     bool facing;
+    EpubParagraphLayout paragraphLayout{};
 };
 static SRWLOCK gBookFontSizeLock = SRWLOCK_INIT;
 static Vec<BookFontSize> gBookFontSizes;
+
+EpubParagraphLayout GetEpubParagraphLayout(const char* path) {
+    EpubParagraphLayout layout{};
+    AcquireSRWLockShared(&gBookFontSizeLock);
+    for (const auto& book : gBookFontSizes) {
+        if (str::EqI(book.path, path)) {
+            layout = book.paragraphLayout;
+            break;
+        }
+    }
+    ReleaseSRWLockShared(&gBookFontSizeLock);
+    return layout;
+}
+
+void SetEpubParagraphLayout(const char* path, EpubParagraphLayout layout) {
+    if (FileState* fs = gFileHistory.FindByPath(path)) {
+        fs->epubParagraphSpacing = layout.paragraphSpacing;
+        fs->epubLineSpacing = layout.lineSpacing;
+        fs->epubFirstLineIndent = layout.firstLineIndent;
+        fs->epubTextAlignment = layout.alignment;
+    }
+    AcquireSRWLockExclusive(&gBookFontSizeLock);
+    for (auto& book : gBookFontSizes) {
+        if (str::EqI(book.path, path)) {
+            book.paragraphLayout = layout;
+            ReleaseSRWLockExclusive(&gBookFontSizeLock);
+            return;
+        }
+    }
+    gBookFontSizes.Append({str::Dup(path), 0.f, 0.f, 0.f, true, layout});
+    ReleaseSRWLockExclusive(&gBookFontSizeLock);
+}
+
+TempStr BuildEpubParagraphLayoutCss(const char* path) {
+    auto layout = GetEpubParagraphLayout(path);
+    if (const auto* ui = GetEBookUI()) {
+        if (!layout.paragraphSpacing) layout.paragraphSpacing = ui->defaultEpubParagraphSpacing;
+        if (!layout.lineSpacing) layout.lineSpacing = ui->defaultEpubLineSpacing;
+        if (!layout.firstLineIndent) layout.firstLineIndent = ui->defaultEpubFirstLineIndent;
+        if (!layout.alignment) layout.alignment = ui->defaultEpubTextAlignment;
+    }
+    StrBuilder css;
+    if (layout.paragraphSpacing >= 1 && layout.paragraphSpacing <= 3) {
+        const char* margins[] = {"0.15em", "0.6em", "1em"};
+        css.AppendFmt("p:sumatra-body-paragraph { margin-top: 0 !important; margin-bottom: %s !important; }\n",
+                      margins[layout.paragraphSpacing - 1]);
+    }
+    if (layout.lineSpacing >= 1 && layout.lineSpacing <= 3) {
+        const char* heights[] = {"1.25", "1.55", "1.85"};
+        css.AppendFmt("p:sumatra-body-paragraph { line-height: %s !important; }\n", heights[layout.lineSpacing - 1]);
+    }
+    if (layout.firstLineIndent == 1 || layout.firstLineIndent == 2) {
+        css.AppendFmt("p:sumatra-body-paragraph { text-indent: %s !important; }\n",
+                      layout.firstLineIndent == 1 ? "0" : "2em");
+    }
+    if (layout.alignment == 1 || layout.alignment == 2) {
+        css.AppendFmt("p:sumatra-body-paragraph { text-align: %s !important; }\n",
+                      layout.alignment == 1 ? "left" : "justify");
+    }
+    return css.IsEmpty() ? nullptr : str::DupTemp(css.Get());
+}
 
 bool UsesEbookDisplayModeFontSizes(const char* path) {
     if (!path) return false;
@@ -336,8 +398,10 @@ void ApplyEbookFontSettingsFromPrefs() {
                     if (size == 0.f) size = limitValue(fs->ebookFontSize, kEbookFontSizeMinPt, kEbookFontSizeMaxPt);
                     fs->ebookFontSize = 0.f;
                 }
-                gBookFontSizes.Append(
-                    {str::Dup(fs->filePath), 0.f, fs->ebookSinglePageFontSize, fs->ebookFacingFontSize, facing});
+                EpubParagraphLayout layout{fs->epubParagraphSpacing, fs->epubLineSpacing, fs->epubFirstLineIndent,
+                                           fs->epubTextAlignment};
+                gBookFontSizes.Append({str::Dup(fs->filePath), 0.f, fs->ebookSinglePageFontSize,
+                                       fs->ebookFacingFontSize, facing, layout});
             } else if (fs->ebookFontSize > 0.f) {
                 gBookFontSizes.Append({str::Dup(fs->filePath), fs->ebookFontSize, 0.f, 0.f, false});
             }

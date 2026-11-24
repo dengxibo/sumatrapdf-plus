@@ -48,6 +48,7 @@
 #include "AiTocApi.h"
 #include "InlineTranslateLang.h"
 #include "InlineTranslate.h"
+#include "HandwrittenSignature.h"
 #include "SumatraDialogs.h"
 #include "WordLookup.h"
 #include "DarkModeSubclass.h"
@@ -656,10 +657,18 @@ struct ChatTurn {
     char* role = nullptr;    // "user" / "assistant"
     char* content = nullptr; // sent to the API
     char* display = nullptr; // shown instead of content when set
+    Vec<char*>* images = nullptr;
+    char* imagePreviewsRtf = nullptr;
     void Free() {
         str::FreePtr(&role);
         str::FreePtr(&content);
         str::FreePtr(&display);
+        str::FreePtr(&imagePreviewsRtf);
+        if (images) {
+            for (char* image : *images) str::Free(image);
+            delete images;
+            images = nullptr;
+        }
     }
 };
 
@@ -667,6 +676,7 @@ enum class PopupHot {
     None,
     Model,
     NewChat,
+    CaptureImage,
     Close,
     Copy,
     Hint,
@@ -679,6 +689,7 @@ struct InlineTranslatePopup {
     HWND hwnd = nullptr;
     HWND hwndTip = nullptr;
     WCHAR newChatTip[96]{};
+    WCHAR captureImageTip[192]{};
     HWND hwndTrans = nullptr;
     HWND hwndChat = nullptr;
     HWND hwndInput = nullptr;
@@ -737,6 +748,8 @@ struct InlineTranslatePopup {
     Rect inputRc{};
     Rect hintRc{};
     Rect sendRc{};
+    Rect imageStripRc{};
+    Rect captureImageRc{};
 };
 
 static InlineTranslatePopup* gPopup = nullptr;
@@ -747,6 +760,15 @@ static bool gAskModelsLoading = false;
 static int gNextPopupGeneration = 1;
 
 struct AiChatState {
+    struct Attachment {
+        char* jpeg = nullptr;
+        RenderedBitmap* preview = nullptr;
+        void Free() {
+            str::Free(jpeg);
+            delete preview;
+        }
+    };
+    Vec<Attachment> attachments;
     Vec<ChatTurn> turns;
     bool chatUsesDefault = true;
     AiTocApiConfig chatCfg{};
@@ -758,6 +780,7 @@ struct AiChatState {
     int generation = 0;
     bool asking = false;
     ~AiChatState() {
+        for (auto& image : attachments) image.Free();
         FreeAiCfg(chatCfg);
         str::Free(chatProfileName);
         if (cancel) {
@@ -1426,6 +1449,10 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
             // Character highlighting creates ragged stripes after wrapping.
             // Let spacing and the small role label distinguish each turn.
             RtfAppendEscaped(sb, text, text + str::Len(text));
+            if (t.imagePreviewsRtf) {
+                doc.Para(RtfDoc::Tw(2), 0, RtfDoc::Tw(3), RtfDoc::Tw(4));
+                sb.Append(t.imagePreviewsRtf);
+            }
         } else {
             doc.pendingGap = false;
             RtfAppendMarkdown(doc, text);
@@ -1446,9 +1473,29 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
     sb.Append("}");
 }
 
+struct ChatRtfInput {
+    const char* data;
+    size_t size;
+};
+
+static DWORD CALLBACK ReadChatRtf(DWORD_PTR cookie, LPBYTE buffer, LONG capacity, LONG* count) {
+    auto* remaining = (ChatRtfInput*)cookie;
+    *count = (LONG)std::min(remaining->size, (size_t)capacity);
+    memcpy(buffer, remaining->data, *count);
+    remaining->data += *count;
+    remaining->size -= *count;
+    return 0;
+}
+
 static void SetRichTextRtf(HWND hwnd, const char* rtf) {
-    SETTEXTEX st{ST_DEFAULT, CP_ACP};
-    SendMessageW(hwnd, EM_SETTEXTEX, (WPARAM)&st, (LPARAM)rtf);
+    ChatRtfInput remaining{rtf, str::Len(rtf)};
+    EDITSTREAM stream{};
+    stream.dwCookie = (DWORD_PTR)&remaining;
+    stream.pfnCallback = ReadChatRtf;
+    bool readOnly = (GetWindowLongW(hwnd, GWL_STYLE) & ES_READONLY) != 0;
+    if (readOnly) SendMessageW(hwnd, EM_SETREADONLY, FALSE, 0);
+    SendMessageW(hwnd, EM_STREAMIN, SF_RTF, (LPARAM)&stream);
+    if (readOnly) SendMessageW(hwnd, EM_SETREADONLY, TRUE, 0);
 }
 
 static int RichTextLen(HWND hwnd) {
@@ -1882,7 +1929,19 @@ static void LayoutAskSidebar(InlineTranslatePopup* p) {
     if (composerTop < y + readLine) {
         composerTop = y + readLine;
     }
-    int chatH = std::max(0, composerTop - Px(h, 8) - y);
+    p->captureImageRc = {};
+    p->imageStripRc = {};
+    int chatBottom = composerTop - Px(h, 8);
+    bool canCapture = aiOk && p->docked && p->boundTab && p->boundTab->AsFixed() && HasPermission(Perm::CopySelection);
+    if (canCapture) {
+        auto* state = AskState(p->boundTab, false);
+        if (state && !state->attachments.IsEmpty()) {
+            int stripHeight = Px(h, 50);
+            p->imageStripRc = Rect(padX, chatBottom - stripHeight, std::max(1, rc.dx - 2 * padX), stripHeight);
+            chatBottom = p->imageStripRc.y;
+        }
+    }
+    int chatH = std::max(0, chatBottom - y);
 
     if (!showChat) {
         p->chatRc = Rect(padX, y, std::max(1, rc.dx - padX * 2), chatH);
@@ -1911,7 +1970,11 @@ static void LayoutAskSidebar(InlineTranslatePopup* p) {
         p->sendRc = Rect(p->inputRc.x + p->inputRc.dx - inset - sendHit, sendY, sendHit, sendHit);
         int editH = lineH * lines;
         int editX = p->inputRc.x + inset;
-        int editW = std::max(1, p->sendRc.x - Px(h, 4) - editX);
+        if (canCapture) {
+            p->captureImageRc = Rect(p->sendRc.x - sendHit, sendY, sendHit, sendHit);
+        }
+        int actionsX = canCapture ? p->captureImageRc.x : p->sendRc.x;
+        int editW = std::max(1, actionsX - Px(h, 4) - editX);
         MoveWindow(p->hwndInput, editX, composerTop + (rowH - editH) / 2, editW, editH, TRUE);
         int rawLines = (int)SendMessageW(p->hwndInput, EM_GETLINECOUNT, 0, 0);
         ShowScrollBar(p->hwndInput, SB_VERT, rawLines > 5);
@@ -2107,18 +2170,18 @@ static void DrawFieldBox(HDC hdc, HWND hwnd, const Rect& r, bool focused, int ra
 
 // Paper plane, one outline. An up arrow reads as Previous next to Find's arrows.
 static void DrawComposerSend(HDC hdc, HWND hwnd, const Rect& r, bool hot, bool pressed, bool enabled,
-                             COLORREF hoverFill = kColorUnset) {
+                             COLORREF hoverFill = kColorUnset, bool docked = false) {
     if (r.IsEmpty()) {
         return;
     }
-    if ((hot || pressed) && enabled) {
+    if ((hot || pressed) && (enabled || docked)) {
         COLORREF fill = hoverFill == kColorUnset ? FloatingPopupHoverBg(FloatingPopupFieldBg()) : hoverFill;
         if (pressed) {
             fill = AccentColor(fill, ThemeUsesDarkChrome() ? 8 : 6);
         }
         FillFloatingPopupRoundedRect(hdc, r, Px(hwnd, 4), fill);
     }
-    COLORREF col = enabled ? FloatingPopupTextColor() : FloatingPopupMutedTextColor();
+    COLORREF col = enabled || (docked && hot) ? FloatingPopupTextColor() : FloatingPopupMutedTextColor();
     Gdiplus::Graphics g(hdc);
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
@@ -2195,6 +2258,18 @@ static TempStr HeaderSubtitleTemp(InlineTranslatePopup* p) {
     return str::DupTemp(sb.size() > 0 ? sb.Get() : "");
 }
 
+static Rect AskImageCell(InlineTranslatePopup* p, int i) {
+    Rect strip = p->imageStripRc;
+    int width = std::min(Px(p->hwnd, 66), strip.dx / 4);
+    return Rect(strip.x + width * i, strip.y, width, strip.dy);
+}
+
+static Rect AskImageRemoveRect(InlineTranslatePopup* p, int i) {
+    Rect cell = AskImageCell(p, i);
+    int size = std::min(cell.dx, Px(p->hwnd, 18));
+    return Rect(cell.x + cell.dx - size, cell.y, size, size);
+}
+
 static void PaintAskSidebar(InlineTranslatePopup* p, HDC hdcWnd) {
     HWND h = p->hwnd;
     Rect rc = ClientRect(h);
@@ -2269,6 +2344,39 @@ static void PaintAskSidebar(InlineTranslatePopup* p, HDC hdcWnd) {
     }
     SelectClipRgn(hdc, nullptr);
 
+    if (p->hwndTip) {
+        TOOLINFOW tip{sizeof(tip)};
+        tip.hwnd = h;
+        tip.uId = 3;
+        SendMessageW(p->hwndTip, TTM_DELTOOLW, 0, (LPARAM)&tip);
+        if (!p->captureImageRc.IsEmpty()) {
+            tip.uFlags = TTF_SUBCLASS | TTF_TRANSPARENT;
+            tip.rect = ToRECT(p->captureImageRc);
+            lstrcpynW(p->captureImageTip, ToWStrTemp(_TRA("Add page image (requires a vision model)")),
+                      dimof(p->captureImageTip));
+            tip.lpszText = p->captureImageTip;
+            SendMessageW(p->hwndTip, TTM_ADDTOOLW, 0, (LPARAM)&tip);
+        }
+    }
+    if (!p->imageStripRc.IsEmpty()) {
+        if (auto* state = AskState(p->boundTab, false)) {
+            for (int i = 0; i < state->attachments.Size(); i++) {
+                Rect cell = AskImageCell(p, i);
+                auto* bitmap = state->attachments.at(i).preview;
+                Size source = bitmap->GetSize();
+                float scale = std::min((float)std::max(1, cell.dx - Px(h, 5)) / source.dx,
+                                       (float)std::max(1, cell.dy - Px(h, 5)) / source.dy);
+                bitmap->Blit(hdc, Rect(cell.x, cell.y, std::max(1, (int)(source.dx * scale)),
+                                       std::max(1, (int)(source.dy * scale))));
+                Rect remove = AskImageRemoveRect(p, i);
+                FillFloatingPopupRoundedRect(hdc, remove, Px(h, 3), AskComposerFill());
+                RECT label = ToRECT(remove);
+                SetTextColor(hdc, txt);
+                DrawTextW(hdc, L"×", 1, &label, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+        }
+    }
+
     if (!p->inputRc.IsEmpty()) {
         // One field on the sidebar. The idle edge is only a step above the page;
         // focus strengthens that edge. It is not a link-blue Windows text box.
@@ -2279,7 +2387,35 @@ static void PaintAskSidebar(InlineTranslatePopup* p, HDC hdcWnd) {
         StrokeFloatingPopupRoundedRect(hdc, p->inputRc, radius, AskComposerBorder(focus));
         COLORREF sendHover = AccentColor(fill, ThemeUsesDarkChrome() ? 10 : 8);
         bool sendOn = p->inputHasText && !p->asking;
-        DrawComposerSend(hdc, h, p->sendRc, p->hot == PopupHot::Send, p->sendDown && sendOn, sendOn, sendHover);
+        if (!p->captureImageRc.IsEmpty()) {
+            Rect button = p->captureImageRc;
+            bool hot = p->hot == PopupHot::CaptureImage;
+            if (hot) FillFloatingPopupRoundedRect(hdc, button, Px(h, 4), sendHover);
+            int size = Px(h, 11);
+            float x = button.x + (button.dx - size) / 2.f;
+            float y = button.y + (button.dy - size) / 2.f;
+            float edge = (float)size;
+            Gdiplus::Graphics g(hdc);
+            g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+            Gdiplus::Color color;
+            color.SetFromCOLORREF(hot || sendOn ? FloatingPopupTextColor() : FloatingPopupMutedTextColor());
+            Gdiplus::Pen pen(color, std::max(1.15f, (float)Px(h, 1)));
+            pen.SetStartCap(Gdiplus::LineCapRound);
+            pen.SetEndCap(Gdiplus::LineCapRound);
+            pen.SetLineJoin(Gdiplus::LineJoinRound);
+            auto at = [&](float cx, float cy) { return Gdiplus::PointF(x + cx * edge, y + cy * edge); };
+            for (int side : {0, 1}) {
+                for (int end : {0, 1}) {
+                    float cx = side ? 0.92f : 0.08f;
+                    float cy = end ? 0.92f : 0.08f;
+                    Gdiplus::PointF points[] = {at(cx, cy + (end ? -0.31f : 0.31f)), at(cx, cy),
+                                                at(cx + (side ? -0.31f : 0.31f), cy)};
+                    g.DrawLines(&pen, points, dimofi(points));
+                }
+            }
+        }
+        DrawComposerSend(hdc, h, p->sendRc, p->hot == PopupHot::Send, p->sendDown && sendOn, sendOn, sendHover, true);
     }
     if (!p->hintRc.IsEmpty()) {
         RECT r = ToRECT(p->hintRc);
@@ -2830,9 +2966,101 @@ static bool InputImeComposing(HWND hwnd) {
     return n > 0;
 }
 
+static bool AskCanAttachImage(InlineTranslatePopup* p) {
+    return p && p->docked && p->boundTab && p->win && p->win->CurrentTab() == p->boundTab && gGlobalPrefs &&
+           gGlobalPrefs->enableAskAI && HasPermission(Perm::CopySelection) && HasPermission(Perm::InternetAccess);
+}
+
+static bool AttachAskBitmap(InlineTranslatePopup* p, Gdiplus::Bitmap* image) {
+    AutoDelete owned(image);
+    if (!image || !AskCanAttachImage(p)) return false;
+    UINT width = image->GetWidth(), height = image->GetHeight();
+    if (!width || !height) return false;
+    float factor = std::min(1.f, 1600.f / std::max(width, height));
+    Size size{std::max(1, (int)(width * factor)), std::max(1, (int)(height * factor))};
+    Gdiplus::Bitmap scaled(size.dx, size.dy, PixelFormat32bppRGB);
+    {
+        Gdiplus::Graphics graphics(&scaled);
+        graphics.Clear(Gdiplus::Color(255, 255, 255));
+        graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        if (graphics.DrawImage(image, 0, 0, size.dx, size.dy) != Gdiplus::Ok) return false;
+    }
+    HBITMAP bitmap = nullptr;
+    if (scaled.GetHBITMAP(Gdiplus::Color(255, 255, 255), &bitmap) != Gdiplus::Ok) return false;
+    return AddAskAiRegionImage(p->win, p->boundTab, new RenderedBitmap(bitmap, size));
+}
+
+static bool AttachAskDataObject(InlineTranslatePopup* p, IDataObject* data) {
+    if (!AskCanAttachImage(p)) return false;
+    char* path = nullptr;
+    Gdiplus::Bitmap* image = DecodeDataObjectImage(data, &path);
+    if (path) {
+        delete image;
+        image = Gdiplus::Bitmap::FromFile(ToWStrTemp(path));
+        str::Free(path);
+    }
+    return AttachAskBitmap(p, image);
+}
+
+static bool PasteAskImage(InlineTranslatePopup* p) {
+    if (!AskCanAttachImage(p)) return false;
+    if (IsClipboardFormatAvailable(CF_HDROP)) {
+        IDataObject* data = nullptr;
+        if (SUCCEEDED(OleGetClipboard(&data)) && data) {
+            bool added = AttachAskDataObject(p, data);
+            data->Release();
+            if (added) return true;
+        }
+    }
+    return AttachAskBitmap(p, DecodeClipboardImage());
+}
+
+class AskImageDropTarget final : public IDropTarget {
+    LONG refs = 1;
+    InlineTranslatePopup* popup;
+    bool acceptsImage = false;
+
+  public:
+    explicit AskImageDropTarget(InlineTranslatePopup* p) : popup(p) {}
+    STDMETHODIMP QueryInterface(REFIID iid, void** result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        if (iid != IID_IUnknown && iid != IID_IDropTarget) return E_NOINTERFACE;
+        *result = static_cast<IDropTarget*>(this);
+        AddRef();
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&refs); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG left = InterlockedDecrement(&refs);
+        if (!left) delete this;
+        return left;
+    }
+    STDMETHODIMP DragEnter(IDataObject* data, DWORD keys, POINTL point, DWORD* effect) override {
+        acceptsImage = DataObjectOffersImage(data);
+        return DragOver(keys, point, effect);
+    }
+    STDMETHODIMP DragOver(DWORD, POINTL, DWORD* effect) override {
+        *effect = acceptsImage && AskCanAttachImage(popup) ? *effect & DROPEFFECT_COPY : DROPEFFECT_NONE;
+        return S_OK;
+    }
+    STDMETHODIMP DragLeave() override {
+        acceptsImage = false;
+        return S_OK;
+    }
+    STDMETHODIMP Drop(IDataObject* data, DWORD, POINTL, DWORD* effect) override {
+        *effect = (*effect & DROPEFFECT_COPY) && AttachAskDataObject(popup, data) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        acceptsImage = false;
+        return S_OK;
+    }
+};
+
 static LRESULT CALLBACK InputSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
     auto* p = (InlineTranslatePopup*)data;
     switch (msg) {
+        case WM_PASTE:
+            if (PasteAskImage(p)) return 0;
+            break;
         case WM_KEYDOWN:
             if (wp == VK_RETURN && !InputImeComposing(hwnd)) {
                 bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -2866,6 +3094,7 @@ static LRESULT CALLBACK InputSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             }
             break;
         case WM_CHAR:
+            if (wp == 0x16 && PasteAskImage(p)) return 0; // Ctrl+V in the native edit control
             // swallow Enter / Esc so the edit doesn't beep. A composing IME still needs Enter.
             if (wp == 27 || (wp == '\r' && !InputImeComposing(hwnd))) {
                 return 0;
@@ -3011,6 +3240,19 @@ static bool TestChatStreaming() {
     ChatTurn user;
     user.role = str::Dup("user");
     user.content = str::Dup("请解释这段文字，并列出要点。");
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = 32;
+    info.bmiHeader.biHeight = -48;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    void* pixels = nullptr;
+    RenderedBitmap preview(CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0), Size(32, 48));
+    if (pixels) std::fill_n((u32*)pixels, 32 * 48, 0xffff0000);
+    StrBuilder images;
+    bool hasImages =
+        preview.IsValid() && AiChatAppendThumbnailRtf(&preview, images) && AiChatAppendThumbnailRtf(&preview, images);
+    user.imagePreviewsRtf = images.StealData();
     popup.turns.Append(user);
     ChatTurn assistant;
     assistant.role = str::Dup("assistant");
@@ -3022,7 +3264,27 @@ static bool TestChatStreaming() {
     RECT initial{};
     GetWindowRect(chat, &initial);
     StrBuilder response;
-    bool ok = true;
+    RebuildChatView(&popup);
+    info.bmiHeader.biWidth = 380;
+    info.bmiHeader.biHeight = -240;
+    pixels = nullptr;
+    HBITMAP snapshot = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+    HDC dc = CreateCompatibleDC(nullptr);
+    int redPixels = 0;
+    if (snapshot && dc) {
+        HGDIOBJ old = SelectObject(dc, snapshot);
+        SendMessageW(chat, WM_PRINTCLIENT, (WPARAM)dc, PRF_CLIENT);
+        GdiFlush();
+        for (int i = 0; i < 380 * 240; i++) {
+            u32 color = ((u32*)pixels)[i] & 0xffffff;
+            if (color >= 0xd00000 && (color & 0xffff) < 0x2020) redPixels++;
+        }
+        SelectObject(dc, old);
+    }
+    if (dc) DeleteDC(dc);
+    if (snapshot) DeleteObject(snapshot);
+    printf("AI chat thumbnails: encoded=%d, red pixels=%d\n", hasImages, redPixels);
+    bool ok = hasImages && redPixels > 64 * 64;
     for (int chunk = 0; chunk < 80; chunk++) {
         response.Append("流式输出的内容应当保持稳定的阅读位置，不应重新排列整个窗口。\n\n");
         str::ReplaceWithCopy(&popup.turns.Last().content, response.Get());
@@ -3361,6 +3623,9 @@ static InlineTranslatePopup* CreatePopup(MainWindow* win, bool docked) {
     SendMessageW(p->hwndInput, EM_SETLIMITTEXT, 2000, 0);
     SetWindowSubclass(p->hwndInput, InputSubclassProc, kInputSubclassId, (DWORD_PTR)p);
     if (docked) {
+        auto* target = new AskImageDropTarget(p);
+        RegisterDragDrop(p->hwnd, target);
+        target->Release();
         StripEditFrame(p->hwndChat);
         StripEditFrame(p->hwndInput);
         ShowScrollBar(p->hwndInput, SB_VERT, FALSE);
@@ -3549,6 +3814,7 @@ struct AskJob {
     AiTocApiConfig cfg{};
     Vec<AiTocChatMessage> msgs; // points into owned
     Vec<char*> owned;
+    Vec<const char**> imageLists;
     char* result = nullptr;
     char* error = nullptr;
     ULONGLONG lastProgress = 0;
@@ -3558,6 +3824,7 @@ struct AskJob {
             str::Free(s);
         }
         owned.Reset();
+        for (auto* images : imageLists) free(images);
         msgs.Reset();
         FreeAiCfg(cfg);
         str::FreePtr(&result);
@@ -3565,7 +3832,7 @@ struct AskJob {
     }
 };
 
-static void AskJobAppend(AskJob* job, const char* role, const char* content) {
+static void AskJobAppend(AskJob* job, const char* role, const char* content, Vec<char*>* images = nullptr) {
     char* r = str::Dup(role);
     char* c = str::Dup(content ? content : "");
     job->owned.Append(r);
@@ -3573,6 +3840,17 @@ static void AskJobAppend(AskJob* job, const char* role, const char* content) {
     AiTocChatMessage m;
     m.role = r;
     m.content = c;
+    if (images && !images->IsEmpty()) {
+        auto** copied = AllocArray<const char*>(images->Size());
+        for (int i = 0; i < images->Size(); i++) {
+            char* encoded = str::Dup(images->at(i));
+            job->owned.Append(encoded);
+            copied[i] = encoded;
+        }
+        job->imageLists.Append(copied);
+        m.images = copied;
+        m.imageCount = images->Size();
+    }
     job->msgs.Append(m);
 }
 
@@ -3687,7 +3965,7 @@ static void AskJobWorker(AskJob* job) {
 }
 
 // content goes to the API, display (optional) is what the user sees
-static void StartAsk(InlineTranslatePopup* p, const char* content, const char* display) {
+static void StartAsk(InlineTranslatePopup* p, const char* content, const char* display, bool attachImages = false) {
     if (!p || p->asking || str::IsEmptyOrWhiteSpace(content)) {
         return;
     }
@@ -3695,6 +3973,20 @@ static void StartAsk(InlineTranslatePopup* p, const char* content, const char* d
     userTurn.role = str::Dup("user");
     userTurn.content = str::Dup(content);
     userTurn.display = display ? str::Dup(display) : nullptr;
+    if (attachImages && p->docked) {
+        auto* state = AskState(p->boundTab, false);
+        if (state && !state->attachments.IsEmpty()) {
+            userTurn.images = new Vec<char*>();
+            StrBuilder previews;
+            for (auto& image : state->attachments) {
+                userTurn.images->Append(image.jpeg);
+                if (AiChatAppendThumbnailRtf(image.preview, previews)) previews.Append("  ");
+                delete image.preview;
+            }
+            if (!previews.IsEmpty()) userTurn.imagePreviewsRtf = previews.StealData();
+            state->attachments.Reset();
+        }
+    }
     p->turns.Append(userTurn);
     p->asking = true;
     p->chatFollowTail = true;
@@ -3725,7 +4017,7 @@ static void StartAsk(InlineTranslatePopup* p, const char* content, const char* d
         AskJobAppend(job, "system", sys.Get());
     }
     for (auto& t : p->turns) {
-        AskJobAppend(job, t.role, t.content);
+        AskJobAppend(job, t.role, t.content, attachImages ? t.images : nullptr);
     }
     ChatTurn reply;
     reply.role = str::Dup("assistant");
@@ -3781,7 +4073,7 @@ static void OnSendClicked(InlineTranslatePopup* p) {
         SetEditTextUtf8(p->hwndInput, "");
         SyncInputHasText(p);
         SyncComposerLines(p);
-        StartAsk(p, q, nullptr);
+        StartAsk(p, q, nullptr, true);
     }
     str::Free(q);
 }
@@ -3943,6 +4235,8 @@ static void NewAskConversation(InlineTranslatePopup* p) {
         state->asking = false;
         for (auto& turn : state->turns) turn.Free();
         state->turns.Reset();
+        for (auto& image : state->attachments) image.Free();
+        state->attachments.Reset();
         str::FreePtr(&state->draft);
         str::FreePtr(&state->selection);
     }
@@ -3955,6 +4249,7 @@ static void NewAskConversation(InlineTranslatePopup* p) {
 }
 
 static PopupHot HitTestHot(InlineTranslatePopup* p, Point pt) {
+    if (!p->captureImageRc.IsEmpty() && p->captureImageRc.Contains(pt)) return PopupHot::CaptureImage;
     if (p->docked && p->newChatRc.Contains(pt)) return PopupHot::NewChat;
     if (p->docked && !p->modelRc.IsEmpty() && p->modelRc.Contains(pt)) return PopupHot::Model;
     if (p->closeRc.Contains(pt)) {
@@ -4162,6 +4457,24 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             break;
         }
         case WM_LBUTTONUP: {
+            Point point{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            if (!p->captureImageRc.IsEmpty() && p->captureImageRc.Contains(point)) {
+                HwndSendCommand(p->win->hwndFrame, CmdCaptureRegionForAskAi);
+                return 0;
+            }
+            if (!p->imageStripRc.IsEmpty() && p->imageStripRc.Contains(point)) {
+                if (auto* state = AskState(p->boundTab, false)) {
+                    for (int i = 0; i < state->attachments.Size(); i++) {
+                        if (AskImageRemoveRect(p, i).Contains(point)) {
+                            state->attachments.at(i).Free();
+                            state->attachments.RemoveAt(i);
+                            LayoutPopup(p);
+                            InvalidateRect(hwnd, nullptr, FALSE);
+                            return 0;
+                        }
+                    }
+                }
+            }
             bool sendWasDown = p->sendDown;
             p->sendDown = false;
             if (GetCapture() == hwnd) {
@@ -4220,6 +4533,7 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             PostClosePopup();
             return 0;
         case WM_NCDESTROY:
+            if (p->docked) RevokeDragDrop(hwnd);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
             p->hwnd = nullptr;
             if (p->win && p->win->hwndAiSidebar == hwnd) {
@@ -4580,6 +4894,13 @@ void AskAiSelectionInTab(MainWindow* win, WindowTab* tab, const char* selection,
     str::ReplacePtr(&p->selection, NormalizeSelectionText(selection));
     p->contextOpen = false;
     p->contextPage = (win->ctrl) ? win->ctrl->CurrentPageNo() : 0;
+    if (auto* state = AskState(tab, false); state && !state->attachments.IsEmpty()) {
+        AutoFreeStr draft(GetEditTextUtf8(p->hwndInput));
+        SetEditTextUtf8(p->hwndInput,
+                        str::IsEmpty(draft) ? initialPrompt : str::JoinTemp(draft, "\n\n", initialPrompt));
+        FocusAskInput(p);
+        return;
+    }
     // Show the complete request, including the selected passage, as a user
     // message. The API payload stays unchanged.
     StartAsk(p, initialPrompt, nullptr);
@@ -4593,4 +4914,33 @@ void OpenEmptyAskAi(MainWindow* win) {
     ShowSidebarPage(win, SidebarView::Ai);
     EnsureAskAiSidebar(win);
     FocusAskInput(gAsk);
+}
+
+bool AddAskAiRegionImage(MainWindow* win, WindowTab* tab, RenderedBitmap* bitmap) {
+    defer {
+        delete bitmap;
+    };
+    if (!win || !tab || win->CurrentTab() != tab || !bitmap || !bitmap->IsValid() || !gGlobalPrefs->enableAskAI ||
+        !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
+        return false;
+    }
+    auto* state = AskState(tab, true);
+    if (state->attachments.Size() >= 4) {
+        ShowWarningNotification(win->hwndCanvas, _TRA("Remove an image before adding another (maximum 4)."),
+                                kNotif5SecsTimeOut);
+        return false;
+    }
+    char* encoded = AiChatEncodeImage(bitmap->GetBitmap());
+    if (!encoded) {
+        ShowWarningNotification(win->hwndCanvas, _TRA("Failed to create image"), kNotif5SecsTimeOut);
+        return false;
+    }
+    state->attachments.Append(AiChatState::Attachment{encoded, bitmap});
+    bitmap = nullptr;
+    OpenEmptyAskAi(win);
+    if (gAsk && gAsk->boundTab == tab) {
+        LayoutPopup(gAsk);
+        InvalidateRect(gAsk->hwnd, nullptr, FALSE);
+    }
+    return true;
 }

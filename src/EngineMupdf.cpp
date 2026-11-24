@@ -191,7 +191,7 @@ static TempStr BuildEbookDarkCss(bool isEpub) {
         return str::FormatTemp(R"(html {
   color-scheme: dark;
   background-color: %s !important;
-  color: #e6e1d8 !important;
+  -sumatra-dark-paper: %s !important;
 }
 body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
 section, article, main, header, footer, pre, table, td, th,
@@ -201,7 +201,6 @@ b, strong, em, i,
 .calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
 .calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
   background-color: transparent !important;
-  color: #e6e1d8 !important;
 }
 body {
   background-color: %s !important;
@@ -228,7 +227,8 @@ figcaption, caption, p.caption, div.caption, span.caption,
   color: #b8b1a6 !important;
 }
 )",
-                               bgHex, bgHex, borderHex, borderHex, borderHex, borderHex, borderHex, borderHex, linkHex);
+                               bgHex, bgHex, bgHex, borderHex, borderHex, borderHex, borderHex, borderHex, borderHex,
+                               linkHex);
     }
     return str::FormatTemp(R"(html {
   color-scheme: dark;
@@ -5364,6 +5364,11 @@ li, blockquote {
         if (!isEpub && !isOffice) {
             TempStr fallbackCss = BuildEbookFallbackFontCss();
             ebookCss = ebookCss ? str::JoinTemp(fallbackCss, "\n", ebookCss) : fallbackCss;
+        }
+        if (isEpub) {
+            if (TempStr paragraphCss = BuildEpubParagraphLayoutCss(filePath)) {
+                ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", paragraphCss) : paragraphCss;
+            }
         }
         // An empty translated String setting can be serialized as a single-line
         // "# <description>" value. Do not feed that placeholder to MuPDF as CSS.

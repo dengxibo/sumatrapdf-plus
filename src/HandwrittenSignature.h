@@ -4,6 +4,15 @@
 #pragma once
 
 struct MainWindow;
+struct IDataObject;
+namespace Gdiplus {
+class Bitmap;
+}
+
+// The caller owns the decoded image or the returned file path.
+Gdiplus::Bitmap* DecodeClipboardImage();
+Gdiplus::Bitmap* DecodeDataObjectImage(IDataObject* data, char** filePathOut);
+bool DataObjectOffersImage(IDataObject* data);
 
 void HandwrittenSignatureOpen(MainWindow* win);
 bool HandwrittenSignatureIsPlacing(MainWindow* win);

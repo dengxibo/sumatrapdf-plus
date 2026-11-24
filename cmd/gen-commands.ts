@@ -303,6 +303,8 @@ export const commands = [
     "CmdReadAloudOfflineVoice", "Offline speech",
     "CmdReadAloudEdgeVoice", "Online speech",
     "CmdToggleSingleFacing", "Toggle Single/Double Page View",
+    "CmdEpubParagraphLayout", "EPUB Paragraph Layout",
+    "CmdCaptureRegionForAskAi", "Add Page Region to AI Chat",
     "CmdNone", "Do nothing",
 ];
 

@@ -189,17 +189,19 @@ static fz_css_condition *fz_new_css_condition(fz_context *ctx, fz_pool *pool, in
 
 static fz_css_property *fz_new_css_property(fz_context *ctx, fz_pool *pool, const char *name, fz_css_value *value, int spec)
 {
-	struct css_property_info *info = css_property_lookup(name, strlen(name));
-        int key = info ? info->key : (strcmp(name, "border-radius") == 0 ? PRO_BORDER_RADIUS : -1);
-        if (key >= 0) {
-            fz_css_property* prop = fz_pool_alloc(ctx, pool, sizeof *prop);
-            prop->name = key;
-            prop->value = value;
-            prop->spec = spec;
-            prop->important = 0;
-            prop->next = NULL;
-            return prop;
-        }
+    struct css_property_info* info = css_property_lookup(name, strlen(name));
+    int key = info ? info->key : -1;
+    if (!strcmp(name, "border-radius")) key = PRO_BORDER_RADIUS;
+    if (!strcmp(name, "-sumatra-dark-paper")) key = PRO_SUMATRA_DARK_PAPER;
+    if (key >= 0) {
+        fz_css_property* prop = fz_pool_alloc(ctx, pool, sizeof *prop);
+        prop->name = key;
+        prop->value = value;
+        prop->spec = spec;
+        prop->important = 0;
+        prop->next = NULL;
+        return prop;
+    }
         return NULL;
 }
 

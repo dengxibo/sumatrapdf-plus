@@ -302,6 +302,7 @@ struct MainWindow {
     Vec<PointF> annotCreateInkPoints;
     bool ocrRegionPending = false;
     bool imageRegionPending = false;
+    bool imageRegionForAskAi = false;
     int imageRegionPageNo = 0;
     WindowTab* imageRegionTab = nullptr; // borrowed only while the mouse is captured
     // True when OCR region drag was started with Alt+LMB (temporary tool), not sticky mode.

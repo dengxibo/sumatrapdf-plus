@@ -115,6 +115,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ZoomOut, CmdZoomOut, _TRN("Zoom Out")},
     {TbIcon::EbookFontSizeIncrease, CmdEbookFontSizeIncrease, _TRN("Increase Font Size")},
     {TbIcon::EbookFontSizeDecrease, CmdEbookFontSizeDecrease, _TRN("Decrease Font Size")},
+    {TbIcon::EpubParagraphLayout, CmdEpubParagraphLayout, _TRN("EPUB Paragraph Layout")},
     {TbIcon::None, 0, nullptr},
     {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation (Ctrl+click to lock)")},
@@ -194,7 +195,7 @@ static int ToolbarOverflowPriority(int idx) {
         cmd == CmdCapturePageRegion)
         return 0;
     if (cmd == CmdRotateLeft || cmd == CmdRotateRight) return 1;
-    if (cmd == CmdEbookFontSizeIncrease || cmd == CmdEbookFontSizeDecrease) return 2;
+    if (cmd == CmdEbookFontSizeIncrease || cmd == CmdEbookFontSizeDecrease || cmd == CmdEpubParagraphLayout) return 2;
     if (idx >= kButtonsCount) return 4;
     if (cmd == CmdOpenFile || cmd == CmdPrint) return 5;
     if (cmd == CmdNavigateBack || cmd == CmdNavigateForward) return 6;
@@ -673,6 +674,8 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
             // Keep these buttons in a stable toolbar position. They are disabled
             // (gray) rather than hidden for PDF and other fixed-layout documents.
             return true;
+        case CmdEpubParagraphLayout:
+            return SupportsEpubParagraphLayout(win->CurrentTab());
         case CmdFindFirst:
         case CmdFindNext:
         case CmdFindPrev:
@@ -740,6 +743,8 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
         case CmdEbookFontSizeIncrease:
             return SupportsEbookFontSizeChange(win->CurrentTab()) &&
                    CanIncreaseEbookFontSize(win->CurrentTab()->filePath);
+        case CmdEpubParagraphLayout:
+            return SupportsEpubParagraphLayout(win->CurrentTab());
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
@@ -2529,6 +2534,32 @@ static void BlitPixmap(u8* dstSamples, ptrdiff_t dstStride, fz_pixmap* src, int 
     }
 }
 
+static const char* GetToolbarRasterSvg(TbIcon icon, int width, int height, COLORREF fg, COLORREF bg) {
+    if (icon != TbIcon::EpubParagraphLayout || width < 8 || height < 8) {
+        return GetSvgIcon(icon);
+    }
+    // Use whole pixel rows so all three strokes retain the same weight at
+    // every toolbar size. The opacity keeps the strokes as light as A+/A-.
+    int thickness = std::max(1, (height + 9) / 18);
+    int gap = std::max(thickness + 1, (height + 2) / 5);
+    int middle = (height - thickness) / 2;
+    int lineWidth = (width * 9 + 8) / 16;
+    int indent = std::max(1, (width + 4) / 8);
+    int left = (width - lineWidth) / 2;
+    bool dark = ThemeUsesDarkChrome();
+    // The toolbar image list uses color-key transparency. Blend against
+    // the dark chrome explicitly so SVG opacity cannot brighten these rows.
+    auto shade = [](int foreground, int background) { return (foreground * 3 + background * 2 + 2) / 5; };
+    const char* fill =
+        dark ? SerializeColorTemp(RGB(shade(GetRValue(fg), GetRValue(bg)), shade(GetGValue(fg), GetGValue(bg)),
+                                      shade(GetBValue(fg), GetBValue(bg))))
+             : "currentColor";
+    return str::FormatTemp(
+        R"(<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d"><g fill="%s" fill-opacity="%s"><rect x="%d" y="%d" width="%d" height="%d"/><rect x="%d" y="%d" width="%d" height="%d"/><rect x="%d" y="%d" width="%d" height="%d"/></g></svg>)",
+        width, height, fill, dark ? "1" : "0.76", left + indent, middle - gap, lineWidth - indent, thickness, left,
+        middle, lineWidth, thickness, left, middle + gap, lineWidth, thickness);
+}
+
 HBITMAP CreateSvgIconAlphaBitmap(int size, TbIcon icon, COLORREF color) {
     if (size < 1) return nullptr;
     auto ctx = fz_new_context_windows();
@@ -2541,7 +2572,8 @@ HBITMAP CreateSvgIconAlphaBitmap(int size, TbIcon icon, COLORREF color) {
     fz_var(pixmap);
     fz_var(bitmap);
     fz_try(ctx) {
-        TempStr svg = str::ReplaceTemp(GetSvgIcon(icon), "currentColor", SerializeColorTemp(color));
+        TempStr svg = str::ReplaceTemp(GetToolbarRasterSvg(icon, size, size, color, ThemeChromeBackgroundColor()),
+                                       "currentColor", SerializeColorTemp(color));
         buffer = fz_new_buffer_from_copied_data(ctx, (u8*)svg, str::Len(svg));
         float w = 0, h = 0;
         list = fz_new_display_list_from_svg(ctx, buffer, nullptr, nullptr, &w, &h);
@@ -2594,7 +2626,7 @@ void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORRE
         fz_drop_context_windows(ctx);
     };
 
-    const char* svgData = GetSvgIcon(icon);
+    const char* svgData = GetToolbarRasterSvg(icon, dx, dy, fgCol, bgCol);
     TempStr strokeCol = SerializeColorTemp(fgCol);
     TempStr fillCol = SerializeColorTemp(bgCol);
     TempStr fillColRepl = str::JoinTemp("fill=\"", fillCol, "\"");
@@ -2681,7 +2713,7 @@ static HBITMAP BuildIconsBitmap(int dx, int dy, COLORREF fgCol, COLORREF bgCol) 
     }
 
     for (int i = 0; i < nIcons; i++) {
-        const char* svgData = GetSvgIcon((TbIcon)i);
+        const char* svgData = GetToolbarRasterSvg((TbIcon)i, dx, dy, fgCol, bgCol);
         TempStr strokeCol = SerializeColorTemp(fgCol);
         TempStr fillCol = SerializeColorTemp(bgCol);
         TempStr fillColRepl = str::JoinTemp("fill=\"", fillCol, "\""); // fill="${col}"

@@ -313,6 +313,8 @@ static SeqStrings gCommandNames =
     "CmdReadAloudOfflineVoice\0"
     "CmdReadAloudEdgeVoice\0"
     "CmdToggleSingleFacing\0"
+    "CmdEpubParagraphLayout\0"
+    "CmdCaptureRegionForAskAi\0"
     "CmdNone\0"
     "\0";
 
@@ -616,6 +618,8 @@ static i32 gCommandIds[] = {
     CmdReadAloudOfflineVoice,
     CmdReadAloudEdgeVoice,
     CmdToggleSingleFacing,
+    CmdEpubParagraphLayout,
+    CmdCaptureRegionForAskAi,
     CmdNone,
 };
 
@@ -919,6 +923,8 @@ SeqStrings gCommandDescriptions =
     "Offline speech\0"
     "Online speech\0"
     "Toggle Single/Double Page View\0"
+    "EPUB Paragraph Layout\0"
+    "Add Page Region to AI Chat\0"
     "Do nothing\0"
     "\0";
 // clang-format on

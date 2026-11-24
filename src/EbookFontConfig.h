@@ -70,6 +70,16 @@ bool AdjustEbookFontSize(int direction, const char* filePath);
 // Clears the book override and restores the reading options default.
 bool ResetEbookFontSize(const char* filePath = nullptr);
 
+struct EpubParagraphLayout {
+    int paragraphSpacing = 0;
+    int lineSpacing = 0;
+    int firstLineIndent = 0;
+    int alignment = 0;
+};
+EpubParagraphLayout GetEpubParagraphLayout(const char* path);
+void SetEpubParagraphLayout(const char* path, EpubParagraphLayout layout);
+TempStr BuildEpubParagraphLayoutCss(const char* path);
+
 // CSS fragments for MuPDF user stylesheet.
 TempStr BuildEbookReaderFontCss(EbookTypographyKind typographyKind);
 TempStr BuildEbookFallbackFontCss();

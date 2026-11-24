@@ -199,8 +199,9 @@ enum
 	PRO_WIDTH,
 	PRO_WORD_SPACING,
         PRO_BORDER_RADIUS,
+        PRO_SUMATRA_DARK_PAPER,
 
-	/* Number of real properties. */
+        /* Number of real properties. */
 	NUM_PROPERTIES,
 
 	/* Short-hand properties (always expanded when applied, never used as is): */

@@ -1092,7 +1092,7 @@ static UINT PngMimeClipboardFormat() {
     return fmt;
 }
 
-static Bitmap* BitmapFromClipboard() {
+Bitmap* DecodeClipboardImage() {
     if (!OpenClipboard(nullptr)) {
         return nullptr;
     }
@@ -1211,7 +1211,7 @@ static Bitmap* BitmapFromFileGroup(IDataObject* dataObj) {
     return bmp;
 }
 
-static Bitmap* BitmapFromDataObject(IDataObject* dataObj, char** filePathOut) {
+Bitmap* DecodeDataObjectImage(IDataObject* dataObj, char** filePathOut) {
     if (filePathOut) {
         *filePathOut = nullptr;
     }
@@ -1286,7 +1286,7 @@ static Bitmap* BitmapFromDataObject(IDataObject* dataObj, char** filePathOut) {
     return bmp;
 }
 
-static bool DataObjectCanFeedSignature(IDataObject* dataObj) {
+bool DataObjectOffersImage(IDataObject* dataObj) {
     if (!dataObj) {
         return false;
     }
@@ -1337,7 +1337,7 @@ class SigDropTarget : public IDropTarget {
     }
     STDMETHODIMP DragEnter(IDataObject* dataObj, __unused DWORD grfKeyState, __unused POINTL pt,
                            DWORD* effect) override {
-        accept = DataObjectCanFeedSignature(dataObj);
+        accept = DataObjectOffersImage(dataObj);
         *effect = accept ? DROPEFFECT_COPY : DROPEFFECT_NONE;
         return S_OK;
     }
@@ -1352,7 +1352,7 @@ class SigDropTarget : public IDropTarget {
             return S_OK;
         }
         char* path = nullptr;
-        Bitmap* bmp = BitmapFromDataObject(dataObj, &path);
+        Bitmap* bmp = DecodeDataObjectImage(dataObj, &path);
         if (path) {
             delete bmp;
             BeginPhotoFromFile(pad, path);
@@ -1408,7 +1408,7 @@ static void PickPhotoFile(SigPad* pad) {
 }
 
 static void PastePhoto(SigPad* pad) {
-    Bitmap* bmp = BitmapFromClipboard();
+    Bitmap* bmp = DecodeClipboardImage();
     if (!bmp) {
         ShowCantRead(pad);
         return;

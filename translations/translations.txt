@@ -44279,3 +44279,148 @@ tw:單頁顯示（點擊切換為雙頁）
 :Open new EPUBs in continuous facing view
 cn:新 EPUB 使用连续双页视图
 tw:新 EPUB 使用連續雙頁檢視
+:EPUB Paragraph Layout
+cn:排版
+tw:排版
+ja:段落レイアウト
+kr:문단 레이아웃
+de:Absatzlayout
+fr:Mise en page des paragraphes
+es:Diseño de párrafos
+:Paragraph spacing
+cn:段间距
+tw:段落間距
+ja:段落間隔
+kr:문단 간격
+de:Absatzabstand
+fr:Espacement des paragraphes
+es:Espaciado entre párrafos
+:Line spacing
+cn:行距
+tw:行距
+ja:行間
+kr:줄 간격
+de:Zeilenabstand
+fr:Interligne
+es:Interlineado
+:First-line indent
+cn:首行缩进
+tw:首行縮排
+ja:字下げ
+kr:첫 줄 들여쓰기
+de:Erstzeileneinzug
+fr:Retrait de première ligne
+es:Sangría de primera línea
+:Text alignment
+cn:正文对齐
+tw:正文對齊
+ja:文字揃え
+kr:텍스트 정렬
+de:Textausrichtung
+fr:Alignement du texte
+es:Alineación del texto
+:Compact
+cn:紧凑
+tw:緊湊
+ja:狭い
+kr:좁게
+de:Kompakt
+fr:Compact
+es:Compacto
+:Medium
+cn:适中
+tw:適中
+ja:標準
+kr:보통
+de:Mittel
+fr:Moyen
+es:Medio
+:Loose
+cn:宽松
+tw:寬鬆
+ja:広い
+kr:넓게
+de:Weit
+fr:Large
+es:Amplio
+:No indent
+cn:不缩进
+tw:不縮排
+ja:字下げなし
+kr:들여쓰기 없음
+de:Kein Einzug
+fr:Sans retrait
+es:Sin sangría
+:Two-character indent
+cn:缩进两字
+tw:縮排兩字
+ja:二字下げ
+kr:두 글자 들여쓰기
+de:Einzug um zwei Zeichen
+fr:Retrait de deux caractères
+es:Sangría de dos caracteres
+:Align left
+cn:左对齐
+tw:靠左對齊
+ja:左揃え
+kr:왼쪽 정렬
+de:Linksbündig
+fr:Aligner à gauche
+es:Alinear a la izquierda
+:Justified
+cn:两端对齐
+tw:左右對齊
+ja:両端揃え
+kr:양쪽 정렬
+de:Blocksatz
+fr:Justifié
+es:Justificado
+:Reset paragraph layout
+cn:恢复默认排版
+tw:恢復預設排版
+ja:段落レイアウトをリセット
+kr:문단 레이아웃 초기화
+de:Absatzlayout zurücksetzen
+fr:Réinitialiser la mise en page des paragraphes
+es:Restablecer el diseño de párrafos
+:Original layout
+cn:原排版
+tw:原排版
+ja:元のレイアウト
+kr:원본 레이아웃
+de:Ursprüngliches Layout
+fr:Mise en page d’origine
+es:Diseño original
+:Follow default (%s)
+cn:跟随默认（%s）
+tw:跟隨預設（%s）
+ja:既定値に従う（%s）
+kr:기본값 따르기 (%s)
+de:Standard verwenden (%s)
+fr:Utiliser le réglage par défaut (%s)
+es:Usar el valor predeterminado (%s)
+:Set current value as default
+cn:将当前值设为默认
+tw:將目前值設為預設
+ja:現在の値を既定にする
+kr:현재 값을 기본값으로 설정
+de:Aktuellen Wert als Standard festlegen
+fr:Définir la valeur actuelle par défaut
+es:Establecer el valor actual como predeterminado
+:Clear global default
+cn:清除全局默认值
+tw:清除全域預設值
+ja:全体の既定値を解除
+kr:전역 기본값 지우기
+de:Globalen Standard zurücksetzen
+fr:Effacer le réglage global par défaut
+es:Borrar el valor predeterminado global
+:Add Page Region to AI Chat
+cn:将页面区域添加到 AI 聊天
+tw:將頁面區域加入 AI 聊天
+:Add page image (requires a vision model)
+cn:添加页面图片（需支持图片的模型）
+tw:加入頁面圖片（需支援圖片的模型）
+:Remove an image before adding another (maximum 4).
+cn:最多添加 4 张图片。请先移除一张。
+tw:最多加入 4 張圖片。請先移除一張。

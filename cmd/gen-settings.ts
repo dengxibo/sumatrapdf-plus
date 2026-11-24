@@ -157,6 +157,10 @@ const ebookUI: Field[] = [
   mkField("SinglePageFontSize", Float, 11, "default font size for single-page ebooks, 8-32 pt"),
   mkField("FacingFontSize", Float, 17, "default font size for facing and book-view ebooks, 8-32 pt"),
   mkField("OpenEpubInContinuousFacing", Bool, true, "open new EPUBs in continuous facing view; false uses the global default layout"),
+  mkField("DefaultEpubParagraphSpacing", Int, 0, "default EPUB paragraph spacing preset (0-3)"),
+  mkField("DefaultEpubLineSpacing", Int, 0, "default EPUB line spacing preset (0-3)"),
+  mkField("DefaultEpubFirstLineIndent", Int, 0, "default EPUB first-line indent preset (0-2)"),
+  mkField("DefaultEpubTextAlignment", Int, 0, "default EPUB alignment preset (0-2)"),
   setVersion(
     mkField(
       "FontFamily",
@@ -629,6 +633,10 @@ const fileSettings: Field[] = [
   mkField("EbookFontSize", Float, 0, "ebook font size for this file; 0 inherits the reading options default"),
   mkField("EbookSinglePageFontSize", Float, 0, "single-page ebook font size for this file; 0 inherits EBookUI.SinglePageFontSize"),
   mkField("EbookFacingFontSize", Float, 0, "facing and book-view ebook font size for this file; 0 inherits EBookUI.FacingFontSize"),
+  mkField("EpubParagraphSpacing", Int, 0, "per-book EPUB paragraph spacing preset"),
+  mkField("EpubLineSpacing", Int, 0, "per-book EPUB line spacing preset"),
+  mkField("EpubFirstLineIndent", Int, 0, "per-book EPUB first-line indent preset"),
+  mkField("EpubTextAlignment", Int, 0, "per-book EPUB text alignment preset"),
   mkField(
     "DisplayR2L",
     Bool,

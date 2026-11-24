@@ -406,6 +406,18 @@ EBookUI [
     ; layout
     OpenEpubInContinuousFacing = true
 
+    ; default EPUB paragraph spacing preset (0-3)
+    DefaultEpubParagraphSpacing = 0
+
+    ; default EPUB line spacing preset (0-3)
+    DefaultEpubLineSpacing = 0
+
+    ; default EPUB first-line indent preset (0-2)
+    DefaultEpubFirstLineIndent = 0
+
+    ; default EPUB alignment preset (0-2)
+    DefaultEpubTextAlignment = 0
+
     ; default Latin/serif body font for reflowable ebooks (EPUB, MOBI). Empty
     ; uses Literata (introduced in version 3.7.21)
     FontFamily = Literata
@@ -867,6 +879,18 @@ FileStates [
     ; facing and book-view ebook font size for this file; 0 inherits
     ; EBookUI.FacingFontSize
     EbookFacingFontSize = 0
+
+    ; per-book EPUB paragraph spacing preset
+    EpubParagraphSpacing = 0
+
+    ; per-book EPUB line spacing preset
+    EpubLineSpacing = 0
+
+    ; per-book EPUB first-line indent preset
+    EpubFirstLineIndent = 0
+
+    ; per-book EPUB text alignment preset
+    EpubTextAlignment = 0
 
     ; if true, the document is displayed right-to-left in facing and book view
     ; modes (only used for comic book documents)

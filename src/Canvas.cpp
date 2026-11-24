@@ -72,6 +72,7 @@
 #include "MediaOverlayPlayer.h"
 #include "PdfPageAudio.h"
 #include "ImageSaveCropResize.h"
+#include "InlineTranslate.h"
 
 #include "utils/Log.h"
 
@@ -1072,6 +1073,7 @@ void CancelDrag(MainWindow* win) {
     win->annotationBeingResized = false;
     win->ocrRegionPending = false;
     win->imageRegionPending = false;
+    win->imageRegionForAskAi = false;
     win->ocrRegionFromModifier = false;
     SetCursorCached(IDC_ARROW);
 }
@@ -3026,6 +3028,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
 
     auto ma = win->mouseAction;
     if (ma == MouseAction::ImageRegion) {
+        bool attachToChat = win->imageRegionForAskAi;
         int pageNo = win->imageRegionPageNo;
         WindowTab* sourceTab = win->imageRegionTab;
         Point start = win->annotCreateDragStart;
@@ -3047,8 +3050,16 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         }
         clip = clip.Intersect(dm->GetEngine()->PageMediabox(pageNo));
         if (clip.IsEmpty()) return;
-        RenderPageArgs args(pageNo, dm->GetZoomReal(pageNo), dm->GetRotation(), &clip, RenderTarget::Export);
+        float zoom = dm->GetZoomReal(pageNo);
+        if (attachToChat) {
+            zoom = std::min(zoom, 1600.f / std::max(clip.dx, clip.dy));
+        }
+        RenderPageArgs args(pageNo, zoom, dm->GetRotation(), &clip, RenderTarget::Export);
         RenderedBitmap* bmp = dm->GetEngine()->RenderPage(args);
+        if (attachToChat && bmp) {
+            AddAskAiRegionImage(win, sourceTab, bmp);
+            return;
+        }
         if (bmp) {
             TempStr dir = path::GetDirTemp(sourceTab->filePath);
             TempStr base = path::GetBaseNameTemp(sourceTab->filePath);

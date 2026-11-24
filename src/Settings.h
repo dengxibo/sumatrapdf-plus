@@ -100,6 +100,14 @@ struct EBookUI {
     // open new EPUBs in continuous facing view; false uses the global
     // default layout
     bool openEpubInContinuousFacing;
+    // default EPUB paragraph spacing preset (0-3)
+    int defaultEpubParagraphSpacing;
+    // default EPUB line spacing preset (0-3)
+    int defaultEpubLineSpacing;
+    // default EPUB first-line indent preset (0-2)
+    int defaultEpubFirstLineIndent;
+    // default EPUB alignment preset (0-2)
+    int defaultEpubTextAlignment;
     // default Latin/serif body font for reflowable ebooks (EPUB, MOBI).
     // Empty uses Literata
     char* fontFamily;
@@ -414,6 +422,14 @@ struct FileState {
     // facing and book-view ebook font size for this file; 0 inherits
     // EBookUI.FacingFontSize
     float ebookFacingFontSize;
+    // per-book EPUB paragraph spacing preset
+    int epubParagraphSpacing;
+    // per-book EPUB line spacing preset
+    int epubLineSpacing;
+    // per-book EPUB first-line indent preset
+    int epubFirstLineIndent;
+    // per-book EPUB text alignment preset
+    int epubTextAlignment;
     // if true, the document is displayed right-to-left in facing and book
     // view modes (only used for comic book documents)
     bool displayR2L;
@@ -903,6 +919,10 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, singlePageFontSize), SettingType::Float, (intptr_t)"11", "电子书单页默认字号，8–32 pt，默认 11"},
     {offsetof(EBookUI, facingFontSize), SettingType::Float, (intptr_t)"17", "电子书双页默认字号，8–32 pt，默认 17"},
     {offsetof(EBookUI, openEpubInContinuousFacing), SettingType::Bool, true, nullptr},
+    {offsetof(EBookUI, defaultEpubParagraphSpacing), SettingType::Int, 0, nullptr},
+    {offsetof(EBookUI, defaultEpubLineSpacing), SettingType::Int, 0, nullptr},
+    {offsetof(EBookUI, defaultEpubFirstLineIndent), SettingType::Int, 0, nullptr},
+    {offsetof(EBookUI, defaultEpubTextAlignment), SettingType::Int, 0, nullptr},
     {offsetof(EBookUI, fontFamily), SettingType::String, (intptr_t)"Literata", "电子书西文/默认衬线字体"},
     {offsetof(EBookUI, cjkFontFamily), SettingType::String, (intptr_t)"Source Han Serif SC", "电子书中文正文字体"},
     {offsetof(EBookUI, cjkFontFile), SettingType::String, 0, nullptr},
@@ -915,9 +935,10 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)"", "电子书画布背景色"},
 };
 static const StructInfo gEBookUIInfo = {
-    sizeof(EBookUI), 14, gEBookUIFields,
-    "FontSize\0SinglePageFontSize\0FacingFontSize\0OpenEpubInContinuousFacing\0FontFamily\0CjkFontFamily\0CjkFontFile\0"
-    "LayoutDx\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
+    sizeof(EBookUI), 18, gEBookUIFields,
+    "FontSize\0SinglePageFontSize\0FacingFontSize\0OpenEpubInContinuousFacing\0DefaultEpubParagraphSpacing\0DefaultEpub"
+    "LineSpacing\0DefaultEpubFirstLineIndent\0DefaultEpubTextAlignment\0FontFamily\0CjkFontFamily\0CjkFontFile\0LayoutD"
+    "x\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
 
 static const FieldInfo gWindowMargin_1_Fields[] = {
     {offsetof(WindowMargin, top), SettingType::Int, 0, nullptr},
@@ -1109,6 +1130,10 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, ebookFontSize), SettingType::Float, (intptr_t)"0", nullptr},
     {offsetof(FileState, ebookSinglePageFontSize), SettingType::Float, (intptr_t)"0", nullptr},
     {offsetof(FileState, ebookFacingFontSize), SettingType::Float, (intptr_t)"0", nullptr},
+    {offsetof(FileState, epubParagraphSpacing), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, epubLineSpacing), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, epubFirstLineIndent), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, epubTextAlignment), SettingType::Int, 0, nullptr},
     {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
     {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)"", nullptr},
     {offsetof(FileState, tabCol), SettingType::Color, (intptr_t)"", nullptr},
@@ -1122,11 +1147,12 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
-    sizeof(FileState), 31, gFileStateFields,
+    sizeof(FileState), 35, gFileStateFields,
     "FilePath\0Favorites\0IsPinned\0IsMissing\0OpenCount\0DecryptionKey\0UseDefaultState\0DisplayMode\0ScrollPos\0PageN"
     "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarVisibilityManual\0SidebarDx\0EbookFontSize"
-    "\0EbookSinglePageFontSize\0EbookFacingFontSize\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness\0DisplayFilterC"
-    "ontrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseIdx\0TocState"};
+    "\0EbookSinglePageFontSize\0EbookFacingFontSize\0EpubParagraphSpacing\0EpubLineSpacing\0EpubFirstLineIndent\0EpubTe"
+    "xtAlignment\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0Di"
+    "splayFilterMode\0AutoOcrOn\0ReparseIdx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1187,8 +1213,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-115.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-115.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-116.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-116.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
