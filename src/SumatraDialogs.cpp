@@ -918,6 +918,7 @@ static const int gSettingsReadingControls[] = {IDC_GROUP_DEFAULT_VIEW,
                                                IDC_DEFAULT_ZOOM_LABEL,
                                                IDC_DEFAULT_ZOOM,
                                                IDC_DEFAULT_SHOW_TOC,
+                                               IDC_OPEN_EPUB_CONTINUOUS_FACING,
                                                IDC_GROUP_SCROLLING,
                                                IDC_SMOOTH_SCROLL,
                                                IDC_WHEEL_SCROLL_LINES_LABEL,
@@ -2386,6 +2387,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetupZoomComboBox(hDlg, IDC_DEFAULT_ZOOM, false, prefs->defaultZoomFloat);
 
             CheckDlgButton(hDlg, IDC_DEFAULT_SHOW_TOC, prefs->showToc ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_OPEN_EPUB_CONTINUOUS_FACING,
+                           prefs->eBookUI.openEpubInContinuousFacing ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT,
                            prefs->rememberStatePerDocument ? BST_CHECKED : BST_UNCHECKED);
             EnableWindow(GetDlgItem(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT), prefs->rememberOpenedFiles);
@@ -2617,6 +2620,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_TREE_FONT_SIZE_LABEL, _TRA("Si&ze (0 = auto, 6-72):"));
             HwndSetDlgItemText(hDlg, IDC_TREE_WRAP_LABELS, _TRA("&Wrap long titles"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_DEFAULT_VIEW, _TRA("Default view"));
+            HwndSetDlgItemText(hDlg, IDC_OPEN_EPUB_CONTINUOUS_FACING, _TRA("Open new EPUBs in continuous facing view"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_SCROLLING, _TRA("Scrolling"));
             HwndSetDlgItemText(hDlg, IDC_FAST_SCROLL_OVER_SCROLLBAR, _TRA("Fast page scrolling over the scroll&bar"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_DISPLAY_QUALITY, _TRA("Display quality"));
@@ -3020,6 +3024,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->defaultZoomFloat = GetZoomComboBoxValue(hDlg, IDC_DEFAULT_ZOOM, prefs->defaultZoomFloat);
 
                     prefs->showToc = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_DEFAULT_SHOW_TOC));
+                    prefs->eBookUI.openEpubInContinuousFacing =
+                        (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_OPEN_EPUB_CONTINUOUS_FACING));
                     prefs->rememberStatePerDocument =
                         (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT));
                     prefs->useTabs = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_USE_TABS));

@@ -44276,3 +44276,6 @@ tw:雙頁顯示（點擊切換為單頁）
 :Single page view (click for double page)
 cn:单页显示（点击切换为双页）
 tw:單頁顯示（點擊切換為雙頁）
+:Open new EPUBs in continuous facing view
+cn:新 EPUB 使用连续双页视图
+tw:新 EPUB 使用連續雙頁檢視

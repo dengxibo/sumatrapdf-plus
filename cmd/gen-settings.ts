@@ -156,6 +156,7 @@ const ebookUI: Field[] = [
   mkField("FontSize", Float, 0, "legacy ebook body font size in points; 0 uses built-in default; 8-32 forces this size for other reflow documents"),
   mkField("SinglePageFontSize", Float, 11, "default font size for single-page ebooks, 8-32 pt"),
   mkField("FacingFontSize", Float, 17, "default font size for facing and book-view ebooks, 8-32 pt"),
+  mkField("OpenEpubInContinuousFacing", Bool, true, "open new EPUBs in continuous facing view; false uses the global default layout"),
   setVersion(
     mkField(
       "FontFamily",

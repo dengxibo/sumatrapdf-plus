@@ -97,6 +97,9 @@ struct EBookUI {
     float singlePageFontSize;
     // default font size for facing and book-view ebooks, 8-32 pt
     float facingFontSize;
+    // open new EPUBs in continuous facing view; false uses the global
+    // default layout
+    bool openEpubInContinuousFacing;
     // default Latin/serif body font for reflowable ebooks (EPUB, MOBI).
     // Empty uses Literata
     char* fontFamily;
@@ -899,6 +902,7 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0", "其他重排文档的旧版字号设置，8–32 pt；0=内置默认"},
     {offsetof(EBookUI, singlePageFontSize), SettingType::Float, (intptr_t)"11", "电子书单页默认字号，8–32 pt，默认 11"},
     {offsetof(EBookUI, facingFontSize), SettingType::Float, (intptr_t)"17", "电子书双页默认字号，8–32 pt，默认 17"},
+    {offsetof(EBookUI, openEpubInContinuousFacing), SettingType::Bool, true, nullptr},
     {offsetof(EBookUI, fontFamily), SettingType::String, (intptr_t)"Literata", "电子书西文/默认衬线字体"},
     {offsetof(EBookUI, cjkFontFamily), SettingType::String, (intptr_t)"Source Han Serif SC", "电子书中文正文字体"},
     {offsetof(EBookUI, cjkFontFile), SettingType::String, 0, nullptr},
@@ -911,9 +915,9 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)"", "电子书画布背景色"},
 };
 static const StructInfo gEBookUIInfo = {
-    sizeof(EBookUI), 13, gEBookUIFields,
-    "FontSize\0SinglePageFontSize\0FacingFontSize\0FontFamily\0CjkFontFamily\0CjkFontFile\0LayoutDx\0LayoutDy\0IgnoreDo"
-    "cumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
+    sizeof(EBookUI), 14, gEBookUIFields,
+    "FontSize\0SinglePageFontSize\0FacingFontSize\0OpenEpubInContinuousFacing\0FontFamily\0CjkFontFamily\0CjkFontFile\0"
+    "LayoutDx\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
 
 static const FieldInfo gWindowMargin_1_Fields[] = {
     {offsetof(WindowMargin, top), SettingType::Int, 0, nullptr},
@@ -1183,8 +1187,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-108.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-108.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-115.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-115.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},

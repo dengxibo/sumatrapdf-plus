@@ -1520,23 +1520,60 @@ static int ReadAloudFindContextInNewText(const char* oldText, int oldAbs, const 
         return -1;
     }
 
+    // Page and line breaks introduce different amounts of whitespace at each
+    // font size. Match the text without it and keep the new UTF-8 byte offsets.
+    StrBuilder normalizedNew;
+    Vec<int> newOffsets;
+    for (int i = 0; newText[i]; i++) {
+        char c = newText[i];
+        if (!IsReadAloudHorizontalSpace(c) && !IsReadAloudLineBreak(c)) {
+            normalizedNew.AppendChar(c);
+            newOffsets.Append(i);
+        }
+    }
+    if (normalizedNew.len == 0) {
+        return -1;
+    }
+
+    while (oldAbs < oldLen && (IsReadAloudHorizontalSpace(oldText[oldAbs]) || IsReadAloudLineBreak(oldText[oldAbs]))) {
+        oldAbs++;
+    }
+    if (oldAbs == oldLen) {
+        return -1;
+    }
+    while (oldAbs > 0 && (oldText[oldAbs] & 0xc0) == 0x80) {
+        oldAbs--;
+    }
+
     static const int contextRadii[] = {96, 48, 24};
     for (int radius : contextRadii) {
-        int contextStart = std::max(0, oldAbs - radius / 2);
-        int contextEnd = std::min(oldLen, oldAbs + radius);
-        while (contextStart < oldAbs && (oldText[contextStart] & 0xc0) == 0x80) {
-            contextStart++;
-        }
-        while (contextEnd < oldLen && (oldText[contextEnd] & 0xc0) == 0x80) {
-            contextEnd++;
-        }
-        if (contextEnd <= contextStart) {
-            continue;
-        }
-        TempStr context = str::DupTemp(oldText + contextStart, (size_t)(contextEnd - contextStart));
-        const char* contextHit = str::Find(newText, context);
-        if (contextHit) {
-            return (int)(contextHit - newText) + oldAbs - contextStart;
+        // A one-sided match also covers an anchor at the edge of a read batch.
+        int contextPrefixes[] = {radius / 2, 0, radius};
+        for (int prefix : contextPrefixes) {
+            int contextStart = std::max(0, oldAbs - prefix);
+            int contextEnd = std::min(oldLen, oldAbs + radius - prefix + 4);
+            while (contextStart < oldAbs && (oldText[contextStart] & 0xc0) == 0x80) {
+                contextStart++;
+            }
+            while (contextEnd < oldLen && (oldText[contextEnd] & 0xc0) == 0x80) {
+                contextEnd++;
+            }
+            StrBuilder context;
+            int anchorInContext = 0;
+            for (int i = contextStart; i < contextEnd; i++) {
+                char c = oldText[i];
+                if (!IsReadAloudHorizontalSpace(c) && !IsReadAloudLineBreak(c)) {
+                    context.AppendChar(c);
+                    anchorInContext += i < oldAbs;
+                }
+            }
+            if (context.len < 16) {
+                continue;
+            }
+            const char* hit = str::Find(normalizedNew.Get(), context.Get());
+            if (hit && !str::Find(hit + 1, context.Get())) {
+                return newOffsets.at((int)(hit - normalizedNew.Get()) + anchorInContext);
+            }
         }
     }
     return -1;
@@ -1673,8 +1710,99 @@ static bool ReadAloudReplaceHighlightMap(WindowTab* tab, ReadAloudHighlightMap* 
     return ReadAloudStealHighlightMap(tab, newMap);
 }
 
+static bool ReadAloudRemapPlayingText(WindowTab* tab, ReadAloudHighlightMap* newMap, const char* rebuiltText,
+                                      int anchor) {
+    const char* text = tab->readAloudText;
+    int textLen = str::Leni(text);
+    int rebuiltAnchor = ReadAloudFindContextInNewText(text, anchor, rebuiltText);
+    if (rebuiltAnchor < 0) {
+        return false;
+    }
+    auto isSpace = [](char c) { return IsReadAloudHorizontalSpace(c) || IsReadAloudLineBreak(c); };
+    while (anchor < textLen && isSpace(text[anchor])) {
+        anchor++;
+    }
+    while (anchor > 0 && (text[anchor] & 0xc0) == 0x80) {
+        anchor--;
+    }
+    ReadAloudHighlightMap aligned{};
+    defer {
+        ReadAloudHighlightFree(&aligned);
+    };
+    int base = tab->readAloudHighlightBase;
+    for (int i = 0; i < base + textLen; i++) {
+        if (!ReadAloudHighlightAppend(&aligned, ReadAloudByteLoc{})) {
+            return false;
+        }
+    }
+    int oldByte = anchor;
+    int newByte = rebuiltAnchor;
+    while (oldByte < textLen) {
+        if (isSpace(text[oldByte])) {
+            oldByte++;
+            continue;
+        }
+        while (newByte < newMap->len && isSpace(rebuiltText[newByte])) {
+            newByte++;
+        }
+        if (newByte == newMap->len || text[oldByte] != rebuiltText[newByte]) {
+            // Some layouts change a discretionary hyphen or another glyph.
+            // Re-align the next run without shifting any spoken offsets.
+            int nextOld = oldByte + 1;
+            while (nextOld < textLen && (text[nextOld] & 0xc0) == 0x80) {
+                nextOld++;
+            }
+            int nextNew = ReadAloudFindContextInNewText(text, nextOld, rebuiltText);
+            if (nextNew < newByte || nextNew - newByte > 96) {
+                break;
+            }
+            while (nextOld < textLen && isSpace(text[nextOld])) {
+                nextOld++;
+            }
+            oldByte = nextOld;
+            newByte = nextNew;
+            continue;
+        }
+        aligned.locs[base + oldByte++] = newMap->locs[newByte++];
+    }
+    for (int i = anchor - 1, j = rebuiltAnchor - 1; i >= 0 && j >= 0; i--) {
+        if (isSpace(text[i])) {
+            continue;
+        }
+        while (j >= 0 && isSpace(rebuiltText[j])) {
+            j--;
+        }
+        if (j < 0 || text[i] != rebuiltText[j]) {
+            break;
+        }
+        aligned.locs[base + i] = newMap->locs[j--];
+    }
+
+    if (oldByte < textLen) {
+        // The available text still supplies valid coordinates around the
+        // spoken anchor. Only append a tail when its boundary is known.
+        return ReadAloudStealHighlightMap(tab, &aligned);
+    }
+
+    // The bytes already handed to the synthesizer stay at their original
+    // offsets. Append the rest of the rebuilt pages for the next utterance.
+    for (int i = newByte; i < newMap->len; i++) {
+        if (!ReadAloudHighlightAppend(&aligned, newMap->locs[i])) {
+            return false;
+        }
+    }
+    StrBuilder continued;
+    continued.Append(text);
+    continued.Append(rebuiltText + newByte);
+    if (!ReadAloudStealHighlightMap(tab, &aligned)) {
+        return false;
+    }
+    str::ReplaceWithCopy(&tab->readAloudText, continued.Get());
+    return true;
+}
+
 static bool ReadAloudRelocateTextAndMap(WindowTab* tab, ReadAloudHighlightMap* newMap, const char* rebuiltText,
-                                        int anchorAbs, bool* textRelocatedOut) {
+                                        int anchorAbs) {
     if (!tab || !newMap || str::IsEmpty(rebuiltText) || newMap->len != str::Leni(rebuiltText)) {
         return false;
     }
@@ -1700,21 +1828,16 @@ static bool ReadAloudRelocateTextAndMap(WindowTab* tab, ReadAloudHighlightMap* n
         return false;
     }
 
+    tab->readAloudHighlightBase = 0;
     tab->readAloudChunkStart = anchorAbs;
     tab->readAloudChunkEnd = anchorAbs;
     if (tab->readAloudResumePos > 0) {
-        tab->readAloudResumePos = anchorAbs + tab->readAloudHighlightBase;
-    }
-    if (textRelocatedOut) {
-        *textRelocatedOut = true;
+        tab->readAloudResumePos = anchorAbs;
     }
     return true;
 }
 
-bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win, bool* textRelocatedOut) {
-    if (textRelocatedOut) {
-        *textRelocatedOut = false;
-    }
+bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win) {
     if (!tab || str::IsEmpty(tab->readAloudText) || !tab->readAloudHighlight) {
         return false;
     }
@@ -1731,10 +1854,12 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
     }
 
     int anchorAbs = -1;
-    if (TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+    bool playing = GetReadAloudSourceTab() == tab;
+    if (playing) {
         // Synthesis can be between word callbacks when the layout is replaced.
         // Keep the current chunk as the fallback instead of restarting at zero.
-        anchorAbs = tab->readAloudChunkStart + std::max(0, TtsGetSpokenPosUtf8());
+        anchorAbs =
+            std::min(str::Leni(tab->readAloudText) - 1, tab->readAloudChunkStart + std::max(0, TtsGetSpokenPosUtf8()));
     } else if (tab->readAloudResumePos > 0) {
         anchorAbs = tab->readAloudResumePos - tab->readAloudHighlightBase;
     }
@@ -1746,16 +1871,25 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
     // Reflow invalidates global page and glyph numbers. For EPUB, rebuild from
     // the stable chapter containing the spoken byte instead of reusing the old
     // page interval, then relocate the spoken text within that chapter.
-    int anchorChapter = ReadAloudChapterAtAnchor(tab->readAloudHighlight, anchorAbs);
+    int anchorInMap = anchorAbs < 0 ? -1 : anchorAbs + tab->readAloudHighlightBase;
+    int anchorChapter = ReadAloudChapterAtAnchor(tab->readAloudHighlight, anchorInMap);
+    int rebuiltStartPage = 0;
+    int rebuiltEndPage = 0;
     if (anchorChapter >= 0) {
         int chapterStartPage = 0;
         int chapterEndPage = 0;
         if (EngineMupdfGetReflowChapterPageRange(engine, anchorChapter, &chapterStartPage, &chapterEndPage)) {
+            int tailChapter = ReadAloudChapterAtAnchor(tab->readAloudHighlight, tab->readAloudHighlight->len - 1);
+            int tailStart = 0;
+            int tailEnd = 0;
+            if (playing && tailChapter > anchorChapter &&
+                EngineMupdfGetReflowChapterPageRange(engine, tailChapter, &tailStart, &tailEnd)) {
+                chapterEndPage = tailEnd;
+            }
             ok = ReadAloudHighlightBuildFromDocument(dm, chapterStartPage, 0, chapterEndPage, &newMap, cleaned);
             if (ok) {
-                tab->readAloudStartPage = chapterStartPage;
-                tab->readAloudStartGlyph = 0;
-                tab->readAloudBuiltEndPage = chapterEndPage;
+                rebuiltStartPage = chapterStartPage;
+                rebuiltEndPage = chapterEndPage;
             }
         }
     }
@@ -1764,15 +1898,14 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
     // expose chapter locations. Find the same surrounding text in the new page
     // stream, then rebuild the normal lazy read-aloud batch around that page.
     if (!ok && anchorAbs >= 0 && tab->readAloudBuiltEndPage > 0) {
-        int oldAnchorPage = ReadAloudPageAtAnchor(tab->readAloudHighlight, anchorAbs);
+        int oldAnchorPage = ReadAloudPageAtAnchor(tab->readAloudHighlight, anchorInMap);
         int anchorPage = ReadAloudFindAnchorPageAfterReflow(engine, tab->readAloudText, anchorAbs, oldAnchorPage);
         if (anchorPage > 0) {
             int endPage = std::min(dm->PageCount(), anchorPage + kReadAloudBuildPagesPerBatch - 1);
             ok = ReadAloudHighlightBuildFromDocument(dm, anchorPage, 0, endPage, &newMap, cleaned);
             if (ok) {
-                tab->readAloudStartPage = anchorPage;
-                tab->readAloudStartGlyph = 0;
-                tab->readAloudBuiltEndPage = endPage;
+                rebuiltStartPage = anchorPage;
+                rebuiltEndPage = endPage;
             }
         }
     }
@@ -1805,14 +1938,20 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
         return false;
     }
 
-    bool updated = false;
-    if (ReadAloudReplaceHighlightMap(tab, &newMap, cleaned.Get())) {
-        updated = true;
-    } else if (ReadAloudRelocateTextAndMap(tab, &newMap, cleaned.Get(), anchorAbs, textRelocatedOut)) {
-        updated = true;
-    } else {
+    bool sameText = ReadAloudReplaceHighlightMap(tab, &newMap, cleaned.Get());
+    bool updated = sameText;
+    if (!sameText) {
+        updated = playing ? ReadAloudRemapPlayingText(tab, &newMap, cleaned.Get(), anchorAbs)
+                          : ReadAloudRelocateTextAndMap(tab, &newMap, cleaned.Get(), anchorAbs);
         ReadAloudHighlightFree(&newMap);
+    }
+    if (!updated) {
         return false;
+    }
+    if (rebuiltStartPage > 0) {
+        tab->readAloudStartPage = rebuiltStartPage;
+        tab->readAloudStartGlyph = 0;
+        tab->readAloudBuiltEndPage = rebuiltEndPage;
     }
 
     // re-anchor auto-scroll after layout shift so the view doesn't drift on its own
@@ -1836,5 +1975,5 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
     if (win && win->CurrentTab() == tab) {
         ScheduleRepaint(win, 0);
     }
-    return updated;
+    return true;
 }

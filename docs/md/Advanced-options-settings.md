@@ -402,6 +402,10 @@ EBookUI [
     ; default font size for facing and book-view ebooks, 8-32 pt
     FacingFontSize = 17
 
+    ; open new EPUBs in continuous facing view; false uses the global default
+    ; layout
+    OpenEpubInContinuousFacing = true
+
     ; default Latin/serif body font for reflowable ebooks (EPUB, MOBI). Empty
     ; uses Literata (introduced in version 3.7.21)
     FontFamily = Literata

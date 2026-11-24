@@ -74,5 +74,4 @@ void PaintReadAloudHighlight(MainWindow* win, HDC hdc);
 // Rebuild read-aloud glyph coordinates after relayout (e.g. theme/document color change).
 // Returns false when the highlight map could not be refreshed. When textRelocatedOut
 // is set true, the caller should restart the current TTS chunk.
-bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win = nullptr,
-                                                bool* textRelocatedOut = nullptr);
+bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win = nullptr);

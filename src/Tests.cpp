@@ -1139,6 +1139,15 @@ static bool TestEbookFontModes(const char* reportPath) {
     FileState* fs = gFileHistory.MarkFileLoaded(book);
     check(GetDefaultEbookDisplayMode(book) == DisplayMode::ContinuousFacing, "new ebook defaults to facing");
     check(GetEffectiveEbookFontSizePt(book) == 17.f, "new facing default 17 pt");
+    bool epubOverride = gGlobalPrefs->eBookUI.openEpubInContinuousFacing;
+    DisplayMode defaultMode = gGlobalPrefs->defaultDisplayModeEnum;
+    gGlobalPrefs->eBookUI.openEpubInContinuousFacing = false;
+    gGlobalPrefs->defaultDisplayModeEnum = DisplayMode::SinglePage;
+    check(GetDefaultEbookDisplayMode(book) == DisplayMode::SinglePage, "EPUB can follow the global layout");
+    check(GetEffectiveEbookFontSizePt(book) == 11.f, "new EPUB uses the global layout's single-page font size");
+    check(GetDefaultEbookDisplayMode("example.mobi") == DisplayMode::ContinuousFacing, "MOBI default is unchanged");
+    gGlobalPrefs->defaultDisplayModeEnum = defaultMode;
+    gGlobalPrefs->eBookUI.openEpubInContinuousFacing = epubOverride;
     SetEbookFontDisplayMode(book, DisplayMode::Continuous);
     check(GetEffectiveEbookFontSizePt(book) == 11.f, "single default 11 pt");
     check(AdjustEbookFontSize(1, book) && fs->ebookSinglePageFontSize == 13.f, "single adjustment saved to book");

@@ -684,7 +684,11 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         UpdateEbookFontReloadProgress(tab, percent);
     }
     if (tab->fontReloadAnchor || tab->holdPaintForFontReload) {
+        bool wasWaitingForFontPlacement = tab->holdPaintForFontReload;
         FinishFontReloadPlacement(tab->win, tab, dm);
+        if (wasWaitingForFontPlacement && !tab->holdPaintForFontReload) {
+            RemapAnchorsAfterReflow(tab, tab->win);
+        }
     }
     MainWindow* win = tab->win;
     EngineBase* engine = dm->GetEngine();
@@ -3130,7 +3134,11 @@ static void FinishEbookFontAsyncReload(MainWindow* win, WindowTab* tab, bool loa
     if (loaded) {
         DisplayModel* dm = tab->AsFixed();
         FinishFontReloadPlacement(win, tab, dm);
-        RemapAnchorsAfterReflow(tab, win);
+        // A progressive EPUB may not have counted the chapter yet. Remap once
+        // EbookPagesProgressUI can place the saved anchor in the new layout.
+        if (!tab->holdPaintForFontReload) {
+            RemapAnchorsAfterReflow(tab, win);
+        }
     } else {
         tab->holdPaintForFontReload = false;
         ClearTabFontReloadScroll(tab);
@@ -15670,30 +15678,14 @@ static void DeferredReadAloudResync(DeferredReadAloudResyncData* d) {
     if (!IsMainWindowValid(d->win) || !d->tab) {
         return;
     }
-    bool textRelocated = false;
-    if (!RefreshReadAloudHighlightAfterLayoutChange(d->tab, d->win, &textRelocated)) {
-        return;
-    }
-    if (textRelocated && TtsIsSpeaking() && GetReadAloudSourceTab() == d->tab) {
-        TtsStop();
-        TtsProcessEvents();
-        ReadAloudSpeakChunk(d->tab, _TRA("No text available to read aloud"));
-    }
+    RefreshReadAloudHighlightAfterLayoutChange(d->tab, d->win);
 }
 
 static void ResyncReadAloudAfterLayoutChange(WindowTab* tab, MainWindow* win) {
     if (!tab || str::IsEmpty(tab->readAloudText) || !tab->readAloudHighlight) {
         return;
     }
-    bool textRelocated = false;
-    if (!RefreshReadAloudHighlightAfterLayoutChange(tab, win, &textRelocated)) {
-        return;
-    }
-    if (textRelocated && TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
-        TtsStop();
-        TtsProcessEvents();
-        ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"));
-    }
+    RefreshReadAloudHighlightAfterLayoutChange(tab, win);
 }
 
 void RemapAnchorsAfterReflow(WindowTab* tab, MainWindow* win) {

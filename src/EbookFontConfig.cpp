@@ -3,6 +3,7 @@
 
 #include "utils/BaseUtil.h"
 #include "Settings.h"
+#include "GlobalPrefs.h"
 #include "DisplayMode.h"
 #include "FileHistory.h"
 #include "SumatraPDF.h"
@@ -181,6 +182,9 @@ bool UsesEbookDisplayModeFontSizes(const char* path) {
 }
 
 DisplayMode GetDefaultEbookDisplayMode(const char* path) {
+    if (path && str::EndsWithI(path, ".epub") && gGlobalPrefs && !gGlobalPrefs->eBookUI.openEpubInContinuousFacing) {
+        return gGlobalPrefs->defaultDisplayModeEnum;
+    }
     return UsesEbookDisplayModeFontSizes(path) ? DisplayMode::ContinuousFacing : DisplayMode::Automatic;
 }
 
@@ -200,7 +204,8 @@ void SetEbookFontDisplayMode(const char* path, DisplayMode mode) {
 }
 
 static bool BookUsesFacingFontSize(const char* path) {
-    bool facing = true;
+    DisplayMode mode = GetDefaultEbookDisplayMode(path);
+    bool facing = IsFacing(mode) || IsBookView(mode);
     AcquireSRWLockShared(&gBookFontSizeLock);
     for (auto& book : gBookFontSizes) {
         if (str::EqI(book.path, path)) {
