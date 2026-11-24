@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.114
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.114/SumatraPDF-Plus.exe
-Notes: Restore dictionary online/offline voice fallback and improve JoyInside dictionary playback. Complete packages are available in 3.7.107.
-NotesZh: 修复字典在线／离线发音回退，改善 JoyInside 词语播放停顿与女声尾音。新用户先从 3.7.107 下载完整包，再更新 EXE。
+Latest: 3.7.115
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.115/SumatraPDF-Plus.exe
+Notes: Fix Read Aloud highlighting and following when switching between single-page and double-page layouts. Complete packages are available in 3.7.107.
+NotesZh: 修复朗读时切换单页和双页可能丢失高亮跟随的问题。新用户先从 3.7.107 下载完整包，再更新 EXE。
