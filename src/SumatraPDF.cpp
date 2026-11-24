@@ -521,8 +521,24 @@ void SwitchToDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepCont
         return;
     }
 
+    WindowTab* tab = win->CurrentTab();
+    auto previousMode = win->ctrl->GetDisplayMode();
+    bool follow = tab && tab == GetReadAloudSourceTab() && tab->readAloudAutoScroll && ReadAloudFollowEnabled() &&
+                  TtsIsSpeaking();
     if (!SwitchEbookDisplayMode(win, displayMode, keepContinuous)) {
         win->ctrl->SetDisplayMode(displayMode, keepContinuous);
+    }
+    if (!IsMainWindowValid(win)) {
+        return;
+    }
+    if (follow && win->CurrentTab() == tab && GetReadAloudSourceTab() == tab && win->ctrl &&
+        previousMode != win->ctrl->GetDisplayMode()) {
+        if (DisplayModel* dm = win->AsFixed()) {
+            // The old scroll target belongs to the previous layout.
+            win->scrollTargetY = dm->yOffset();
+            win->readAloudScrollFromCode = false;
+            ReadAloudFollowNow(win);
+        }
     }
     UpdateToolbarState(win);
 }

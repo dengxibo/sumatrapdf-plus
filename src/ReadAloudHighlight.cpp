@@ -1732,10 +1732,9 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
 
     int anchorAbs = -1;
     if (TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
-        int spokenPos = TtsGetSpokenPosUtf8();
-        if (spokenPos >= 0) {
-            anchorAbs = tab->readAloudHighlightBase + tab->readAloudChunkStart + spokenPos;
-        }
+        // Synthesis can be between word callbacks when the layout is replaced.
+        // Keep the current chunk as the fallback instead of restarting at zero.
+        anchorAbs = tab->readAloudChunkStart + std::max(0, TtsGetSpokenPosUtf8());
     } else if (tab->readAloudResumePos > 0) {
         anchorAbs = tab->readAloudResumePos - tab->readAloudHighlightBase;
     }
