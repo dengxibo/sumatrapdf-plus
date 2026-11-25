@@ -9012,10 +9012,16 @@ static void SetSidebarScrollbarMasksVisible(MainWindow* win, bool visible) {
         // Suspend scrolling at the control level before changing its width.
         LONG_PTR style = GetWindowLongPtrW(tree, GWL_STYLE);
         if (visible && !(style & TVS_NOSCROLL)) {
+            if (style & WS_VSCROLL) {
+                SetPropW(tree, L"SumatraRestoreSidebarVScroll", (HANDLE)1);
+            }
             SetWindowLongPtrW(tree, GWL_STYLE, style | TVS_NOSCROLL);
             ShowScrollBar(tree, SB_BOTH, FALSE);
         } else if (!visible && (style & TVS_NOSCROLL)) {
             SetWindowLongPtrW(tree, GWL_STYLE, style & ~TVS_NOSCROLL);
+            if (RemovePropW(tree, L"SumatraRestoreSidebarVScroll")) {
+                ShowScrollBar(tree, SB_VERT, TRUE);
+            }
             SetWindowPos(tree, nullptr, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         }
@@ -9148,10 +9154,6 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // the pixels just uncovered by a rightward drag black until the next
     // paint. The canvas keeps its bits so the page slides with the splitter.
     uint livePosFlags = liveSidebarDrag ? (SWP_NOCOPYBITS | SWP_NOREDRAW) : 0;
-    int oldTocDx = 0;
-    if (liveSidebarDrag && win->hwndTocBox) {
-        oldTocDx = ClientRect(win->hwndTocBox).dx;
-    }
 
     // Avoid a hide/show cycle on every interactive resize step.
     if (!win->inSizeMove) {
@@ -9300,23 +9302,6 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, TRUE, livePosFlags);
 
     dh.End();
-
-    if (liveSidebarDrag && tocVisible && win->hwndTocBox && sidebarDx > oldTocDx) {
-        // The column grew into what was the page. Those pixels are black
-        // until a paint, which is the band beside the favorites list.
-        HDC hdc = GetDC(win->hwndTocBox);
-        if (hdc) {
-            RECT strip{};
-            GetClientRect(win->hwndTocBox, &strip);
-            strip.left = oldTocDx;
-            if (strip.left < strip.right) {
-                AutoDeleteBrush br = CreateSolidBrush(ThemeSidebarBackgroundColor());
-                FillRect(hdc, &strip, br);
-            }
-            ReleaseDC(win->hwndTocBox, hdc);
-        }
-        RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
-    }
 
     if (!liveSidebarDrag && GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
         RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
@@ -10991,27 +10976,19 @@ static void RunScheduledSidebarRelayout(MainWindow* win) {
     if (!gSidebarSplitterWrapSuspended || sidebarDx <= 0) {
         return;
     }
+    if (sidebarDx == ClientRect(win->hwndTocBox).dx) {
+        return;
+    }
     RelayoutFrame(win, false, sidebarDx);
     // Geometry changes suppress painting until the higher sibling mask has
     // reached the new scrollbar position. Then present the complete sidebar.
     SetSidebarScrollbarMasksVisible(win, true);
 
-    // Show one complete live-resize frame before processing the next queued
-    // mouse position. The native TreeView scrollbars stay hidden throughout,
-    // so neither their non-client pixels nor the divider can accumulate.
-    uint redrawFlags = RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW;
-    if (win->hwndTocBox) {
-        RedrawWindow(win->hwndTocBox, nullptr, nullptr, redrawFlags);
-    }
-    if (win->hwndFavBox) {
-        RedrawWindow(win->hwndFavBox, nullptr, nullptr, redrawFlags);
-    }
-    if (win->hwndCanvas) {
-        RedrawWindow(win->hwndCanvas, nullptr, nullptr, redrawFlags);
-    }
-    if (win->sidebarSplitter) {
-        RedrawWindow(win->sidebarSplitter->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
-    }
+    // RelayoutFrame has already invalidated the sidebar. Present all the
+    // affected siblings in one composited paint of their common parent.
+    InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    InvalidateRect(win->sidebarSplitter->hwnd, nullptr, FALSE);
+    RedrawWindow(win->hwndFrame, nullptr, nullptr, RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
 // SUMATRA_COPY_BENCH=<file> automation: select all text, run it through the
@@ -11044,7 +11021,7 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
 
     Point pcur = HwndGetCursorPos(win->hwndFrame);
-    int sidebarDx = pcur.x; // without splitter
+    int sidebarDx = pcur.x - splitter->grabOffsetX;
 
     // make sure to keep this in sync with the calculations in RelayoutFrame
     // note: without the min/max(..., rToc.dx), the sidebar will be

@@ -225,7 +225,9 @@ LabelWithCloseWnd::~LabelWithCloseWnd() {
 void LabelWithCloseWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     DoubleBuffer buffer(hwnd, ToRect(ps->rcPaint));
     PaintHDC(this, buffer.GetDC(), *ps);
-    buffer.Flush(hdc);
+    // The buffer maps client coordinates to the dirty rectangle. Use the
+    // same logical source coordinates when copying a partial header paint.
+    buffer.Flush(hdc, &ps->rcPaint);
 }
 
 LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {

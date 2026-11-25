@@ -571,6 +571,9 @@ struct Splitter : Wnd {
     // non-live resize, we need to remove WS_CLIPCHILDREN style from
     // parent and restore it when we're done
     bool parentClipsChildren = false;
+    int grabOffsetX = 0;
+    bool addedCompositedStyle = false;
+    bool finishingDrag = false;
     bool isMouseOver = false;
     bool mouseTracking = false;
 

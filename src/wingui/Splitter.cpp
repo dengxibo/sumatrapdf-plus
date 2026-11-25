@@ -110,6 +110,14 @@ HWND Splitter::Create(const CreateArgs& args) {
     cargs.style = WS_CHILDWINDOW | WS_CLIPSIBLINGS;
     cargs.exStyle = 0;
     CreateCustom(cargs);
+    if (hwnd && isLive && type == SplitterType::Vert) {
+        // Keep the one-pixel divider on its own surface as adjacent client
+        // windows change size. Its painted pixels travel with its HWND.
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+        if (!SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA)) {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & ~WS_EX_LAYERED);
+        }
+    }
 
     return hwnd;
 }
@@ -122,6 +130,16 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
     if (WM_LBUTTONDOWN == msg) {
         SetCapture(hwnd);
+        if (isLive && type == SplitterType::Vert && GetCapture() == hwnd) {
+            // The virtual hit target extends outside the divider as well.
+            grabOffsetX = GET_X_LPARAM(lparam);
+            HWND parent = GetParent(hwnd);
+            LONG_PTR exStyle = GetWindowLongPtrW(parent, GWL_EXSTYLE);
+            if (!(exStyle & WS_EX_COMPOSITED)) {
+                SetWindowLongPtrW(parent, GWL_EXSTYLE, exStyle | WS_EX_COMPOSITED);
+                addedCompositedStyle = true;
+            }
+        }
         // reflect the active (dragging) separator state immediately
         HwndScheduleRepaint(hwnd);
         if (!isLive) {
@@ -133,14 +151,31 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         return 1;
     }
 
-    if (WM_LBUTTONUP == msg) {
+    if (WM_CAPTURECHANGED == msg && isLive && type == SplitterType::Vert) {
+        if (addedCompositedStyle) {
+            HWND parent = GetParent(hwnd);
+            SetWindowLongPtrW(parent, GWL_EXSTYLE, GetWindowLongPtrW(parent, GWL_EXSTYLE) & ~WS_EX_COMPOSITED);
+            addedCompositedStyle = false;
+        }
+        if (!finishingDrag) {
+            MoveEvent arg;
+            arg.w = this;
+            arg.finishedDragging = true;
+            onMove.Call(&arg);
+        }
+        return 0;
+    }
+
+    if (WM_LBUTTONUP == msg && GetCapture() == hwnd) {
         if (!isLive) {
             DrawResizeLine(hwnd, brush, type, true, false, prevResizeLinePos);
             if (parentClipsChildren) {
                 SetWindowStyle(GetParent(hwnd), WS_CLIPCHILDREN, true);
             }
         }
+        finishingDrag = true;
         ReleaseCapture();
+        finishingDrag = false;
         // onMove can perform a costly final EPUB pagination. Do not leave the
         // resize cursor stuck on screen throughout that synchronous work.
         SetCursorCached(IDC_ARROW);
@@ -197,8 +232,6 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         // Keep the wider mouse hit band visually merged into the sidebar.
         // bgColor is captured when the control is created and can be a stale
         // system color after a theme switch (most visible in Dracula).
-        AutoDeleteBrush brBg = CreateSolidBrush(ThemeSidebarBackgroundColor());
-        FillRect(hdc, &ps.rcPaint, brBg);
 
         // explicit, theme-aware separator line centered in the (wider) hit
         // area. it must stay visible even when the sidebar and canvas
@@ -227,6 +260,12 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         }
         AutoDeleteBrush brLine = CreateSolidBrush(ThemeSidebarSeparatorColor(state));
         FillRect(hdc, &rl, brLine);
+        // The vertical divider can be exactly one pixel wide. Never clear
+        // that pixel to the sidebar color between consecutive drag paints.
+        if (ExcludeClipRect(hdc, rl.left, rl.top, rl.right, rl.bottom) != NULLREGION) {
+            AutoDeleteBrush brBg = CreateSolidBrush(ThemeSidebarBackgroundColor());
+            FillRect(hdc, &ps.rcPaint, brBg);
+        }
         EndPaint(hwnd, &ps);
         return 0;
     }
