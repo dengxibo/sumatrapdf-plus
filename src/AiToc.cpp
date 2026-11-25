@@ -949,8 +949,8 @@ static void StartAiTocRender(MainWindow* win, const Vec<int>& pageNos, HWND owne
     if (!engine) {
         return;
     }
-    if (pageNos.Size() == 0 || pageNos.Size() > 20) {
-        MessageBoxWarning(owner, _TRA("Choose between 1 and 20 PDF pages."), _TRA("AI Recognize Table of Contents"));
+    if (pageNos.Size() == 0) {
+        MessageBoxWarning(owner, _TRA("Invalid page range."), _TRA("AI Recognize Table of Contents"));
         return;
     }
     auto* work = new AiTocPocWork();
@@ -2362,9 +2362,7 @@ static int AiTocSelectedCount(AiTocDialog* dlg) {
     return n;
 }
 
-// Collects the confirmed TOC pages: the checked thumbnails when present,
-// otherwise the pages edit. Shows the shared warning and returns false
-// when the selection is not within 1..20.
+// Collect the checked thumbnails when present, otherwise use the page ranges.
 static bool AiTocCollectSelectedPages(AiTocDialog* dlg, Vec<int>& pages) {
     DisplayModel* dm = dlg->win ? dlg->win->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
@@ -2378,21 +2376,19 @@ static bool AiTocCollectSelectedPages(AiTocDialog* dlg, Vec<int>& pages) {
         Str pageText = GetWindowTextTemp(dlg->pagesEdit);
         Vec<PageRange> ranges;
         if (!ParsePageRanges(pageText.s, ranges)) {
-            MessageBoxWarning(dlg->hwnd, _TRA("Choose between 1 and 20 PDF pages."),
-                              _TRA("AI Recognize Table of Contents"));
+            MessageBoxWarning(dlg->hwnd, _TRA("Invalid page range."), _TRA("AI Recognize Table of Contents"));
             return false;
         }
         for (int i = 0; i < ranges.Size(); i++) {
             int first = ranges[i].start > 1 ? ranges[i].start : 1;
             int last = ranges[i].end < engine->PageCount() ? ranges[i].end : engine->PageCount();
-            for (int pageNo = first; pageNo <= last && pages.Size() <= 20; pageNo++) {
+            for (int pageNo = first; pageNo <= last; pageNo++) {
                 pages.Append(pageNo);
             }
         }
     }
-    if (pages.Size() == 0 || pages.Size() > 20) {
-        MessageBoxWarning(dlg->hwnd, _TRA("Choose between 1 and 20 PDF pages."),
-                          _TRA("AI Recognize Table of Contents"));
+    if (pages.Size() == 0) {
+        MessageBoxWarning(dlg->hwnd, _TRA("Invalid page range."), _TRA("AI Recognize Table of Contents"));
         return false;
     }
     return true;

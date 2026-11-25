@@ -8988,9 +8988,15 @@ static LRESULT CALLBACK SidebarScrollbarMaskProc(HWND hwnd, UINT msg, WPARAM wp,
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-static void SetSidebarTreeScrollbarMasksVisible(MainWindow* win, bool visible) {
+static void SetSidebarScrollbarMasksVisible(MainWindow* win, bool visible) {
     if (!win) {
         return;
+    }
+    if (HWND thumbs = win->hwndSidebarThumbs) {
+        const bool hasScrollbar = (GetWindowLongPtrW(thumbs, GWL_STYLE) & WS_VSCROLL) != 0;
+        if (hasScrollbar == visible) {
+            ShowScrollBar(thumbs, SB_VERT, !visible);
+        }
     }
     HWND trees[] = {win->tocTreeView ? win->tocTreeView->hwnd : nullptr,
                     win->favTreeView ? win->favTreeView->hwnd : nullptr};
@@ -9001,6 +9007,17 @@ static void SetSidebarTreeScrollbarMasksVisible(MainWindow* win, bool visible) {
         HWND& mask = *masks[i];
         if (!tree || !IsWindow(tree)) {
             continue;
+        }
+        // A TreeView can recreate its native scrollbar during WM_SIZE.
+        // Suspend scrolling at the control level before changing its width.
+        LONG_PTR style = GetWindowLongPtrW(tree, GWL_STYLE);
+        if (visible && !(style & TVS_NOSCROLL)) {
+            SetWindowLongPtrW(tree, GWL_STYLE, style | TVS_NOSCROLL);
+            ShowScrollBar(tree, SB_BOTH, FALSE);
+        } else if (!visible && (style & TVS_NOSCROLL)) {
+            SetWindowLongPtrW(tree, GWL_STYLE, style & ~TVS_NOSCROLL);
+            SetWindowPos(tree, nullptr, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         }
         // A hidden tree keeps its old width. Masking that rect paints a
         // vertical band through the view that actually grew (favorites).
@@ -10977,7 +10994,7 @@ static void RunScheduledSidebarRelayout(MainWindow* win) {
     RelayoutFrame(win, false, sidebarDx);
     // Geometry changes suppress painting until the higher sibling mask has
     // reached the new scrollbar position. Then present the complete sidebar.
-    SetSidebarTreeScrollbarMasksVisible(win, true);
+    SetSidebarScrollbarMasksVisible(win, true);
 
     // Show one complete live-resize frame before processing the next queued
     // mouse position. The native TreeView scrollbars stay hidden throughout,
@@ -11055,10 +11072,10 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
             return;
         }
         if (!gSidebarSplitterWrapSuspended) {
-            // Native TreeView scrollbars are non-client pixels and leave
+            // Native sidebar scrollbars are non-client pixels and leave
             // trails when their window moves rapidly. Hide them for the whole
             // width drag; the splitter remains visible as the resize cue.
-            SetSidebarTreeScrollbarMasksVisible(win, true);
+            SetSidebarScrollbarMasksVisible(win, true);
             gSidebarWidthDragScrollbarsHidden = true;
             SuspendTreeWrapLiveResizeForWindow(win);
             gSidebarSplitterWrapSuspended = true;
@@ -11106,7 +11123,7 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
         ResumeTreeWrapLiveResizeAndFlush(win);
         if (gSidebarWidthDragScrollbarsHidden) {
             gSidebarWidthDragScrollbarsHidden = false;
-            SetSidebarTreeScrollbarMasksVisible(win, false);
+            SetSidebarScrollbarMasksVisible(win, false);
         }
         RedrawWindow(win->hwndTocBox, nullptr, nullptr,
                      RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
@@ -11230,6 +11247,7 @@ static void MaybeRunTocDragBench(MainWindow* win) {
         gTocDragLastDx = dx0;
         SuspendTreeWrapLiveResizeForWindow(win);
         gSidebarSplitterWrapSuspended = true;
+        SetSidebarScrollbarMasksVisible(win, true);
         int target = dx0 + dir * totalPx;
         int dx = dx0;
         while (true) {
@@ -11269,6 +11287,7 @@ static void MaybeRunTocDragBench(MainWindow* win) {
         RelayoutFrame(win, false, dx);
         win->UpdateCanvasSize();
         ResumeTreeWrapLiveResizeAndFlush(win);
+        SetSidebarScrollbarMasksVisible(win, false);
     }
     logfa("TOC-DRAG-BENCH end");
 }

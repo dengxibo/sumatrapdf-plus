@@ -279,6 +279,26 @@ static void LayoutMetrics(SidebarThumbsWnd* t) {
     if (t->scrollY < 0) {
         t->scrollY = 0;
     }
+    // SetScrollInfo can bring back a scrollbar hidden during a width drag.
+    if (!(GetWindowLongPtrW(t->hwnd, GWL_STYLE) & WS_VSCROLL)) {
+        return;
+    }
+    // Keep the scrollbar present when the list fits so its width cannot change
+    // the column count while updating the scroll range.
+    SCROLLINFO si{};
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS | SIF_DISABLENOSCROLL;
+    si.nMax = std::max(0, t->contentDy - 1);
+    si.nPage = (UINT)std::max(1, rc.dy);
+    si.nPos = t->scrollY;
+    SCROLLINFO previous{};
+    previous.cbSize = sizeof(previous);
+    previous.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    UINT effectivePage = std::min(si.nPage, (UINT)si.nMax + 1);
+    if (!GetScrollInfo(t->hwnd, SB_VERT, &previous) || previous.nMax != si.nMax || previous.nPage != effectivePage ||
+        previous.nPos != si.nPos) {
+        SetScrollInfo(t->hwnd, SB_VERT, &si, TRUE);
+    }
 }
 
 static Rect ThumbRect(SidebarThumbsWnd* t, int pageIndex) {
@@ -606,6 +626,9 @@ static void ScrollThumbsBy(SidebarThumbsWnd* t, int dy) {
         return;
     }
     t->scrollY = next;
+    if (GetWindowLongPtrW(t->hwnd, GWL_STYLE) & WS_VSCROLL) {
+        SetScrollPos(t->hwnd, SB_VERT, t->scrollY, TRUE);
+    }
     InvalidateRect(t->hwnd, nullptr, FALSE);
 }
 
@@ -1089,6 +1112,46 @@ static LRESULT CALLBACK WndProcSidebarThumbs(HWND hwnd, UINT msg, WPARAM wp, LPA
                 RenderOneThumb(t);
             }
             return 0;
+        case WM_VSCROLL: {
+            int next = t->scrollY;
+            int line = t->thumbDy + t->gap;
+            int page = std::max(1, ClientRect(hwnd).dy);
+            switch (LOWORD(wp)) {
+                case SB_LINEUP:
+                    next -= line;
+                    break;
+                case SB_LINEDOWN:
+                    next += line;
+                    break;
+                case SB_PAGEUP:
+                    next -= page;
+                    break;
+                case SB_PAGEDOWN:
+                    next += page;
+                    break;
+                case SB_THUMBTRACK:
+                case SB_THUMBPOSITION: {
+                    // HIWORD(wp) truncates positions in large documents to 16 bits.
+                    SCROLLINFO si{};
+                    si.cbSize = sizeof(si);
+                    si.fMask = SIF_TRACKPOS;
+                    if (GetScrollInfo(hwnd, SB_VERT, &si)) {
+                        next = si.nTrackPos;
+                    }
+                    break;
+                }
+                case SB_TOP:
+                    next = 0;
+                    break;
+                case SB_BOTTOM:
+                    next = std::max(0, t->contentDy - page);
+                    break;
+                default:
+                    return 0;
+            }
+            ScrollThumbsBy(t, next - t->scrollY);
+            return 0;
+        }
         case WM_MOUSEWHEEL: {
             int delta = GET_WHEEL_DELTA_WPARAM(wp);
             ScrollThumbsBy(t, -delta / 2);
@@ -1196,9 +1259,10 @@ void CreateSidebarThumbs(MainWindow* win) {
     }
     auto* t = new SidebarThumbsWnd();
     t->win = win;
-    t->hwnd = CreateWindowExW(0, kThumbsClass, L"", WS_CHILD | WS_CLIPCHILDREN, 0, 0, 0, 0, win->hwndTocBox, nullptr,
-                              GetModuleHandle(nullptr), t);
+    t->hwnd = CreateWindowExW(0, kThumbsClass, L"", WS_CHILD | WS_CLIPCHILDREN | WS_VSCROLL, 0, 0, 0, 0,
+                              win->hwndTocBox, nullptr, GetModuleHandle(nullptr), t);
     win->hwndSidebarThumbs = t->hwnd;
+    SyncSidebarScrollbarTheme(t->hwnd);
 }
 
 void DestroySidebarThumbs(MainWindow* win) {
@@ -1217,6 +1281,7 @@ void SidebarThumbsOnThemeChanged(MainWindow* win) {
     if (!t) {
         return;
     }
+    SyncSidebarScrollbarTheme(t->hwnd);
     ClearThumbSlots(t);
     t->themeHash = 0;
     InvalidateRect(t->hwnd, nullptr, FALSE);
@@ -1269,9 +1334,7 @@ void SidebarThumbsSyncCurrentPage(MainWindow* win) {
     } else if (r.y + r.dy > rc.dy) {
         t->scrollY += (r.y + r.dy) - rc.dy + DpiScale(t->hwnd, 8);
     }
-    if (t->scrollY < 0) {
-        t->scrollY = 0;
-    }
+    LayoutMetrics(t);
     InvalidateRect(t->hwnd, nullptr, FALSE);
 }
 
