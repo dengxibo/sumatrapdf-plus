@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.117
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.117/SumatraPDF-Plus.exe
-Notes: EPUB typography settings, colored text in dark themes, and AI chat image attachments with thumbnails. Complete packages are available in 3.7.107.
-NotesZh: 新增 EPUB 排版设置，修复暗色主题下 EPUB 彩色文字，AI 侧栏支持图片附件和聊天缩略图。新用户先从 3.7.107 下载完整包，再更新 EXE。
+Latest: 3.7.119
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.119/SumatraPDF-Plus.exe
+Notes: Live sidebar resizing and a themed thumbnail scrollbar. AI table-of-contents recognition now accepts more than 20 pages per task. New users can get a complete package from 3.7.117.
+NotesZh: 优化侧栏实时拖动，缩略图滚动条适配四种主题，AI 目录识别解除单任务 20 页上限。新用户可先下载 3.7.117 完整包，再替换本版 EXE。
