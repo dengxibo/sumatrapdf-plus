@@ -3443,6 +3443,13 @@ static int word_date_follows_soon(fz_xml* p) {
         if (!fz_xml_is_tag(n, "p")) continue;
         if (word_paragraph_is_visually_empty(n)) continue;
         word_paragraph_plain_text(n, plain, (int)sizeof plain);
+        /* Explicitly centered, space-padded signatures retain their Word positioning
+         * and the blank paragraph separating them from the preceding content. */
+        if (word_looks_like_signoff(plain)) {
+            fz_xml* jc = fz_xml_find_down(fz_xml_find_down(n, "pPr"), "jc");
+            const char* align = jc ? fz_xml_att_alt(jc, "w:val", "val") : NULL;
+            if (align && !strcmp(align, "center")) return 0;
+        }
         if (word_plain_looks_like_date_line(plain)) return 1;
         s = word_skip_leading_space(plain);
         if (word_plain_glyph_count(s) > 36) return 0;
@@ -3970,11 +3977,16 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
 
     /* Center/right + firstLine shifts the block off true center (Word leftover). */
     if (align && (!strcmp(align, "center") || !strcmp(align, "right"))) {
-        indent_em = 0;
-        indent_pt = 0;
-        hanging_pt = 0;
-        /* Fake-centered 文号 used left indent with no jc — drop it once centered. */
-        if (!strcmp(align, "center")) left_pt = 0;
+        char centered_plain[512];
+        word_paragraph_plain_text(p, centered_plain, (int)sizeof centered_plain);
+        int padded_center = !strcmp(align, "center") && word_looks_like_signoff(centered_plain);
+        if (!padded_center) {
+            indent_em = 0;
+            indent_pt = 0;
+            hanging_pt = 0;
+            /* Fake-centered 文号 used left indent with no jc — drop it once centered. */
+            if (!strcmp(align, "center")) left_pt = 0;
+        }
     }
 
     /* Word sometimes combines centered dates with padding spaces to position
@@ -3984,12 +3996,12 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         word_paragraph_plain_text(p, date_plain, (int)sizeof date_plain);
         if (word_plain_looks_like_date_line(date_plain) && word_looks_like_signoff(date_plain)) {
             fz_xml* prev = fz_xml_prev(p);
-            signoff = 1;
-            if (info) info->signoff_pad_em = 0;
             if (prev && fz_xml_is_tag(prev, "p")) {
                 fz_xml* prev_jc = fz_xml_find_down(fz_xml_find_down(prev, "pPr"), "jc");
                 const char* prev_align = prev_jc ? fz_xml_att_alt(prev_jc, "w:val", "val") : NULL;
                 if (prev_align && !strcmp(prev_align, "right") && info) {
+                    signoff = 1;
+                    info->signoff_pad_em = 0;
                     char signature[512];
                     float gap;
                     word_paragraph_plain_text(prev, signature, (int)sizeof signature);
