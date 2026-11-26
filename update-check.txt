@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.120
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.120/SumatraPDF-Plus.exe
-Notes: Fix Word title character spacing and minimum line height, and vertically center table text including fixed-height and merged cells. New users can get a complete package from 3.7.117.
-NotesZh: 修复 Word 标题字距、最小行距及表格文字垂直居中问题，涵盖固定行高和合并单元格。新用户可先下载 3.7.117 完整包，再替换本版 EXE。
+Latest: 3.7.121
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.121/SumatraPDF-Plus.exe
+Notes: Fix Word signature and date positioning, preserving centered alignment, padding spaces, indentation and the blank paragraph above the signature. Includes the title and table fixes from 3.7.120. New users can get a complete package from 3.7.117.
+NotesZh: 修复 Word 落款和日期的位置，保留原文居中、前导空格、缩进及上方空白段。包含 3.7.120 的标题和表格修复。新用户可先下载 3.7.117 完整包，再替换本版 EXE。
