@@ -295,9 +295,10 @@ struct fz_css_style_s
         fz_css_number border_radius;
 	fz_css_number inset[4];
 	fz_css_number border_spacing;
-	fz_css_number text_indent;
-	fz_css_number text_stroke_width;
-	fz_css_number line_height;
+        fz_css_number text_indent;
+        fz_css_number letter_spacing;
+        fz_css_number text_stroke_width;
+        fz_css_number line_height;
 	fz_css_number leading;
 	fz_css_color background_color;
 	fz_css_color border_color[4];

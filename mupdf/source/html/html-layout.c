@@ -205,6 +205,7 @@ typedef struct string_walker {
     unsigned int glyph_count;
     int scale;
     int graphemes;
+    float letter_spacing;
 } string_walker;
 
 static int quick_ligature_mov(fz_context* ctx, string_walker* walker, unsigned int i, unsigned int n, int unicode) {
@@ -242,7 +243,8 @@ static int quick_ligature(fz_context* ctx, string_walker* walker, unsigned int i
 }
 
 static void init_string_walker(fz_context* ctx, string_walker* walker, hb_buffer_t* hb_buf, int rtl, fz_font* font,
-                               int script, int language, int small_caps, const char* text, int cluster_as_graphemes) {
+                               int script, int language, int small_caps, const char* text, int cluster_as_graphemes,
+                               fz_html_flow* node) {
     walker->ctx = ctx;
     walker->hb_buf = hb_buf;
     walker->rtl = rtl;
@@ -256,6 +258,8 @@ static void init_string_walker(fz_context* ctx, string_walker* walker, hb_buffer
     walker->next_font = NULL;
     walker->small_caps = small_caps;
     walker->graphemes = cluster_as_graphemes;
+    float em = node->box->s.layout.em;
+    walker->letter_spacing = em > 0 ? fz_from_css_number(node->box->style->letter_spacing, em, em, 0) / em : 0;
 }
 
 static void destroy_hb_shaper_data(fz_context* ctx, void* handle) {
@@ -365,6 +369,14 @@ static int walk_string(string_walker* walker) {
         }
     }
 
+    /* Track shaped clusters consistently in measurement, splitting and drawing. */
+    if (walker->letter_spacing != 0) {
+        unsigned int i;
+        for (i = 0; i < walker->glyph_count; ++i)
+            if (i + 1 == walker->glyph_count || walker->glyph_info[i].cluster != walker->glyph_info[i + 1].cluster)
+                walker->glyph_pos[i].x_advance += (int)(walker->letter_spacing * walker->scale);
+    }
+
     return 1;
 }
 
@@ -387,7 +399,7 @@ static void measure_string_w(fz_context* ctx, fz_html_flow* node, hb_buffer_t* h
     node->w = 0;
     s = get_node_text(ctx, node);
     init_string_walker(ctx, &walker, hb_buf, node->bidi_level & 1, node->box->style->font, node->script,
-                       node->markup_lang, node->box->style->small_caps, s, 0);
+                       node->markup_lang, node->box->style->small_caps, s, 0, node);
     while (walk_string(&walker)) {
         int x = 0;
         for (i = 0; i < walker.glyph_count; i++) x += walker.glyph_pos[i].x_advance;
@@ -821,7 +833,7 @@ static void break_word_for_overflow_wrap(fz_context* ctx, fz_html_flow* node, la
     if ((node->bidi_level & 1) == 0) {
         /* Left 2 Right */
         init_string_walker(ctx, &walker, hb_buf, 0 /* L2R */, node->box->style->font, node->script, node->markup_lang,
-                           node->box->style->small_caps, text, 1);
+                           node->box->style->small_caps, text, 1, node);
         while (walk_string(&walker)) {
             unsigned int i;
 #ifdef DEBUG_DESPERATE_SPLITTING
@@ -864,7 +876,7 @@ static void break_word_for_overflow_wrap(fz_context* ctx, fz_html_flow* node, la
     } else {
         /* Right 2 Left */
         init_string_walker(ctx, &walker, hb_buf, 1 /* R2L */, node->box->style->font, node->script, node->markup_lang,
-                           node->box->style->small_caps, text, 1);
+                           node->box->style->small_caps, text, 1, node);
         while (walk_string(&walker)) {
             unsigned int i;
 #ifdef DEBUG_DESPERATE_SPLITTING
@@ -2264,6 +2276,15 @@ static void layout_table_row(fz_context* ctx, layout_data* ld, table_grid* grid,
             if (cell->s.layout.b < cell->s.layout.y + cellheight) cell->s.layout.b = cell->s.layout.y + cellheight;
         } else if (fixed_height && cell->s.layout.b < cell->s.layout.y + row_height)
             cell->s.layout.b = cell->s.layout.y + row_height;
+
+        /* Height floors reserve space before the final row alignment pass.
+         * Include that space in vertical alignment, not just later row growth. */
+        if (cell->s.layout.b > ld->used[B] &&
+            (cell->style->vertical_align == VA_MIDDLE || cell->style->vertical_align == VA_BOTTOM)) {
+            float offset = cell->s.layout.b - ld->used[B];
+            if (cell->style->vertical_align == VA_MIDDLE) offset /= 2;
+            for (child = cell->down; child; child = child->next) shift_box_contents(child, 0, offset);
+        }
 
         /* Advance to next column */
         x += colw[col].actual;
@@ -3791,7 +3812,7 @@ static int draw_flow_box(fz_context* ctx, fz_html_box* box, float page_top, floa
 
                 s = get_node_text(ctx, node);
                 init_string_walker(ctx, &walker, hb_buf, node->bidi_level & 1, style->font, node->script,
-                                   node->markup_lang, style->small_caps, s, 0);
+                                   node->markup_lang, style->small_caps, s, 0, node);
                 while (walk_string(&walker)) {
                     float node_scale = node->box->s.layout.em / walker.scale;
                     unsigned int i;

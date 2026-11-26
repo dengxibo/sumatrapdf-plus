@@ -3213,6 +3213,7 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
     int opened_color = 0;
     int opened_size = 0;
     int opened_font = 0;
+    int opened_spacing = 0;
     const char* inline_style = NULL;
     const char* color_hex = NULL;
     const char* east = NULL;
@@ -3304,6 +3305,10 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
         }
     }
     if (inline_style) fz_write_printf(ctx, info->out, "<%s>", inline_style);
+    if (word_run_spacing_twips(r)) {
+        fz_write_printf(ctx, info->out, "<span style=\"letter-spacing:%.2fpt\">", word_run_spacing_twips(r) / 20.0f);
+        opened_spacing = 1;
+    }
     if (bold) fz_write_string(ctx, info->out, "<b>");
     if (italic) fz_write_string(ctx, info->out, "<i>");
     if (underline) fz_write_string(ctx, info->out, "<u>");
@@ -3358,6 +3363,7 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
     if (underline) fz_write_string(ctx, info->out, "</u>");
     if (italic) fz_write_string(ctx, info->out, "</i>");
     if (bold) fz_write_string(ctx, info->out, "</b>");
+    if (opened_spacing) fz_write_string(ctx, info->out, "</span>");
     if (inline_style) fz_write_printf(ctx, info->out, "</%s>", inline_style);
     if (opened_size) fz_write_string(ctx, info->out, "</span>");
     if (opened_color) fz_write_string(ctx, info->out, "</span>");
@@ -4015,7 +4021,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
          * margin-left does not stay centered once the cell is a percentage of
          * the page. Center the first two rows (表头) unless jc is right
          * (diagonal corner label). */
-        if (info->table_row >= 0 && info->table_row < 2 && !(align && !strcmp(align, "right"))) {
+        if (info->table_row >= 0 && info->table_row < 2 && !align) {
             align = "center";
             left_pt = 0;
             right_pt = 0;
@@ -4072,7 +4078,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
 			cls = NULL;
 		else
 			cls = style_val;
-	}
+    }
 
     /* Named Word bookmark (Insert → Bookmark) without a heading style: TOC entry. */
     if (bm_name && is_user_word_bookmark_name(bm_name) && !strcmp(tag, "p") && list == 0) {
@@ -4249,6 +4255,17 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     if (space_after_pt > 0.01f)
         style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "%smargin-bottom:%.1fpt",
                                style_n ? ";" : "", space_after_pt);
+    /* atLeast is a floor, not a fixed baseline distance smaller than the text. */
+    if (line_pt > 0 && ppr) {
+        fz_xml* sp = fz_xml_find_down(ppr, "spacing");
+        const char* rule = sp ? fz_xml_att_alt(sp, "w:lineRule", "lineRule") : NULL;
+        if (rule && !strcmp(rule, "atLeast")) {
+            float em = info->run_default_font_pt > 0.5f ? info->run_default_font_pt : info->doc_body_font_pt;
+            line_mult = em > 0 ? fz_max(1.2f, line_pt / em) : 1.2f;
+            line_pt = 0;
+        }
+    }
+
     if (line_mult > 0.05f && (line_mult < 0.95f || line_mult > 1.05f)) {
         /* MuPDF treats line-height < 1 as overlapping glyphs; Word's slight
          * tighten (e.g. 217/240) must not crush table form labels. */
@@ -4648,6 +4665,7 @@ static void emit_table_cell(fz_context* ctx, fz_xml* tc, doc_info* info, int row
     int vertical = 0;
     int saved_vertical = 0;
     int saved_row = -1;
+    const char* valign = NULL;
     char style_css[448];
     word_border_edge top, right, bottom, left;
 
@@ -4659,6 +4677,16 @@ static void emit_table_cell(fz_context* ctx, fz_xml* tc, doc_info* info, int row
 
     tcpr = fz_xml_find_down(tc, "tcPr");
     if (tcpr) {
+        fz_xml* va = fz_xml_find_down(tcpr, "vAlign");
+        const char* av = va ? fz_xml_att_alt(va, "w:val", "val") : NULL;
+        if (av) {
+            if (!strcmp(av, "center"))
+                valign = "middle";
+            else if (!strcmp(av, "bottom"))
+                valign = "bottom";
+            else if (!strcmp(av, "top"))
+                valign = "top";
+        }
         fz_xml* td = fz_xml_find_down(tcpr, "textDirection");
         const char* dv = td ? fz_xml_att_alt(td, "w:val", "val") : NULL;
         /* tbRl / tbRlV / btLr: vertical forms (会议报告单 label column). */
@@ -4673,8 +4701,9 @@ static void emit_table_cell(fz_context* ctx, fz_xml* tc, doc_info* info, int row
     if (row_min_height_pt > 0.5f)
         style_n +=
             fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "height:%.1fpt;", row_min_height_pt);
-    if (vertical || row_i < 2)
-        style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "vertical-align:middle;");
+    if (!valign && (vertical || row_i < 2)) valign = "middle";
+    if (valign)
+        style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "vertical-align:%s;", valign);
 
     word_resolve_cell_borders(tc, table_b, row_i, n_rows, col, n_cols, colspan, rowspan, &top, &right, &bottom, &left);
     word_append_css_border_edge(style_css, sizeof style_css, "top", &top);
