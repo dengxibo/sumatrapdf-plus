@@ -40,6 +40,8 @@ int fz_epub_fragment_rects(fz_context* ctx, fz_document* doc, int chapter, const
 #include "EngineBase.h"
 #include "MdConvert.h"
 #include "OfficeConvert.h"
+#include "OcrTextMerge.h"
+#include "TextSelection.h"
 #include "WordToc.h"
 #include "EngineMupdf.h"
 #include "PdfPageEditing.h"
@@ -1699,7 +1701,19 @@ static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut, bool glyphB
     return content.StealData();
 }
 
-static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut, bool glyphBounds = false) {
+static bool ShouldJoinEpubLayoutLines(fz_stext_line* a, fz_stext_line* b, float gapMed) {
+    // Without source information, require two successive rows in the same
+    // text column. A table row or a jump to another column must stay separate.
+    float em = StextLineEm(a);
+    if (a->wmode || b->wmode || b->bbox.y0 <= a->bbox.y0 + em * 0.5f || StextLineGap(a, b) > em * 1.5f ||
+        fabsf(a->bbox.x0 - b->bbox.x0) >= em * 1.5f || a->bbox.x1 <= b->bbox.x0 || b->bbox.x1 <= a->bbox.x0) {
+        return false;
+    }
+    return ShouldJoinStextLines(a, b, gapMed);
+}
+
+static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut, bool glyphBounds = false,
+                              bool useEpubStructure = false) {
     WStrBuilder content;
     // coordsOut is optional but we ask for it by default so we simplify the code
     // by always calculating it
@@ -1718,7 +1732,23 @@ static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut, bool glyphB
         if (i + 1 >= lines.size()) {
             continue;
         }
-        const char* sep = StextJoinSepUtf8(line, lines[i + 1], gapMed);
+        auto* next = lines[i + 1];
+        if (useEpubStructure) {
+            bool hasSourceBoundary = line->source_text_group && next->source_text_group;
+            bool join = hasSourceBoundary ? line->source_text_group == next->source_text_group
+                                          : ShouldJoinEpubLayoutLines(line, next, gapMed);
+            int marker = kEpubParagraphBreak;
+            if (join) {
+                char left[8] = {}, right[8] = {};
+                fz_runetochar(left, StextLineLastRune(line));
+                fz_runetochar(right, StextLineFirstRune(next));
+                marker = OcrJoinNeedsSpace(left, right) ? kEpubSoftBreakSpace : kEpubSoftBreak;
+            }
+            content.AppendChar(L'\n');
+            rects.Append(Rect(0, marker, 0, 0));
+            continue;
+        }
+        const char* sep = StextJoinSepUtf8(line, next, gapMed);
         if (sep[0] == '\n') {
             nBreak++;
             AddLineSep(content, rects, L"\n", 1);
@@ -12748,7 +12778,7 @@ static PageText ExtractPageTextFromFzPageInfo(EngineMupdf* e, FzPageInfo* pageIn
     if (!pageInfo->searchStext) {
         fz_stext_page* stext = nullptr;
         fz_var(stext);
-        fz_stext_options opts = NewTextPageOptions();
+        fz_stext_options opts = NewTextPageOptions(str::EqI(e->defaultExt, ".epub") ? FZ_STEXT_HTML_FLOW : 0);
         fz_try(ctx) {
             stext = fz_new_stext_page_from_page(ctx, pageInfo->page, &opts);
         }
@@ -12761,7 +12791,8 @@ static PageText ExtractPageTextFromFzPageInfo(EngineMupdf* e, FzPageInfo* pageIn
         return {};
     }
     PageText res;
-    WCHAR* text = FzTextPageToStr(pageInfo->searchStext, &res.coords, e->pdfdoc != nullptr);
+    WCHAR* text =
+        FzTextPageToStr(pageInfo->searchStext, &res.coords, e->pdfdoc != nullptr, str::EqI(e->defaultExt, ".epub"));
     res.text = text;
     res.len = (int)str::Len(text);
     return res;
@@ -12775,7 +12806,7 @@ static PageTextUtf8 ExtractPageTextUtf8FromFzPageInfo(EngineMupdf* e, FzPageInfo
     if (!pageInfo->searchStext) {
         fz_stext_page* stext = nullptr;
         fz_var(stext);
-        fz_stext_options opts = NewTextPageOptions();
+        fz_stext_options opts = NewTextPageOptions(str::EqI(e->defaultExt, ".epub") ? FZ_STEXT_HTML_FLOW : 0);
         fz_try(ctx) {
             stext = fz_new_stext_page_from_page(ctx, pageInfo->page, &opts);
         }

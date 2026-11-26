@@ -81,7 +81,8 @@ typedef struct fz_text_span
 typedef struct
 {
 	int refs;
-	fz_text_span *head, *tail;
+        uintptr_t source_text_group; /* HTML flow segment identity, zero for other text */
+        fz_text_span *head, *tail;
 } fz_text;
 
 /**

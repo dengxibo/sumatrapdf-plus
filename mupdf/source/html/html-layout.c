@@ -3672,6 +3672,7 @@ static int draw_flow_box(fz_context* ctx, fz_html_box* box, float page_top, floa
     int filling, prev_filling = 0;
     int stroking, prev_stroking = 0;
     int restartable_ended = 0;
+    uintptr_t source_text_group = (uintptr_t)box;
     fz_stroke_state* ss = NULL;
     fz_stroke_state* line_ss = NULL;
 
@@ -3701,6 +3702,7 @@ static int draw_flow_box(fz_context* ctx, fz_html_box* box, float page_top, floa
                 }
             }
 
+            if (node->type == FLOW_BREAK) source_text_group = (uintptr_t)node;
             if (node->type == FLOW_IMAGE) {
                 /* An image that starts on the next page still paints into this
                  * page's bottom margin (the bitmap is taller than the content
@@ -3739,7 +3741,7 @@ static int draw_flow_box(fz_context* ctx, fz_html_box* box, float page_top, floa
                 }
 
                 if (/* If we've changed whether we're filling... */
-                    filling != prev_filling ||
+                    (text && text->source_text_group != source_text_group) || filling != prev_filling ||
                     /* Or we're filling and the color has changed... */
                     (prev_filling && !color_eq(style->text_fill_color, prev_fill_color)) ||
                     /* Or we've changed whether we're stroking... */
@@ -3795,7 +3797,10 @@ static int draw_flow_box(fz_context* ctx, fz_html_box* box, float page_top, floa
                     }
                 }
 
-                if (!text) text = fz_new_text(ctx);
+                if (!text) {
+                    text = fz_new_text(ctx);
+                    text->source_text_group = source_text_group;
+                }
 
                 if (node->bidi_level & 1)
                     x = node->x + node->w;

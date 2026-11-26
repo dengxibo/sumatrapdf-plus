@@ -33,6 +33,15 @@ static bool IsHanCp(int cp) {
            (cp >= 0x20000 && cp <= 0x2FA1F);
 }
 
+static bool StartsListItem(const char* text) {
+    while (*text == ' ' || *text == '\t') text++;
+    const char* p = text;
+    while (*p >= '0' && *p <= '9') p++;
+    if (p > text && (*p == '.' || *p == ')') && (p[1] == ' ' || p[1] == '\t')) return true;
+    int cp = FirstCodepoint(text);
+    return cp == 0x2022 || cp == 0x25CF || cp == 0x25A0 || ((*text == '-' || *text == '*') && text[1] == ' ');
+}
+
 bool OcrJoinNeedsSpace(const char* left, const char* right) {
     if (!left || !left[0] || !right || !right[0]) {
         return false;
@@ -214,11 +223,15 @@ static bool GapOk(const Rect& a, const Rect& b, const MergeStats& st, bool verti
         }
         return st.pitch <= 0 || gap <= st.pitch * 3 + st.em;
     }
+    if (b.y <= a.y + a.dy / 2) {
+        // Same-row table cells and adjacent columns are not wrapped body rows.
+        return false;
+    }
     gap = b.y - (a.y + a.dy);
     if (gap < 0) {
         gap = 0;
     }
-    return st.pitch <= 0 || gap <= st.pitch * 2 + st.em / 2;
+    return gap <= st.em * 3 / 2 && (st.pitch <= 0 || gap <= st.pitch * 2 + st.em / 2);
 }
 
 // similar line thickness (same font size): a wrapped title continues in the
@@ -250,7 +263,8 @@ static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const 
     if (!a.text || !a.text[0] || !b.text || !b.text[0]) {
         return false;
     }
-    if (OcrTextEndsWithTerminalPunct(a.text)) {
+    bool terminal = OcrTextEndsWithTerminalPunct(a.text);
+    if ((vertical && terminal) || StartsListItem(b.text)) {
         return false;
     }
     if (!GapOk(a.bbox, b.bbox, st, vertical)) {
@@ -274,6 +288,13 @@ static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const 
     }
     int aRight = a.bbox.x + a.bbox.dx;
     bool aFull = aRight >= st.bodyHi - st.em;
+    if (terminal) {
+        // A sentence ending is not a paragraph ending. Only join when the
+        // previous row fills the measure and the next row resumes at its margin.
+        int inset = b.bbox.x - st.bodyLo;
+        return aFull && inset >= -st.em / 2 && inset <= st.em / 2 && SameLineThickness(a.bbox, b.bbox, false) &&
+               !aCentered && !bCentered;
+    }
     if (aCentered && !bCentered) {
         // a centered block (title) must not absorb left-aligned body text
         return false;

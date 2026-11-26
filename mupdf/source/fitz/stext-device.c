@@ -162,6 +162,7 @@ typedef struct
 
 	fz_stext_block *lazy_vectors;
 	fz_stext_block *lazy_vectors_tail;
+        uintptr_t source_text_group;
 } fz_stext_device;
 
 const char *fz_stext_options_usage =
@@ -998,17 +999,17 @@ fz_add_stext_char_imp(fz_context *ctx, fz_stext_device *dev, fz_font *font, int 
 		dev->lastline->flags |= FZ_STEXT_LINE_FLAGS_JOINED;
 
 	/* Start a new line */
-	if (new_line || !cur_line || force_new_line)
-	{
-		cur_line = add_line_to_block(ctx, page, cur_block, &ndir, wmode, bidi);
-		dev->start = p;
-		if (glyph == -2)
-			dev->maybe_bullet = 1;
-		else
-			dev->maybe_bullet = plausible_bullet(c);
-	}
+        if (new_line || !cur_line || force_new_line || cur_line->source_text_group != dev->source_text_group) {
+            cur_line = add_line_to_block(ctx, page, cur_block, &ndir, wmode, bidi);
+            cur_line->source_text_group = dev->source_text_group;
+            dev->start = p;
+            if (glyph == -2)
+                dev->maybe_bullet = 1;
+            else
+                dev->maybe_bullet = plausible_bullet(c);
+        }
 
-	/* Henceforth treat such non-glyphs in the usual way. */
+        /* Henceforth treat such non-glyphs in the usual way. */
 	if (glyph == -2)
 		glyph = -1;
 
@@ -1451,11 +1452,13 @@ fz_stext_fill_text(fz_context *ctx, fz_device *dev, const fz_text *text, fz_matr
 	fz_text_span *span;
 	if (text == tdev->lasttext && (tdev->opts.flags & FZ_STEXT_COLLECT_STYLES) == 0)
 		return;
-	tdev->color = hexrgba_from_color(ctx, colorspace, color, alpha);
-	for (span = text->head; span; span = span->next)
+        tdev->source_text_group = (tdev->flags & FZ_STEXT_HTML_FLOW) ? text->source_text_group : 0;
+        tdev->color = hexrgba_from_color(ctx, colorspace, color, alpha);
+        for (span = text->head; span; span = span->next)
 		fz_stext_extract(ctx, tdev, span, ctm, FZ_STEXT_FILLED);
 	fz_drop_text(ctx, tdev->lasttext);
 	tdev->lasttext = fz_keep_text(ctx, text);
+        tdev->source_text_group = 0;
 }
 
 static void
@@ -1466,11 +1469,13 @@ fz_stext_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const
 	fz_text_span *span;
 	if (text == tdev->lasttext && (tdev->opts.flags & FZ_STEXT_COLLECT_STYLES) == 0)
 		return;
-	tdev->color = hexrgba_from_color(ctx, colorspace, color, alpha);
-	for (span = text->head; span; span = span->next)
+        tdev->source_text_group = (tdev->flags & FZ_STEXT_HTML_FLOW) ? text->source_text_group : 0;
+        tdev->color = hexrgba_from_color(ctx, colorspace, color, alpha);
+        for (span = text->head; span; span = span->next)
 		fz_stext_extract(ctx, tdev, span, ctm, FZ_STEXT_STROKED);
 	fz_drop_text(ctx, tdev->lasttext);
 	tdev->lasttext = fz_keep_text(ctx, text);
+        tdev->source_text_group = 0;
 }
 
 static void
@@ -1485,6 +1490,7 @@ fz_stext_clip_text(fz_context *ctx, fz_device *dev, const fz_text *text, fz_matr
 		fz_stext_extract(ctx, tdev, span, ctm, FZ_STEXT_FILLED | FZ_STEXT_CLIPPED);
 	fz_drop_text(ctx, tdev->lasttext);
 	tdev->lasttext = fz_keep_text(ctx, text);
+        tdev->source_text_group = 0;
 }
 
 static void
@@ -1499,6 +1505,7 @@ fz_stext_clip_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, 
 		fz_stext_extract(ctx, tdev, span, ctm, FZ_STEXT_STROKED | FZ_STEXT_CLIPPED);
 	fz_drop_text(ctx, tdev->lasttext);
 	tdev->lasttext = fz_keep_text(ctx, text);
+        tdev->source_text_group = 0;
 }
 
 static void fz_stext_ignore_text(fz_context* ctx, fz_device* dev, const fz_text* text, fz_matrix ctm) {

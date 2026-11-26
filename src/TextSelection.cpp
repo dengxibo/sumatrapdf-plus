@@ -1366,6 +1366,42 @@ static void AppendMergedPageLines(TextSelection* ts, int pageNo, int fromGlyph, 
     OcrMergeVerticalGlyphs(lines, mgs);
 }
 
+bool AppendEpubParagraphText(WStrBuilder& out, const WCHAR* text, const Rect* coords, int len, const WCHAR* lineSep,
+                             const Rect* region) {
+    bool structured = false;
+    for (int i = 0; i < len; i++) {
+        if (text[i] == L'\n' && coords[i].y <= kEpubParagraphBreak) {
+            structured = true;
+            break;
+        }
+    }
+    if (!structured) return false;
+
+    int separator = 0;
+    for (int i = 0; i < len; i++) {
+        if (text[i] == L'\n') {
+            // Multiple breaks in a region with omitted rows cannot be soft wraps.
+            separator = separator ? kEpubParagraphBreak : coords[i].y;
+            if (!separator) separator = kEpubParagraphBreak;
+            continue;
+        }
+        if (region) {
+            Rect rc = coords[i];
+            Rect overlap = region->Intersect(rc);
+            if (overlap.IsEmpty() || 1.0 * overlap.dx * overlap.dy < 0.3 * rc.dx * rc.dy) continue;
+        }
+        if (out.size() && separator) {
+            if (separator == kEpubSoftBreakSpace && out.Last() != L' ' && text[i] != L' ')
+                out.AppendChar(L' ');
+            else if (separator == kEpubParagraphBreak)
+                out.Append(lineSep);
+        }
+        separator = 0;
+        out.AppendChar(text[i]);
+    }
+    return true;
+}
+
 static WCHAR* ExtractTextFromGlyphRange(TextSelection* ts, int fromPage, int fromGlyph, int toPage, int toGlyph,
                                         const char* lineSep, bool mergeLines) {
     StrVec lines;
@@ -1383,6 +1419,18 @@ static WCHAR* ExtractTextFromGlyphRange(TextSelection* ts, int fromPage, int fro
                 // paragraph structure comes straight from the OCR cache
                 AppendCachedOcrParagraphLines(ts, page, glyph, glyph + length, lines);
                 continue;
+            }
+            if (str::EqI(ts->engine->defaultExt, ".epub")) {
+                Rect* coords = nullptr;
+                const WCHAR* text = ts->engine->GetTextForPage(page, &textLen, &coords);
+                int start = limitValue(glyph, 0, textLen);
+                int end = limitValue(glyph + length, start, textLen);
+                WStrBuilder merged;
+                if (text && coords &&
+                    AppendEpubParagraphText(merged, text + start, coords + start, end - start, ToWStrTemp(lineSep))) {
+                    if (merged.size()) lines.Append(ToUtf8Temp(merged.Get()));
+                    continue;
+                }
             }
             if (ts->engine->kind == kindEngineMupdf) {
                 // File-backed PDF text, whether OCR-generated or native, uses

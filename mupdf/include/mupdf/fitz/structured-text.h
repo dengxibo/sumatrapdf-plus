@@ -212,12 +212,13 @@ enum
 	FZ_STEXT_USE_GID_FOR_UNKNOWN_UNICODE = 65536,
 	FZ_STEXT_CLIP_RECT = (1<<17),
 	FZ_STEXT_ACCURATE_ASCENDERS = (1<<18),
-	FZ_STEXT_ACCURATE_SIDE_BEARINGS = (1<<19),
-	FZ_STEXT_LAZY_VECTORS = (1<<20),
-	FZ_STEXT_FUZZY_VECTORS = (1<<21),
+        FZ_STEXT_ACCURATE_SIDE_BEARINGS = (1 << 19),
+        FZ_STEXT_LAZY_VECTORS = (1 << 20),
+        FZ_STEXT_FUZZY_VECTORS = (1 << 21),
+        FZ_STEXT_HTML_FLOW = (1 << 22),
 
-	/* An old, deprecated option. */
-	FZ_STEXT_MEDIABOX_CLIP = FZ_STEXT_CLIP
+        /* An old, deprecated option. */
+        FZ_STEXT_MEDIABOX_CLIP = FZ_STEXT_CLIP
 };
 
 /**
@@ -461,12 +462,13 @@ typedef enum
 */
 struct fz_stext_line
 {
-	uint8_t wmode; /* 0 for horizontal, 1 for vertical */
-	uint8_t flags;
-	fz_point dir; /* normalized direction of baseline */
-	fz_rect bbox;
-	fz_stext_char *first_char, *last_char;
-	fz_stext_line *prev, *next;
+    uintptr_t source_text_group;
+    uint8_t wmode; /* 0 for horizontal, 1 for vertical */
+    uint8_t flags;
+    fz_point dir; /* normalized direction of baseline */
+    fz_rect bbox;
+    fz_stext_char *first_char, *last_char;
+    fz_stext_line *prev, *next;
 };
 
 /**

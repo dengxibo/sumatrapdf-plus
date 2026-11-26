@@ -133,11 +133,11 @@ static void IndentBreakTest() {
                 "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe6\x9c\xac");
 }
 
-// sentence-final punctuation always breaks
+// A short sentence-final line ends its paragraph.
 static void TerminalPunctBreakTest() {
     Vec<OcrMergeLine> lines;
     AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x88\xb0\xe6\xad\xa4\xe7\xbb\x93\xe6\x9d\x9f\xe3\x80\x82",
-            100, 100, 400, 16);
+            100, 100, 250, 16);
     AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe4\xbb\x8e\xe8\xbf\x99\xe9\x87\x8c\xe5\xbc\x80\xe5\xa7\x8b",
             100, 120, 400, 16);
     StrVec out;
@@ -385,6 +385,58 @@ static void VerticalGlyphsTitleBreakTest() {
 }
 
 void OcrTextMerge_UnitTests() {
+    {
+        const char* starts[] = {"1. First item", "2) Second item", "- Bullet item", "• Bullet item"};
+        for (const char* start : starts) {
+            Vec<OcrMergeLine> lines;
+            AddLine(lines, "Previous body row without punctuation", 100, 100, 400, 16);
+            AddLine(lines, start, 100, 120, 400, 16);
+            StrVec out;
+            OcrMergeLayoutLines(out, lines, false);
+            ExpectParas(out, "Previous body row without punctuation", start);
+        }
+    }
+    {
+        // Two selected rows alone must not normalize a paragraph gap into line spacing.
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "First paragraph.", 100, 100, 400, 16);
+        AddLine(lines, "Second paragraph.", 100, 164, 400, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "First paragraph.", "Second paragraph.");
+    }
+    {
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "Left table cell", 100, 100, 150, 16);
+        AddLine(lines, "Right table cell", 280, 100, 150, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "Left table cell", "Right table cell");
+    }
+    {
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "上一段恰好占满整行。", 100, 100, 400, 16);
+        AddLine(lines, "新段首行缩进。", 132, 120, 368, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "上一段恰好占满整行。", "新段首行缩进。");
+    }
+    {
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "第一句在行末结束。", 100, 100, 400, 16);
+        AddLine(lines, "下一句仍在同一段。", 100, 120, 280, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "第一句在行末结束。下一句仍在同一段。");
+    }
+    {
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "The first sentence ends here.", 100, 100, 400, 16);
+        AddLine(lines, "The next sentence continues the paragraph.", 100, 120, 300, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "The first sentence ends here. The next sentence continues the paragraph.");
+    }
     TerminalPunctTests();
     EmptyAndSingleTests();
     SoftWrapMergeTest();

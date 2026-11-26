@@ -3283,6 +3283,10 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region, bool mergeLines) c
     // layout lines back into paragraphs. Cached OCR pages already carry their
     // paragraph structure in the '\n' markers.
     bool mergeLayoutLines = mergeLines && engine->kind == kindEngineMupdf && !engine->HasCachedOcrText(pageNo);
+    if (mergeLayoutLines && str::EqI(engine->defaultExt, ".epub") &&
+        AppendEpubParagraphText(result, pageText, coords, (int)str::Len(pageText), L"\r\n", &regionI)) {
+        return ToUtf8(result.Get());
+    }
     bool verticalLayout = mergeLayoutLines && PageHasVerticalGlyphLayout(engine, pageNo);
     if (mergeLayoutLines && !verticalLayout) {
         StrVec rawLines;
