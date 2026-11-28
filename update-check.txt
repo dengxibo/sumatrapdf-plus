@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.122
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.122/SumatraPDF-Plus.exe
-Notes: EPUB paragraph-merged copying preserves source paragraphs and explicit breaks, using layout when source markers are missing. Improves paragraph merging for PDF text. New users can get a complete package from 3.7.117.
-NotesZh: EPUB 合并段落复制保留原始段落和显式换行，缺少标记时参考版面。改进 PDF 文字段落合并。新用户可先下载 3.7.117 完整包，再替换本版 EXE。
+Latest: 3.7.123
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.123/SumatraPDF-Plus.exe
+Notes: Fixes mouse-anchored zoom in non-continuous views. Improves English PDF word-wrap merging and EPUB indented-line fallback for paragraph copying. New users can get a complete package from 3.7.117.
+NotesZh: 修复非连续视图的鼠标锚点缩放，改进英文 PDF 单词换行合并及 EPUB 缩进段落的复制回退判断。新用户可先下载 3.7.117 完整包，再替换本版 EXE。
