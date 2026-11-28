@@ -386,6 +386,63 @@ static void VerticalGlyphsTitleBreakTest() {
 
 void OcrTextMerge_UnitTests() {
     {
+        // EPUB source markers, rather than display indentation, define breaks.
+        const WCHAR* text = L"首行\n续行\n换行\n下一段";
+        for (int indent = 0; indent <= 64; indent += 32) {
+            Rect coords[14] = {};
+            for (int i = 0; i < 13; i++) {
+                coords[i] = Rect(100 + i * 16, 100, 16, 16);
+            }
+            coords[0].x += indent;
+            coords[1].x += indent;
+            coords[2] = Rect(0, kEpubSoftBreak, 0, 0);
+            coords[5] = Rect(0, kEpubParagraphBreak, 0, 0);
+            coords[8] = Rect(0, kEpubParagraphBreak, 0, 0);
+            WStrBuilder out;
+            utassert(AppendEpubParagraphText(out, text, coords, (int)str::Len(text), L"\r\n"));
+            utassert(str::Eq(out.Get(), L"首行续行\r\n换行\r\n下一段"));
+        }
+    }
+    {
+        const WCHAR* text = L"First\nword.\nNext";
+        Rect coords[17] = {};
+        coords[5] = Rect(0, kEpubSoftBreakSpace, 0, 0);
+        coords[11] = Rect(0, kEpubParagraphBreak, 0, 0);
+        WStrBuilder out;
+        utassert(AppendEpubParagraphText(out, text, coords, (int)str::Len(text), L"\r\n"));
+        utassert(str::Eq(out.Get(), L"First word.\r\nNext"));
+    }
+    {
+        // A whole English word wraps even when several letters would still fit.
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "The velocity changes as time passes.", 100, 100, 355, 16);
+        AddLine(lines, "Acceleration describes the change in velocity", 100, 120, 400, 16);
+        AddLine(lines, "during the next interval.", 100, 140, 260, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out,
+                    "The velocity changes as time passes. Acceleration describes the change in velocity "
+                    "during the next interval.");
+    }
+    {
+        // Word-wrap tolerance must not swallow a short paragraph's last row.
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "This paragraph ends here.", 100, 100, 250, 16);
+        AddLine(lines, "Acceleration describes the next example.", 100, 120, 400, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "This paragraph ends here.", "Acceleration describes the next example.");
+    }
+    {
+        // A longer first word does not override the next paragraph's indent.
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "The velocity changes as time passes.", 100, 100, 355, 16);
+        AddLine(lines, "Acceleration describes the next example.", 132, 120, 368, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "The velocity changes as time passes.", "Acceleration describes the next example.");
+    }
+    {
         const char* starts[] = {"1. First item", "2) Second item", "- Bullet item", "• Bullet item"};
         for (const char* start : starts) {
             Vec<OcrMergeLine> lines;

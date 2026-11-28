@@ -3057,19 +3057,20 @@ void DisplayModel::SetZoomVirtual(float zoomLevel, Point* fixPt) {
         ss.x = ss.y = -1;
     }
 
-    // Continuous zoom keeps a point on a page under the same screen point.
+    // Zoom with an explicit anchor, or continuous zoom, keeps a point on a page
+    // under the same screen point.
     // Anchor on the page, not on canvas coordinates: margins and page gaps don't
     // scale, so scaling viewPort.y drifts by (pages above) * gap * (scale - 1) and
     // lands deep in the document. Without a cursor, the current page's top stays
     // put when it is on screen (switching from single page shows the page from its
     // top, not its middle); otherwise the viewport center is the anchor.
-    bool continuousReflow = IsContinuous(displayMode) && !scrollToFitPage;
+    bool preserveAnchor = (fixPt || IsContinuous(displayMode)) && !scrollToFitPage;
     int anchorPage = kInvalidPageNo;
     float anchorFracX = 0.5f;
     float anchorFracY = 0;
     int anchorX = fixPt ? fixPt->x : viewPort.dx / 2;
     int anchorY = fixPt ? fixPt->y : viewPort.dy / 2;
-    if (continuousReflow) {
+    if (preserveAnchor) {
         if (!fixPt) {
             int cur = CurrentPageNo();
             PageInfo* pi = GetPageInfo(cur);
@@ -3098,15 +3099,15 @@ void DisplayModel::SetZoomVirtual(float zoomLevel, Point* fixPt) {
 
     Relayout(zoomLevel, rotation);
 
-    PageInfo* anchorPi = continuousReflow ? GetPageInfo(anchorPage) : nullptr;
+    PageInfo* anchorPi = preserveAnchor ? GetPageInfo(anchorPage) : nullptr;
     bool anchorLaidOut = anchorPi && PageIsLaidOut(this, anchorPage);
-    if (continuousReflow && anchorPi && !anchorLaidOut) {
+    if (preserveAnchor && anchorPi && !anchorLaidOut) {
         // page not laid out at the new zoom yet (incremental reflow): GoToPage defers,
         // so estimate the in-page offset from the page size at the new zoom
         int estDy = (int)(PageSizeAfterRotation(anchorPage).dy * GetZoomReal(anchorPage));
         int scrollY = (int)(anchorFracY * estDy) - anchorY + windowMargin.top;
         GoToPage(anchorPage, scrollY, false, -1);
-    } else if (continuousReflow) {
+    } else if (preserveAnchor) {
         if (anchorPi) {
             Rect pos = anchorPi->pos;
             viewPort.x = pos.x + (int)(anchorFracX * pos.dx) - anchorX;

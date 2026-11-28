@@ -31,3 +31,12 @@ void OcrMergeLayoutLines(StrVec& out, const Vec<OcrMergeLine>& lines, bool verti
 // glyphs top to bottom), bands them into columns by x-overlap, and merges the
 // resulting column "lines" into paragraphs.
 void OcrMergeVerticalGlyphs(StrVec& out, const Vec<OcrMergeGlyph>& glyphs);
+
+// Y markers on zero-area newline coordinates in EPUB selection text.
+enum {
+    kEpubParagraphBreak = -1,
+    kEpubSoftBreak = -2,
+    kEpubSoftBreakSpace = -3
+};
+bool AppendEpubParagraphText(WStrBuilder& out, const WCHAR* text, const Rect* coords, int len, const WCHAR* lineSep,
+                             const Rect* region = nullptr);

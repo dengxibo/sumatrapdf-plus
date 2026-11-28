@@ -1706,7 +1706,12 @@ static bool ShouldJoinEpubLayoutLines(fz_stext_line* a, fz_stext_line* b, float 
     // text column. A table row or a jump to another column must stay separate.
     float em = StextLineEm(a);
     if (a->wmode || b->wmode || b->bbox.y0 <= a->bbox.y0 + em * 0.5f || StextLineGap(a, b) > em * 1.5f ||
-        fabsf(a->bbox.x0 - b->bbox.x0) >= em * 1.5f || a->bbox.x1 <= b->bbox.x0 || b->bbox.x1 <= a->bbox.x0) {
+        b->bbox.x0 - a->bbox.x0 >= em * 1.5f || a->bbox.x1 <= b->bbox.x0 || b->bbox.x1 <= a->bbox.x0) {
+        return false;
+    }
+    // Returning from an indented first row to the body margin is a soft wrap.
+    // Require aligned right edges so a centered heading does not absorb body text.
+    if (a->bbox.x0 - b->bbox.x0 >= em * 1.5f && fabsf(a->bbox.x1 - b->bbox.x1) > em) {
         return false;
     }
     return ShouldJoinStextLines(a, b, gapMed);

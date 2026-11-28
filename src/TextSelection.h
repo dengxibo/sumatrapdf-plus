@@ -49,12 +49,4 @@ bool isWordChar(WCHAR c);
 bool isWordChar(int codepoint);
 bool isNonCjkWordChar(WCHAR c);
 // true when the page's glyphs are stacked in vertical columns (vertical layout)
-// Y markers on zero-area newline coordinates in EPUB selection text.
-enum {
-    kEpubParagraphBreak = -1,
-    kEpubSoftBreak = -2,
-    kEpubSoftBreakSpace = -3
-};
-bool AppendEpubParagraphText(WStrBuilder& out, const WCHAR* text, const Rect* coords, int len, const WCHAR* lineSep,
-                             const Rect* region = nullptr);
 bool PageHasVerticalGlyphLayout(EngineBase* engine, int pageNo);

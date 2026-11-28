@@ -259,6 +259,28 @@ static bool CenteredInsidePreviousLine(const Rect& a, const Rect& b, int em) {
     return insetDiff <= em;
 }
 
+static int WordWrapSlack(const OcrMergeLine& next, const MergeStats& st) {
+    // A left-aligned Latin row can leave room for several letters, but not
+    // for the next whole word. Estimate that word from the next row instead
+    // of requiring every row to reach within one em of the right margin.
+    const char* text = next.text;
+    int wordLen = 0;
+    while (IsAsciiAlnum((unsigned char)text[wordLen])) {
+        wordLen++;
+    }
+    int len = (int)str::Len(text);
+    for (int i = 0; i < len; i++) {
+        if ((unsigned char)text[i] >= 0x80) {
+            return st.em;
+        }
+    }
+    if (!wordLen || !len) {
+        return st.em;
+    }
+    int wordWidth = (wordLen + 1) * next.bbox.dx / len;
+    return std::max(st.em, std::min(wordWidth, std::min(st.em * 4, st.measure / 5)));
+}
+
 static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const MergeStats& st, bool vertical) {
     if (!a.text || !a.text[0] || !b.text || !b.text[0]) {
         return false;
@@ -287,7 +309,7 @@ static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const 
         return aCentered && bCentered;
     }
     int aRight = a.bbox.x + a.bbox.dx;
-    bool aFull = aRight >= st.bodyHi - st.em;
+    bool aFull = aRight >= st.bodyHi - WordWrapSlack(b, st);
     if (terminal) {
         // A sentence ending is not a paragraph ending. Only join when the
         // previous row fills the measure and the next row resumes at its margin.
@@ -484,4 +506,40 @@ void OcrMergeVerticalGlyphs(StrVec& out, const Vec<OcrMergeGlyph>& glyphs) {
     flushBand();
     OcrMergeLayoutLines(out, mls, true);
     DeleteVecMembers(ownedTexts);
+}
+
+bool AppendEpubParagraphText(WStrBuilder& out, const WCHAR* text, const Rect* coords, int len, const WCHAR* lineSep,
+                             const Rect* region) {
+    bool structured = false;
+    for (int i = 0; i < len; i++) {
+        if (text[i] == L'\n' && coords[i].y <= kEpubParagraphBreak) {
+            structured = true;
+            break;
+        }
+    }
+    if (!structured) return false;
+
+    int separator = 0;
+    for (int i = 0; i < len; i++) {
+        if (text[i] == L'\n') {
+            // Multiple breaks in a region with omitted rows cannot be soft wraps.
+            separator = separator ? kEpubParagraphBreak : coords[i].y;
+            if (!separator) separator = kEpubParagraphBreak;
+            continue;
+        }
+        if (region) {
+            Rect rc = coords[i];
+            Rect overlap = region->Intersect(rc);
+            if (overlap.IsEmpty() || 1.0 * overlap.dx * overlap.dy < 0.3 * rc.dx * rc.dy) continue;
+        }
+        if (out.size() && separator) {
+            if (separator == kEpubSoftBreakSpace && out.Last() != L' ' && text[i] != L' ')
+                out.AppendChar(L' ');
+            else if (separator == kEpubParagraphBreak)
+                out.Append(lineSep);
+        }
+        separator = 0;
+        out.AppendChar(text[i]);
+    }
+    return true;
 }
